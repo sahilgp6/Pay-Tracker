@@ -152,7 +152,7 @@ label.f .in,label.f select{background:var(--surface2);border:1px solid var(--bor
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-size:10px;font-weight:600;fill:var(--muted);font-family:var(--f-body)}
 .bar{fill:var(--accent)}
-.bar.rev{fill:var(--green)}
+.bar.rec{fill:var(--accent);opacity:.55}
 footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:12px}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.btn,.iconbtn{transition:all .15s}}
 </style>
@@ -270,10 +270,19 @@ let profile = DEFAULT_PROFILE();
 let months = {};          // ym -> {sectors:[], dom:[], intl:[]}
 let cur = ymNow();
 let tab = "log";
+let yearMode = (()=>{ try{ return localStorage.getItem("crewpaylog.v1.year")||"cal" }catch(e){ return "cal" } })();
 let mode = "loading";     // db | local | loading
 
 function monthData(ym){ return months[ym] || (months[ym]={sectors:[],dom:[],intl:[]}) }
-function normMonth(d){ return {sectors:Array.isArray(d&&d.sectors)?d.sectors.map(x=>({...x})):[], dom:Array.isArray(d&&d.dom)?d.dom.map(x=>({...x})):[], intl:Array.isArray(d&&d.intl)?d.intl.map(x=>({...x})):[]} }
+function normMonth(d){ const m={sectors:Array.isArray(d&&d.sectors)?d.sectors.map(x=>({...x})):[], dom:Array.isArray(d&&d.dom)?d.dom.map(x=>({...x})):[], intl:Array.isArray(d&&d.intl)?d.intl.map(x=>({...x})):[]}; if(d&&d.record&&typeof d.record==="object") m.record={...d.record}; return m }
+const hasLog = d=>!!d && (d.sectors.length||d.dom.length||d.intl.length);
+const isRecorded = ym=>{ const d=months[ym]; return !!(d && d.record && !hasLog(d)) };
+// One summary shape for both kinds of month: logged sectors (calculated) or recorded totals (as entered)
+function summary(ym){
+  if(isRecorded(ym)){ const r=months[ym].record;
+    return {rec:true, opMin:(+r.block||0)*60, dhMin:(+r.dh||0)*60, domNights:+r.dom||0, intlMin:(+r.intlHrs||0)*60, intlUSD:+r.usd||0, gross:+r.gross||0, tds:null, net:+r.net||0} }
+  return calc(ym);
+}
 function normProfile(p){ const d=DEFAULT_PROFILE(); p=p||{}; return {...d,...p, fixed:{cur:{...(p.fixed&&p.fixed.cur||{})},rev:{...(p.fixed&&p.fixed.rev||{})}}} }
 
 /* ---------- Pay engine ---------- */
@@ -344,7 +353,7 @@ const queueMonth = ()=>queueSave();
 const queueProfile = ()=>queueSave();
 
 function backupData(){
-  const m={}; for(const k in months){ const d=months[k]; if(d.sectors.length||d.dom.length||d.intl.length) m[k]=d }
+  const m={}; for(const k in months){ const d=months[k]; if(hasLog(d)||d.record) m[k]=d }
   return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m};
 }
 function downloadBackup(){
@@ -360,6 +369,10 @@ function restoreBackup(file){
   r.onload=()=>{
     try{
       const j=JSON.parse(r.result);
+      if(j && j.app==="crew-pay-log" && j.kind==="records" && j.records && typeof j.records==="object"){
+        let n=0; for(const ym in j.records){ if(!/^\d{4}-\d{2}$/.test(ym)) continue; monthData(ym).record={...j.records[ym]}; n++ }
+        lsSave(); showBanner(`Imported recorded totals for ${n} month${n===1?"":"s"}. Your logged flights and Setup were not changed.`); render(); return;
+      }
       if(!j || typeof j!=="object" || !j.profile || typeof j.months!=="object") throw new Error("shape");
       applyData(j); lsSave();
       const n=Object.values(months).reduce((a,d)=>a+d.sectors.length,0);
@@ -382,7 +395,7 @@ function renderBanner(){
   const el=$("#topBanner"); let html="";
   if(bannerMsg) html+=`<div class="banner info"><span>${esc(bannerMsg)}</span></div>`;
   const k=calc(cur);
-  if(!k.hasFixed && tab!=="setup") html+=`<div class="banner"><span>Fixed pay is empty, so gross and net leave it out. Copy the annual figures from your compensation revision letter into Setup.</span><button class="btn ghost" data-go="setup">Open Setup</button></div>`;
+  if(!k.hasFixed && tab!=="setup" && !isRecorded(cur)) html+=`<div class="banner"><span>Fixed pay is empty, so gross and net leave it out. Copy the annual figures from your compensation revision letter into Setup.</span><button class="btn ghost" data-go="setup">Open Setup</button></div>`;
   el.innerHTML=html;
 }
 function renderHeader(){
@@ -390,12 +403,27 @@ function renderHeader(){
   $("#hName").textContent = profile.name || "Pay Tracker";
   $("#hRole").textContent = [rk.short, profile.fleet, profile.base].filter(Boolean).join(" · ");
   $("#mLabel").textContent = ymLabel(cur);
-  const k=calc(cur);
+  const k=summary(cur);
   $("#kBlock").textContent=hm(k.opMin); $("#kGross").textContent=inr(k.gross); $("#kNet").textContent=inr(k.net);
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected", String(b.dataset.tab===tab)));
 }
 
+function recordCard(){
+  const k=summary(cur), r=months[cur].record;
+  const L=(a,b)=>`<div class="line"><span>${a}</span><span class="v">${b}</span></div>`;
+  return `<section class="card">
+    <h2>${esc(ymLabel(cur))} · recorded totals</h2>
+    <p class="sub">Imported from your Numbers Annual Dashboard. These are the figures you recorded for this month; nothing here is recalculated.</p>
+    <div class="slip" style="grid-template-columns:1fr 1fr"><div><h3>Flying</h3>
+      ${L("Block hours",hm(k.opMin))}${L("Deadhead (SOD) hours",hm(k.dhMin))}${L("Domestic layover nights",k.domNights)}${L("International layover time",k.intlMin?hm(k.intlMin):"None")}
+    </div><div><h3>Pay</h3>
+      ${L("Gross",inr(k.gross))}${L("Net",inr(k.net))}${L("International per diem",usd(k.intlUSD))}
+    </div></div>
+  </section>`;
+}
+
 function viewLog(){
+  if(isRecorded(cur)) return recordCard();
   const d=monthData(cur), k=calc(cur), rev=k.st==="rev";
   const rows = d.sectors.map(s=>{
     const b=(+s.fixed||0)||(+s.actual||0);
@@ -480,6 +508,7 @@ function slip(k){
 }
 
 function viewPay(){
+  if(isRecorded(cur)) return recordCard();
   const k=calc(cur);
   return `<section class="card">
       <h2>${esc(ymLabel(cur))} pay</h2>
@@ -500,8 +529,9 @@ function viewPay(){
 
 function viewYear(){
   const [y,m]=cur.split("-").map(Number), fyStart = m>=4?y:y-1;
-  const yms = Array.from({length:12},(_,i)=>ymShift(fyStart+"-04",i));
-  const data = yms.map(ym=>{ const has = months[ym] && (months[ym].sectors.length||months[ym].dom.length||months[ym].intl.length); return {ym, has, k: has?calc(ym):null} });
+  const fy = yearMode==="fy";
+  const yms = Array.from({length:12},(_,i)=>ymShift(fy?fyStart+"-04":y+"-01",i));
+  const data = yms.map(ym=>{ const d=months[ym]; const has = !!d && (hasLog(d)||!!d.record); return {ym, has, k: has?summary(ym):null} });
   const logged = data.filter(x=>x.has);
   const sum=f=>logged.reduce((a,x)=>a+f(x.k),0);
   const max = Math.max(1,...logged.map(x=>x.k.net));
@@ -511,20 +541,24 @@ function viewYear(){
   data.forEach((x,i)=>{
     const xx=pl+i*bw;
     bars+=`<text x="${xx+bw/2}" y="${H-10}" text-anchor="middle">${ymShort(x.ym)}</text>`;
-    if(x.has){ const top=sc(x.k.net); bars+=`<rect class="bar${x.k.st==="rev"?" rev":""}" x="${xx+bw*.18}" y="${top}" width="${bw*.64}" height="${(H-pb)-top}" rx="2"><title>${ymLabel(x.ym)}: ${inr(x.k.net)}</title></rect>` }
+    if(x.has){ const top=sc(x.k.net); bars+=`<rect class="bar${x.k.rec?" rec":""}" x="${xx+bw*.18}" y="${top}" width="${bw*.64}" height="${(H-pb)-top}" rx="2"><title>${ymLabel(x.ym)}: ${inr(x.k.net)}</title></rect>` }
     else bars+=`<rect x="${xx+bw*.18}" y="${H-pb-2}" width="${bw*.64}" height="2" fill="var(--border)"></rect>`;
   });
   const revIdx = -1;
   if(revIdx>0) bars+=`<line x1="${pl+revIdx*bw}" x2="${pl+revIdx*bw}" y1="${pt-6}" y2="${H-pb}" stroke="var(--muted)" stroke-dasharray="3 3"></line><text x="${pl+revIdx*bw+4}" y="${pt}">Revision</text>`;
-  const rows = data.map(x=>`<tr><td><button class="btn quiet" style="padding:2px 8px" data-month="${x.ym}">${ymLabel(x.ym)}</button></td>${x.has?`<td class="n">${hm(x.k.opMin)}</td><td class="n">${hm(x.k.dhMin)}</td><td class="n">${x.k.domNights}</td><td class="n">${usd(x.k.intlUSD)}</td><td class="n">${inr(x.k.gross)}</td><td class="n">${inr(x.k.tds)}</td><td class="n">${inr(x.k.net)}</td>`:`<td colspan="7" style="color:var(--muted)">Nothing logged</td>`}</tr>`).join("");
+  const rows = data.map(x=>`<tr><td><button class="btn quiet" style="padding:2px 8px" data-month="${x.ym}">${ymLabel(x.ym)}</button></td>${x.has?`<td class="n">${hm(x.k.opMin)}</td><td class="n">${hm(x.k.dhMin)}</td><td class="n">${x.k.domNights}</td><td class="n">${usd(x.k.intlUSD)}</td><td class="n">${inr(x.k.gross)}</td><td class="n">${x.k.tds==null?"–":inr(x.k.tds)}</td><td class="n">${inr(x.k.net)}</td>`:`<td colspan="7" style="color:var(--muted)">Nothing logged</td>`}</tr>`).join("");
+  const anyRec = logged.some(x=>x.k.rec);
   return `<section class="card">
-    <h2>FY ${fyStart}-${String(fyStart+1).slice(2)}</h2>
-    <p class="sub">${logged.length} of 12 months logged. Bars show estimated take-home.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <h2>${fy?`FY ${fyStart}-${String(fyStart+1).slice(2)}`:`Calendar year ${y}`}</h2>
+      <div class="btns"><button class="btn ${fy?"quiet":""}" data-ymode="cal" style="padding:5px 12px">Calendar year</button><button class="btn ${fy?"":"quiet"}" data-ymode="fy" style="padding:5px 12px">Financial year</button></div>
+    </div>
+    <p class="sub">${logged.length} of 12 months logged. Bars show take-home${anyRec?"; lighter bars are months recorded in your Numbers dashboard":" (estimated)"}.</p>
     <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Take-home by month">${bars}</svg></div>
     <div class="tbl"><table><thead><tr><th>Month</th><th class="n">Block</th><th class="n">SOD</th><th class="n">Dom nts</th><th class="n">Intl USD</th><th class="n">Gross</th><th class="n">TDS</th><th class="n">Take-home</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td>Total</td><td class="n">${hm(sum(k=>k.opMin))}</td><td class="n">${hm(sum(k=>k.dhMin))}</td><td class="n">${sum(k=>k.domNights)}</td><td class="n">${usd(sum(k=>k.intlUSD))}</td><td class="n">${inr(sum(k=>k.gross))}</td><td class="n">${inr(sum(k=>k.tds))}</td><td class="n">${inr(sum(k=>k.net))}</td></tr></tfoot></table></div>
-    <p class="note">TDS here is each month's pay annualised, so it will not match payroll exactly when pay swings between months.</p>
+    <tfoot><tr><td>Total</td><td class="n">${hm(sum(k=>k.opMin))}</td><td class="n">${hm(sum(k=>k.dhMin))}</td><td class="n">${sum(k=>k.domNights)}</td><td class="n">${usd(sum(k=>k.intlUSD))}</td><td class="n">${inr(sum(k=>k.gross))}</td><td class="n">${anyRec?"–":inr(sum(k=>k.tds||0))}</td><td class="n">${inr(sum(k=>k.net))}</td></tr></tfoot></table></div>
+    <p class="note">${anyRec?"Recorded months show the gross and net you entered in Numbers, so TDS is not shown for them. ":""}For logged months, TDS is that month's pay annualised, so it will not match payroll exactly when pay swings between months.</p>
   </section>`;
 }
 
@@ -580,6 +614,7 @@ document.addEventListener("click", e=>{
   if(t.dataset.tab){ bannerMsg=""; tab=t.dataset.tab; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){}; render(); return }
   if(t.dataset.go){ tab=t.dataset.go; render(); return }
   if(t.dataset.month){ cur=t.dataset.month; tab="log"; render(); return }
+  if(t.dataset.ymode){ yearMode=t.dataset.ymode; try{localStorage.setItem("crewpaylog.v1.year",yearMode)}catch(_){}; render(); return }
   if(t.id==="backupBtn"){ downloadBackup(); return }
   if(t.id==="prevM"){ cur=ymShift(cur,-1); render(); return }
   if(t.id==="nextM"){ cur=ymShift(cur,1); render(); return }
