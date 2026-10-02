@@ -141,6 +141,10 @@ input[type=date].in::-webkit-datetime-edit{padding:0}
 .cmp .h{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .cmp .v{text-align:right;white-space:nowrap}
 .up{color:var(--green);font-weight:700} .down{color:var(--red);font-weight:700}
+.verdict{border-radius:8px;padding:10px 12px;font-size:13.5px;font-weight:600;border:1px solid}
+.verdict.ok{color:var(--green);border-color:rgba(45,106,48,.35);background:rgba(45,106,48,.08)}
+.verdict.bad{color:var(--red);border-color:rgba(158,42,28,.35);background:rgba(158,42,28,.08)}
+.verdict.info{color:var(--accent);border-color:rgba(26,58,107,.3);background:rgba(26,58,107,.06)}
 
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
@@ -286,7 +290,7 @@ let yearMode = (()=>{ try{ return localStorage.getItem("crewpaylog.v1.year")||"c
 let mode = "loading";     // db | local | loading
 
 function monthData(ym){ return months[ym] || (months[ym]={sectors:[],dom:[],intl:[]}) }
-function normMonth(d){ const m={sectors:Array.isArray(d&&d.sectors)?d.sectors.map(x=>({...x})):[], dom:Array.isArray(d&&d.dom)?d.dom.map(x=>({...x})):[], intl:Array.isArray(d&&d.intl)?d.intl.map(x=>({...x})):[]}; if(d&&d.record&&typeof d.record==="object") m.record={...d.record}; return m }
+function normMonth(d){ const m={sectors:Array.isArray(d&&d.sectors)?d.sectors.map(x=>({...x})):[], dom:Array.isArray(d&&d.dom)?d.dom.map(x=>({...x})):[], intl:Array.isArray(d&&d.intl)?d.intl.map(x=>({...x})):[]}; if(d&&d.record&&typeof d.record==="object") m.record={...d.record}; if(d&&d.paid&&typeof d.paid==="object") m.paid={...d.paid}; return m }
 const hasLog = d=>!!d && (d.sectors.length||d.dom.length||d.intl.length);
 const isRecorded = ym=>{ const d=months[ym]; return !!(d && d.record && !hasLog(d)) };
 // One summary shape for both kinds of month: logged sectors (calculated) or recorded totals (as entered)
@@ -365,7 +369,7 @@ const queueMonth = ()=>queueSave();
 const queueProfile = ()=>queueSave();
 
 function backupData(){
-  const m={}; for(const k in months){ const d=months[k]; if(hasLog(d)||d.record) m[k]=d }
+  const m={}; for(const k in months){ const d=months[k]; if(hasLog(d)||d.record||d.paid) m[k]=d }
   return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m};
 }
 function downloadBackup(){
@@ -519,6 +523,34 @@ function slip(k){
     <div class="netbar"><span>Estimated take-home</span><b class="num">${inr(k.net)}</b>${k.intlUSD?`<span class="extra">Plus ${usd(k.intlUSD)} international layover allowance, tax-exempt and paid separately</span>`:""}</div></div>`;
 }
 
+function payslipCard(k){
+  const p=(months[cur]&&months[cur].paid)||{}, g=+p.gross||0, n=+p.net||0;
+  const fmt=v=>v?Number(v).toLocaleString("en-IN"):"";
+  const paidIn=ymLabel(ymShift(cur,1)).split(" ")[0];
+  const diffCell=(est,act)=>{ if(!act) return `<div class="v" style="color:var(--muted)">–</div>`; const dv=act-est; const cls=Math.abs(dv)<1?"":dv<0?"down":"up"; return `<div class="v ${cls}">${dv>0?"+":dv<0?"−":""}${inr(Math.abs(dv))}</div>` };
+  let verdict="";
+  if(g){
+    const dv=g-k.gross, tol=Math.max(500,k.gross*0.005);
+    if(Math.abs(dv)<=tol) verdict=`<div class="verdict ok">Gross matches the estimate${Math.abs(dv)>=1?` (within ${inr(Math.abs(dv))})`:""}.</div>`;
+    else if(dv<0) verdict=`<div class="verdict bad">Payslip gross is ${inr(-dv)} lower than the estimate. Check the sectors, fixed block hours, SOD and layover nights logged for ${esc(ymLabel(cur))} against your payslip and roster.</div>`;
+    else verdict=`<div class="verdict info">Payslip gross is ${inr(dv)} higher than the estimate. This may be arrears, a reimbursement or an allowance the app does not track.</div>`;
+  }
+  return `<section class="card">
+    <h2>Payslip check</h2>
+    <p class="sub">Enter what your payslip for ${esc(ymLabel(cur))} shows. Flying allowance for a month is normally paid with the next month's salary, so this is usually the ${esc(paidIn)} payslip.</p>
+    <div class="grid2">
+      <label class="f">Gross on payslip (₹)<input class="in n" id="paid-gross" data-paid="gross" value="${fmt(g)}" placeholder="0" inputmode="numeric"></label>
+      <label class="f">Net paid (₹)<input class="in n" id="paid-net" data-paid="net" value="${fmt(n)}" placeholder="0" inputmode="numeric"></label>
+    </div>
+    ${g||n?`<div class="cmp">
+      <div class="h"></div><div class="h v">Estimate</div><div class="h v">Payslip</div><div class="h v">Difference</div>
+      <div>Gross</div><div class="v">${inr(k.gross)}</div><div class="v">${g?inr(g):"–"}</div>${diffCell(k.gross,g)}
+      <div>Net</div><div class="v">${inr(k.net)}</div><div class="v">${n?inr(n):"–"}</div>${diffCell(k.net,n)}
+    </div>${verdict}
+    <p class="note">Compare gross first. Net also depends on how payroll spreads your tax across the year, so it can differ from the estimate even when your pay is right.</p>`:""}
+  </section>`;
+}
+
 function viewPay(){
   if(isRecorded(cur)) return recordCard();
   const k=calc(cur);
@@ -527,6 +559,7 @@ function viewPay(){
       <p class="sub">${esc(RANKS[k.rank].label)} rates ${k.r.map(inr).join(" / ")} per hour across the 0-40, 40-70, 70-80, 80-90 and 90+ bands.</p>
       ${slip(k)}
     </section>
+    ${payslipCard(k)}
     <section class="card">
       <h2>Tax regime</h2>
       <p class="sub">Annualised from this month: taxable pay of about ${inr(k.annual)} a year.</p>
@@ -537,6 +570,13 @@ function viewPay(){
       </div>
       <p class="note">The old-regime figure uses the ${inr(profile.oldDeductions)} of deductions entered in Setup (HRA exemption, 80C, 80D, home-loan interest and so on). The revised HRA of 75% of Basic only lowers tax under the old regime. Confirm the final choice with your CA.</p>
     </section>`;
+}
+
+function paidCell(x){
+  if(x.k.rec) return `<span style="color:var(--muted)">–</span>`;
+  const p=months[x.ym].paid; if(!p||!p.net) return `<span style="color:var(--muted)">–</span>`;
+  const dv=p.net-x.k.net, cls=Math.abs(dv)<Math.max(500,x.k.net*0.005)?"":dv<0?"down":"up";
+  return `<span class="${cls}">${inr(p.net)}</span>`;
 }
 
 function viewYear(){
@@ -557,8 +597,9 @@ function viewYear(){
   });
   const revIdx = -1;
   if(revIdx>0) bars+=`<line x1="${pl+revIdx*bw}" x2="${pl+revIdx*bw}" y1="${pt-6}" y2="${H-pb}" stroke="var(--muted)" stroke-dasharray="3 3"></line><text x="${pl+revIdx*bw+4}" y="${pt}">Revision</text>`;
-  const rows = data.map(x=>`<tr><td><button class="mlink" data-month="${x.ym}" aria-label="Open ${ymLabel(x.ym)}">${ymShort(x.ym)}</button></td>${x.has?`<td class="n">${hm(x.k.opMin)}</td><td class="n">${hm(x.k.dhMin)}</td><td class="n">${x.k.domNights}</td><td class="n">${usd(x.k.intlUSD)}</td><td class="n">${inr(x.k.gross)}</td><td class="n">${x.k.tds==null?"–":inr(x.k.tds)}</td><td class="n">${inr(x.k.net)}</td>`:`<td colspan="7" class="none">Nothing logged</td>`}</tr>`).join("");
+  const rows = data.map(x=>`<tr><td><button class="mlink" data-month="${x.ym}" aria-label="Open ${ymLabel(x.ym)}">${ymShort(x.ym)}</button></td>${x.has?`<td class="n">${hm(x.k.opMin)}</td><td class="n">${hm(x.k.dhMin)}</td><td class="n">${x.k.domNights}</td><td class="n">${usd(x.k.intlUSD)}</td><td class="n">${inr(x.k.gross)}</td><td class="n">${x.k.tds==null?"–":inr(x.k.tds)}</td><td class="n">${inr(x.k.net)}</td><td class="n">${paidCell(x)}</td>`:`<td colspan="8" class="none">Nothing logged</td>`}</tr>`).join("");
   const anyRec = logged.some(x=>x.k.rec);
+  const paidTotal = logged.reduce((a,x)=>a+(!x.k.rec&&months[x.ym].paid?(+months[x.ym].paid.net||0):0),0);
   return `<section class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
       <h2>${fy?`FY ${fyStart}-${String(fyStart+1).slice(2)}`:`Calendar year ${y}`}</h2>
@@ -566,9 +607,9 @@ function viewYear(){
     </div>
     <p class="sub">${logged.length} of 12 months logged. Bars show take-home${anyRec?"; lighter bars are months recorded in your Numbers dashboard":" (estimated)"}.</p>
     <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Take-home by month">${bars}</svg><div class="xlab">${yms.map(ym=>`<span>${ymShort(ym)}</span>`).join("")}</div></div>
-    <div class="tbl yr"><table><thead><tr><th>Month</th><th class="n">Block</th><th class="n">SOD</th><th class="n">Dom nts</th><th class="n">Intl USD</th><th class="n">Gross</th><th class="n">TDS</th><th class="n">Take-home</th></tr></thead>
+    <div class="tbl yr"><table><thead><tr><th>Month</th><th class="n">Block</th><th class="n">SOD</th><th class="n">Dom nts</th><th class="n">Intl USD</th><th class="n">Gross</th><th class="n">TDS</th><th class="n">Take-home</th><th class="n">Paid</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td>Total</td><td class="n">${hm(sum(k=>k.opMin))}</td><td class="n">${hm(sum(k=>k.dhMin))}</td><td class="n">${sum(k=>k.domNights)}</td><td class="n">${usd(sum(k=>k.intlUSD))}</td><td class="n">${inr(sum(k=>k.gross))}</td><td class="n">${anyRec?"–":inr(sum(k=>k.tds||0))}</td><td class="n">${inr(sum(k=>k.net))}</td></tr></tfoot></table></div>
+    <tfoot><tr><td>Total</td><td class="n">${hm(sum(k=>k.opMin))}</td><td class="n">${hm(sum(k=>k.dhMin))}</td><td class="n">${sum(k=>k.domNights)}</td><td class="n">${usd(sum(k=>k.intlUSD))}</td><td class="n">${inr(sum(k=>k.gross))}</td><td class="n">${anyRec?"–":inr(sum(k=>k.tds||0))}</td><td class="n">${inr(sum(k=>k.net))}</td><td class="n">${paidTotal?inr(paidTotal):"–"}</td></tr></tfoot></table></div>
     <p class="note">${anyRec?"Recorded months show the gross and net you entered in Numbers, so TDS is not shown for them. ":""}For logged months, TDS is that month's pay annualised, so it will not match payroll exactly when pay swings between months.</p>
   </section>`;
 }
@@ -662,6 +703,8 @@ document.addEventListener("change", e=>{
     if(el.dataset.num) v=parseFloat(String(v).replace(/,/g,""))||0;
     if(el.dataset.p==="layoverExempt") v=v==="1";
     profile[el.dataset.p]=v; queueProfile(); render(); return }
+  if(el.dataset.paid){ const d=monthData(cur); const v=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0;
+    d.paid={...(d.paid||{}),[el.dataset.paid]:v}; if(!d.paid.gross&&!d.paid.net) delete d.paid; queueMonth(cur); render(); return }
   if(el.dataset.fx){ profile.fixed[el.dataset.fx][el.dataset.k]=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0; queueProfile(); render(); return }
   const tr=el.closest("tr"); if(!tr||!el.dataset.f) return;
   const list = el.id[0]==="s"?"sectors":el.id[0]==="d"?"dom":"intl";
