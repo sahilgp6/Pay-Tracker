@@ -153,6 +153,18 @@ label.f .in,label.f select{background:var(--surface2);border:1px solid var(--bor
 .chart text{font-size:10px;font-weight:600;fill:var(--muted);font-family:var(--f-body)}
 .bar{fill:var(--accent)}
 .bar.rec{fill:var(--accent);opacity:.55}
+/* Year table: one text size, one row height, month column pinned while the figures scroll */
+.chart .xlab{display:grid;grid-template-columns:repeat(12,1fr);margin-top:6px}
+.chart .xlab span{text-align:center;font-size:11px;font-weight:600;color:var(--muted)}
+.yr table{font-size:13.5px}
+.yr th,.yr td{white-space:nowrap;padding:9px 10px;height:40px}
+.yr th{height:auto}
+.yr td.n{font-weight:500}
+.yr th:first-child,.yr td:first-child{position:sticky;left:0;background:var(--surface);z-index:1;padding-left:2px}
+.yr td.none{color:var(--muted);font-weight:400}
+.yr tfoot td{font-weight:800}
+.mlink{border:0;background:none;padding:0;font:inherit;font-size:13.5px;font-weight:700;color:var(--accent);cursor:pointer;min-width:2.6em;text-align:left}
+.mlink:hover{text-decoration:underline}
 footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:12px}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.btn,.iconbtn{transition:all .15s}}
 </style>
@@ -535,18 +547,17 @@ function viewYear(){
   const logged = data.filter(x=>x.has);
   const sum=f=>logged.reduce((a,x)=>a+f(x.k),0);
   const max = Math.max(1,...logged.map(x=>x.k.net));
-  const W=720,H=220,pl=8,pr=8,pt=16,pb=28,bw=(W-pl-pr)/12;
+  const W=720,H=200,pl=8,pr=8,pt=16,pb=4,bw=(W-pl-pr)/12;
   const sc=v=>(H-pb)-(v/max)*(H-pb-pt);
   let bars="";
   data.forEach((x,i)=>{
     const xx=pl+i*bw;
-    bars+=`<text x="${xx+bw/2}" y="${H-10}" text-anchor="middle">${ymShort(x.ym)}</text>`;
     if(x.has){ const top=sc(x.k.net); bars+=`<rect class="bar${x.k.rec?" rec":""}" x="${xx+bw*.18}" y="${top}" width="${bw*.64}" height="${(H-pb)-top}" rx="2"><title>${ymLabel(x.ym)}: ${inr(x.k.net)}</title></rect>` }
     else bars+=`<rect x="${xx+bw*.18}" y="${H-pb-2}" width="${bw*.64}" height="2" fill="var(--border)"></rect>`;
   });
   const revIdx = -1;
   if(revIdx>0) bars+=`<line x1="${pl+revIdx*bw}" x2="${pl+revIdx*bw}" y1="${pt-6}" y2="${H-pb}" stroke="var(--muted)" stroke-dasharray="3 3"></line><text x="${pl+revIdx*bw+4}" y="${pt}">Revision</text>`;
-  const rows = data.map(x=>`<tr><td><button class="btn quiet" style="padding:2px 8px" data-month="${x.ym}">${ymLabel(x.ym)}</button></td>${x.has?`<td class="n">${hm(x.k.opMin)}</td><td class="n">${hm(x.k.dhMin)}</td><td class="n">${x.k.domNights}</td><td class="n">${usd(x.k.intlUSD)}</td><td class="n">${inr(x.k.gross)}</td><td class="n">${x.k.tds==null?"–":inr(x.k.tds)}</td><td class="n">${inr(x.k.net)}</td>`:`<td colspan="7" style="color:var(--muted)">Nothing logged</td>`}</tr>`).join("");
+  const rows = data.map(x=>`<tr><td><button class="mlink" data-month="${x.ym}" aria-label="Open ${ymLabel(x.ym)}">${ymShort(x.ym)}</button></td>${x.has?`<td class="n">${hm(x.k.opMin)}</td><td class="n">${hm(x.k.dhMin)}</td><td class="n">${x.k.domNights}</td><td class="n">${usd(x.k.intlUSD)}</td><td class="n">${inr(x.k.gross)}</td><td class="n">${x.k.tds==null?"–":inr(x.k.tds)}</td><td class="n">${inr(x.k.net)}</td>`:`<td colspan="7" class="none">Nothing logged</td>`}</tr>`).join("");
   const anyRec = logged.some(x=>x.k.rec);
   return `<section class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -554,8 +565,8 @@ function viewYear(){
       <div class="btns"><button class="btn ${fy?"quiet":""}" data-ymode="cal" style="padding:5px 12px">Calendar year</button><button class="btn ${fy?"":"quiet"}" data-ymode="fy" style="padding:5px 12px">Financial year</button></div>
     </div>
     <p class="sub">${logged.length} of 12 months logged. Bars show take-home${anyRec?"; lighter bars are months recorded in your Numbers dashboard":" (estimated)"}.</p>
-    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Take-home by month">${bars}</svg></div>
-    <div class="tbl"><table><thead><tr><th>Month</th><th class="n">Block</th><th class="n">SOD</th><th class="n">Dom nts</th><th class="n">Intl USD</th><th class="n">Gross</th><th class="n">TDS</th><th class="n">Take-home</th></tr></thead>
+    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Take-home by month">${bars}</svg><div class="xlab">${yms.map(ym=>`<span>${ymShort(ym)}</span>`).join("")}</div></div>
+    <div class="tbl yr"><table><thead><tr><th>Month</th><th class="n">Block</th><th class="n">SOD</th><th class="n">Dom nts</th><th class="n">Intl USD</th><th class="n">Gross</th><th class="n">TDS</th><th class="n">Take-home</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td>Total</td><td class="n">${hm(sum(k=>k.opMin))}</td><td class="n">${hm(sum(k=>k.dhMin))}</td><td class="n">${sum(k=>k.domNights)}</td><td class="n">${usd(sum(k=>k.intlUSD))}</td><td class="n">${inr(sum(k=>k.gross))}</td><td class="n">${anyRec?"–":inr(sum(k=>k.tds||0))}</td><td class="n">${inr(sum(k=>k.net))}</td></tr></tfoot></table></div>
     <p class="note">${anyRec?"Recorded months show the gross and net you entered in Numbers, so TDS is not shown for them. ":""}For logged months, TDS is that month's pay annualised, so it will not match payroll exactly when pay swings between months.</p>
