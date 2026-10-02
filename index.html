@@ -171,6 +171,8 @@ label.f .in,label.f select{background:var(--surface2);border:1px solid var(--bor
 .yr tfoot td{font-weight:800}
 .mlink{border:0;background:none;padding:0;font:inherit;font-size:13.5px;font-weight:700;color:var(--accent);cursor:pointer;min-width:2.6em;text-align:left}
 .mlink:hover{text-decoration:underline}
+.rtime{display:block;font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap}
+textarea.in{resize:vertical;width:100%}
 footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:12px}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.btn,.iconbtn{transition:all .15s}}
 </style>
@@ -255,7 +257,7 @@ const ymShort = ym=>{const [y,m]=ym.split("-").map(Number);return new Date(y,m-1
 const uid = ()=>Math.random().toString(36).slice(2,9);
 const structFor = ()=>"rev";
 const ALIAS = {
-  "united arab emirates":"UAE","u.a.e":"UAE","emirates":"UAE","dubai":"UAE","dxb":"UAE","abu dhabi":"UAE","auh":"UAE","sharjah":"UAE","shj":"UAE","ras al khaimah":"UAE","rkt":"UAE","al ain":"UAE","aan":"UAE",
+  "united arab emirates":"UAE","u.a.e":"UAE","emirates":"UAE","dubai":"UAE","dxb":"UAE","abu dhabi":"UAE","auh":"UAE","sharjah":"UAE","shj":"UAE","ras al khaimah":"UAE","rkt":"UAE","dwc":"UAE","fujairah":"UAE","fjr":"UAE","al ain":"UAE","aan":"UAE",
   "riyadh":"Saudi Arabia","ruh":"Saudi Arabia","jeddah":"Saudi Arabia","jed":"Saudi Arabia","dammam":"Saudi Arabia","dmm":"Saudi Arabia","medina":"Saudi Arabia","madinah":"Saudi Arabia","med":"Saudi Arabia","ksa":"Saudi Arabia","saudi":"Saudi Arabia",
   "muscat":"Oman","mct":"Oman","salalah":"Oman","sll":"Oman","doha":"Qatar","doh":"Qatar","kwi":"Kuwait","kuwait city":"Kuwait","manama":"Bahrain","bah":"Bahrain",
   "sin":"Singapore","kathmandu":"Nepal","ktm":"Nepal","dhaka":"Bangladesh","dac":"Bangladesh","bangkok":"Thailand","bkk":"Thailand","phuket":"Thailand","hkt":"Thailand",
@@ -406,6 +408,146 @@ function initStore(){
   try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist() }catch(e){}
 }
 
+/* ---------- Roster import (Crew Access calendar, .ics) ---------- */
+const IN_AIRPORTS = new Set(("BOM DEL BLR MAA CCU HYD COK CCJ CNN TRV IXE GOI GOX PNQ AMD JAI LKO VNS PAT IXR BBI GAU IXB IMF IXA DIB JRH IXS AJL SHL "+
+  "IXC ATQ SXR IXJ IXL DED VTZ VGA RJA TIR IXM TRZ CJB IXZ NAG IDR BHO RPR JLR GWL UDR JDH BDQ STV RAJ BHJ IXU NDC IXG HBX MYQ IXY IXK KLH TCR "+
+  "GAY DBR AYJ KNU HDO JSA ISK GOP IXD BEK AGR DGH PGH JGB IXW KJB SAG HJR TEZ IXH IXT IXV IXI CDP PYG RQY BPM").split(" "));
+const IST = "Asia/Kolkata";
+function tzOffsetMin(tz, utcMs){
+  try{
+    const p=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(new Date(utcMs)).map(x=>[x.type,x.value]));
+    return (Date.UTC(+p.year,+p.month-1,+p.day,+p.hour%24,+p.minute,+p.second)-utcMs)/60000;
+  }catch(e){ return 330 }
+}
+function icsTime(prop){ // {params, value} -> epoch ms
+  const m=prop.value.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?)?(Z)?$/); if(!m) return null;
+  const [_,y,mo,d,h="0",mi="0",s="0",z]=m; const naive=Date.UTC(+y,+mo-1,+d,+h,+mi,+s);
+  if(z) return naive;
+  const tz=(prop.params.TZID||IST).replace(/^"|"$/g,"");
+  let t=naive-tzOffsetMin(tz,naive)*60000; return t-(tzOffsetMin(tz,t)-tzOffsetMin(tz,naive))*60000;
+}
+function istParts(ms){ const d=new Date(ms+330*60000); const p=n=>String(n).padStart(2,"0");
+  return {date:`${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}`, time:`${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`} }
+function parseICS(text){
+  const lines=String(text).replace(/\r\n|\r/g,"\n").replace(/\n[ \t]/g,"").split("\n");
+  const evs=[]; let ev=null;
+  for(const line of lines){
+    if(line==="BEGIN:VEVENT"){ ev={}; continue }
+    if(line==="END:VEVENT"){ if(ev) evs.push(ev); ev=null; continue }
+    if(!ev) continue;
+    const i=line.indexOf(":"); if(i<0) continue;
+    const [name,...ps]=line.slice(0,i).split(";"); const params={};
+    for(const p of ps){ const j=p.indexOf("="); if(j>0) params[p.slice(0,j).toUpperCase()]=p.slice(j+1) }
+    ev[name.toUpperCase()]={params, value:line.slice(i+1)};
+  }
+  const un=s=>String(s||"").replace(/\\n/gi,"\n").replace(/\\([,;\\])/g,"$1");
+  return evs.map(e=>({uid:e.UID&&e.UID.value, summary:un(e.SUMMARY&&e.SUMMARY.value), desc:un(e.DESCRIPTION&&e.DESCRIPTION.value),
+    location:un(e.LOCATION&&e.LOCATION.value), status:(e.STATUS&&e.STATUS.value||"").toUpperCase(),
+    start:e.DTSTART?icsTime(e.DTSTART):null, end:e.DTEND?icsTime(e.DTEND):null})).filter(e=>e.start!=null && e.status!=="CANCELLED");
+}
+// Turn calendar events into sectors and layovers
+function rosterItems(events){
+  events=events.slice().sort((a,b)=>a.start-b.start);
+  const sectors=[], hotels=[], reports=[];
+  const route=s=>{ const m=s.match(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/); return m?[m[1],m[2]]:null };
+  for(const e of events){
+    const s=e.summary, end=e.end||e.start;
+    if(/check\s*in/i.test(s)){ reports.push(e); continue }
+    if(/layover in hotel|hotel/i.test(s)){ hotels.push(e); continue }
+    const r=route(s); if(!r) continue;
+    let kind=null;
+    if(/deadhead|\bDHD?\b|positioning|\bOAT\b/i.test(s)) kind="dh";
+    else if(/flight/i.test(s)) kind="op";
+    if(!kind) continue;
+    const fm=e.desc.match(/Flight Number:\s*([A-Z0-9]+)/i);
+    sectors.push({uid:e.uid||`${e.start}-${r[0]}-${r[1]}`, start:e.start, end, from:r[0], to:r[1], kind, flt:fm?fm[1].toUpperCase():"", fixed:Math.round((end-e.start)/60000)});
+  }
+  for(const rp of reports){ const nx=sectors.find(x=>x.start>=rp.start && x.start-rp.start<=6*3600000); if(nx && !nx.report) nx.report=istParts(rp.start).time }
+  const lays=[];
+  for(const h of hotels){
+    const prev=[...sectors].reverse().find(x=>x.end<=h.start+60000), next=sectors.find(x=>x.start>=(h.end||h.start));
+    const am=(h.desc.match(/,\s*([A-Z]{3})\s*(?:\n|$)/)||[])[1];
+    const stn=(prev&&prev.to)||am||""; if(!stn) continue;
+    const from=prev?prev.end:h.start, to=next?next.start:(h.end||h.start);
+    const intl=!IN_AIRPORTS.has(stn);
+    if(intl) lays.push({type:"intl", uid:h.uid, start:prev?prev.end:h.start, country:stn, mins:Math.max(0,Math.round((to-from)/60000))});
+    else { const a=istParts(h.start).date, b=istParts(h.end||h.start).date;
+      const nights=Math.max(1,Math.round((Date.parse(b)-Date.parse(a))/86400000));
+      lays.push({type:"dom", uid:h.uid, start:h.start, stn, nights}) }
+  }
+  return {sectors, lays, from:events.length?events[0].start:0, to:events.length?events[events.length-1].start:0};
+}
+function importRoster(text){
+  const evs=parseICS(text);
+  if(!evs.length) return {error:"No calendar events found. Copy the whole roster calendar, not a single event."};
+  const {sectors,lays,from,to}=rosterItems(evs);
+  if(!sectors.length && !lays.length) return {error:"The calendar had events but no flights, deadheads or hotel layovers the app recognises."};
+  const st={added:0, updated:0, removed:0, skipped:new Set(), touched:new Set()};
+  const lo=istParts(from).date, hi=istParts(to).date;
+  const put=(list, item, match)=>{ // update by uid, else adopt a matching manual row, else add
+    let row=list.find(r=>r.uid===item.uid);
+    if(!row){ row=list.find(r=>!r.uid && match(r)); if(row){ row.edited=true; row.example=false } }   // your own entry: keep your hours
+    if(row){ const keep=row.edited?["fixed","nights","mins"]:[]; const before=JSON.stringify(row);
+      for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
+      if(JSON.stringify(row)!==before) st.updated++ }
+    else { list.push({id:uid(), ...item}); st.added++ }
+  };
+  const seen=new Set();
+  for(const s of sectors){
+    const {date,time}=istParts(s.start), ym=date.slice(0,7);
+    if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
+    const d=monthData(ym); seen.add(s.uid); st.touched.add(ym);
+    put(d.sectors,{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:time,report:s.report||"",roster:true},
+        r=>r.date===date && (r.from||"").toUpperCase()===s.from && (r.to||"").toUpperCase()===s.to);
+  }
+  for(const l of lays){
+    const date=istParts(l.start).date, ym=date.slice(0,7);
+    if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
+    const d=monthData(ym); seen.add(l.uid); st.touched.add(ym);
+    if(l.type==="dom") put(d.dom,{uid:l.uid,date,stn:l.stn,nights:l.nights,roster:true}, r=>r.date===date && (r.stn||"").toUpperCase()===l.stn);
+    else put(d.intl,{uid:l.uid,date,country:l.country,mins:l.mins,roster:true}, r=>r.date===date);
+  }
+  // Duties dropped from the roster: remove synced rows in the roster's date range that you have not edited
+  for(const ym in months){ const d=months[ym]; if(d.record) continue;
+    for(const key of ["sectors","dom","intl"]){ const n0=d[key].length;
+      d[key]=d[key].filter(r=>!(r.roster && r.uid && !r.edited && !seen.has(r.uid) && r.date>=lo && r.date<=hi)); st.removed+=n0-d[key].length } }
+  lsSave();
+  return st;
+}
+function rosterMessage(st){
+  if(st.error) return st.error;
+  const parts=[]; if(st.added) parts.push(`${st.added} added`); if(st.updated) parts.push(`${st.updated} updated`); if(st.removed) parts.push(`${st.removed} removed (no longer on your roster)`);
+  let m = parts.length?`Roster synced: ${parts.join(", ")}.`:"Roster synced: everything was already up to date.";
+  if(st.skipped.size) m+=` ${[...st.skipped].sort().map(ymLabel).join(", ")} kept as recorded totals.`;
+  return m;
+}
+async function pasteRoster(){
+  let text="";
+  try{ text=await navigator.clipboard.readText() }catch(e){ text="" }
+  if(!text || text.indexOf("BEGIN:VEVENT")<0){ showRosterBox=true; render(); const ta=document.getElementById("rosterText"); if(ta) ta.focus();
+    if(text) showBanner("The clipboard does not hold a calendar. Run the Copy Roster shortcut first, or paste below."); return }
+  applyRoster(text);
+}
+function applyRoster(text){
+  const st=importRoster(text); showRosterBox=false;
+  try{ if(!st.error) localStorage.setItem(LS_KEY+".lastSync", new Date().toISOString()) }catch(e){}
+  showBanner(rosterMessage(st)); render();
+}
+let showRosterBox=false;
+function rosterCard(){
+  let last=""; try{ const l=localStorage.getItem(LS_KEY+".lastSync"); if(l){ const d=new Date(l); last=` Last synced ${d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}, ${d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}.` } }catch(e){}
+  return `<section class="card">
+    <h2>Roster</h2>
+    <p class="sub">Run the Copy Roster shortcut, then tap Paste roster. Flights, deadheads and hotel layovers come in from your Crew Access calendar; standby and days off are skipped.${last}</p>
+    <div class="btns">
+      <button class="btn" id="pasteRoster">Paste roster</button>
+      <label class="btn quiet" for="rosterFile" style="display:inline-flex;align-items:center">Choose .ics file</label>
+      <input type="file" id="rosterFile" accept=".ics,text/calendar" hidden>
+    </div>
+    ${showRosterBox?`<label class="f" for="rosterText">Paste the copied roster here<textarea class="in" id="rosterText" rows="4" placeholder="BEGIN:VCALENDAR…" style="font-family:var(--f-mono);font-size:12px"></textarea></label><div class="btns"><button class="btn" id="rosterGo">Import</button></div>`:""}
+  </section>`;
+}
+
 /* ---------- Rendering ---------- */
 let bannerMsg="";
 function showBanner(m){ bannerMsg=m; renderBanner() }
@@ -448,7 +590,7 @@ function viewLog(){
     const lbl = s.kind==="div" ? "Actual block" : "Fixed block";
     return `<tr data-id="${s.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="s-${s.id}-date" data-f="date" value="${esc(s.date)}"></td>
-      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off"></td>
+      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}`:""}</span>`:""}</td>
       <td data-l="From"><input class="in caps" id="s-${s.id}-from" data-f="from" value="${esc(s.from)}" placeholder="BOM" maxlength="4" autocomplete="off"></td>
       <td data-l="To"><input class="in caps" id="s-${s.id}-to" data-f="to" value="${esc(s.to)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
       <td data-l="Type" class="w2"><select class="in" id="s-${s.id}-kind" data-f="kind">
@@ -456,7 +598,7 @@ function viewLog(){
         <option value="dh"${s.kind==="dh"?" selected":""}>Deadhead (SOD)</option>
         <option value="div"${s.kind==="div"?" selected":""}>Diversion / ferry</option></select></td>
       <td data-l="${lbl}" class="w2"><input class="in n" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
-      <td class="act">${s.example?'<span class="chip ex">Example</span>':""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
+      <td class="act">${s.example?'<span class="chip ex">Example</span>':""}${s.roster?`<span class="chip${s.edited?"":" rev"}" title="${s.edited?"From roster, edited by you":"From roster"}">${s.edited?"Edited":"Roster"}</span>`:""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
   }).join("");
   const domRows = d.dom.map(x=>`<tr data-id="${x.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="d-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
@@ -465,11 +607,11 @@ function viewLog(){
       <td data-l="Amount" class="pay dom-amt">${inr((+x.nights||0)*k.domRate)}${x.example?' <span class="chip ex">Example</span>':""}</td>
       <td><button class="del" data-del="dom" aria-label="Delete layover">×<span class="dl"> Remove</span></button></td></tr>`).join("");
   const hasEx = d.sectors.some(s=>s.example)||d.dom.some(s=>s.example);
-  return `
+  return `${rosterCard()}
   ${hasEx?`<div class="banner"><span>Rows marked Example are sample data to show how the log works. Replace them with your own sectors.</span><button class="btn ghost" id="clearEx">Remove examples</button></div>`:""}
   <section class="card">
     <h2>Sectors</h2>
-    <p class="sub">Enter the fixed block hours published for each sector (PAC/SOP/27). For a diversion or ferry flight, enter the actual block instead. Deadhead sectors earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
+    <p class="sub">Flying pay uses the fixed block hours published for each sector (PAC/SOP/27). Synced sectors come in at their rostered block time: if the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
     ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Block</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="pay">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
@@ -681,6 +823,8 @@ document.addEventListener("click", e=>{
   if(t.dataset.go){ tab=t.dataset.go; render(); return }
   if(t.dataset.month){ cur=t.dataset.month; tab="log"; render(); return }
   if(t.dataset.ymode){ yearMode=t.dataset.ymode; try{localStorage.setItem("crewpaylog.v1.year",yearMode)}catch(_){}; render(); return }
+  if(t.id==="pasteRoster"){ pasteRoster(); return }
+  if(t.id==="rosterGo"){ const ta=document.getElementById("rosterText"); if(ta&&ta.value.trim()) applyRoster(ta.value); return }
   if(t.id==="backupBtn"){ downloadBackup(); return }
   if(t.id==="prevM"){ cur=ymShift(cur,-1); render(); return }
   if(t.id==="nextM"){ cur=ymShift(cur,1); render(); return }
@@ -712,6 +856,8 @@ document.addEventListener("click", e=>{
 });
 document.addEventListener("change", e=>{
   const el=e.target;
+  if(el.id==="rosterFile"){ const f=el.files&&el.files[0]; if(f){ const r=new FileReader(); r.onload=()=>applyRoster(r.result); r.readAsText(f) } el.value=""; return }
+  if(el.id==="rosterText") return;
   if(el.id==="restoreFile"){ if(el.files&&el.files[0]) restoreBackup(el.files[0]); el.value=""; return }
   if(el.dataset.p){ let v=el.value;
     if(el.dataset.num) v=parseFloat(String(v).replace(/,/g,""))||0;
@@ -725,7 +871,7 @@ document.addEventListener("change", e=>{
   const row = monthData(cur)[list].find(r=>r.id===tr.dataset.id); if(!row) return;
   let v=el.value;
   if(el.dataset.hm) v=parseHM(v); else if(el.dataset.num) v=parseFloat(v)||0; else if(el.classList.contains("caps")) v=v.toUpperCase().trim();
-  row[el.dataset.f]=v; if(row.example) row.example=false;
+  row[el.dataset.f]=v; if(row.example) row.example=false; if(row.roster) row.edited=true;
   // a sector dated in another month moves there
   if(el.dataset.f==="date" && v && v.slice(0,7)!==cur){ const tgt=v.slice(0,7); monthData(cur)[list]=monthData(cur)[list].filter(r=>r!==row); monthData(tgt)[list].push(row); queueMonth(tgt) }
   queueMonth(cur); render();

@@ -14,6 +14,9 @@ Made by Sahil Gupta.
 - **Ranks:** JFO, FO, Captain (SFO), Commander and Senior Commander rates
 - **Works offline** once opened from the live link (`sw.js` service worker), and can be added to the home screen
 
+## Roster sync
+Flights, deadheads (including OAT positioning) and hotel layovers can be pulled in from the Crew Access calendar. An iOS Shortcut copies the published calendar (.ics) to the clipboard, and **Paste roster** on the Flight log tab reads it. Re-syncing updates changed duties, removes cancelled ones and keeps any hours you have corrected. Standby and days off are ignored. The calendar link lives only in the Shortcut on your phone, never in this repository.
+
 ## Your data
 Everything you enter, including your fixed pay, is saved in the browser on your own device. Nothing is sent anywhere and nothing is stored in this repository. Use **Setup → Download backup** now and then, and **Restore from file** to move to a new phone.
 
