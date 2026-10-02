@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a3a6b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Pay Tracker">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Pay Tracker</title>
+<style>
+/* Layout: flight-strip header with month selector, five tabs, one working panel each. Theme follows the 737 question bank: parchment, navy, oxblood. Single light look by design. */
+:root{
+  --bg:#ddd8cc; --surface:#f5f0e6; --surface2:#ede8dc; --border:#c4b99a;
+  --accent:#1a3a6b; --accent2:#9e2a1c; --green:#2d6a30; --red:#9e2a1c; --yellow:#8b6914; --orange:#a05828;
+  --text:#1c1814; --muted:#7a6f60; --onfill:#fffaf0;
+  --f-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --radius:10px;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--text)}
+body{margin:0;font-family:var(--f-body);font-size:15px;line-height:1.5;padding-inline:max(16px,env(safe-area-inset-left));padding-block:max(16px,env(safe-area-inset-top)) max(40px,env(safe-area-inset-bottom));-webkit-tap-highlight-color:transparent}
+.wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.num,td.n,input.n,.v,.pay,.kpi b{font-variant-numeric:tabular-nums}
+h1,h2,h3{font-weight:800;margin:0;text-wrap:balance}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Header strip */
+.strip{display:grid;grid-template-columns:auto 1fr auto;border:1px solid var(--border);background:var(--surface);border-radius:var(--radius);overflow:hidden}
+.strip .cs{background:var(--accent);color:var(--onfill);padding:12px 16px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.strip .cs b{font-size:20px;font-weight:800;line-height:1.1}
+.strip .cs span{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.8;margin-top:4px}
+.strip .mid{display:flex;align-items:center;gap:8px;padding:8px 14px;min-width:0;flex-wrap:wrap}
+.mid .mlabel{font-size:20px;font-weight:800;min-width:8.5em;text-align:center}
+.iconbtn{border:1px solid var(--border);background:var(--surface2);border-radius:6px;width:34px;height:34px;cursor:pointer;font-size:16px;font-weight:700}
+.iconbtn:hover{border-color:var(--accent)}
+.iconbtn:active,.btn:active{transform:scale(.97)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:var(--surface2);white-space:nowrap}
+.chip.rev{border-color:var(--accent);color:var(--accent);background:rgba(26,58,107,.08)}
+.chip.ex{border-color:var(--orange);color:var(--orange);background:rgba(160,88,40,.08)}
+.strip .kpis{display:flex;background:var(--surface2);border-left:1px solid var(--border)}
+.kpi{padding:8px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid var(--border)}
+.kpi:first-child{border-left:0}
+.kpi small{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.kpi b{font-size:18px;font-weight:800;white-space:nowrap}
+@media (max-width:820px){
+  .strip{grid-template-columns:1fr}
+  .strip .kpis{border-left:0;border-top:1px solid var(--border)}
+  .strip .mid{justify-content:space-between;border-top:1px solid var(--border)}
+  .kpi{flex:1;min-width:0;padding:8px}
+  .kpi b{font-size:15px}
+}
+
+/* Tabs */
+nav.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+nav.tabs button{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap}
+nav.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--onfill)}
+
+.panel{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card h2{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.card .sub{color:var(--muted);font-size:13px;margin:-4px 0 0;max-width:75ch}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+.row > *{flex:1 1 300px;min-width:0}
+.note{font-size:12px;color:var(--muted);max-width:75ch;margin:0}
+.banner{border:1px solid rgba(160,88,40,.35);background:rgba(160,88,40,.1);color:var(--text);border-radius:8px;padding:10px 14px;font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+.banner.info{border-color:var(--border);background:var(--surface2)}
+
+/* Tables */
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:left;padding:6px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:middle}
+td.n,th.n{text-align:right}
+tfoot td{font-weight:800;border-bottom:0;border-top:2px solid var(--text)}
+.in{border:1px solid var(--border);background:var(--surface2);border-radius:6px;padding:6px 7px;width:100%;min-width:0;font-size:14px}
+.in:focus{border-color:var(--accent);background:var(--surface);outline:none}
+.in.n{text-align:right;font-variant-numeric:tabular-nums}
+.in.caps{text-transform:uppercase}
+td .del{border:0;background:none;color:var(--muted);cursor:pointer;font-size:17px;padding:2px 6px}
+td .del:hover{color:var(--red)}
+.dl{display:none;font-size:12px;font-weight:600}
+@media (max-width:700px){.dl{display:inline}}
+.pay{text-align:right;white-space:nowrap;font-weight:600}
+.short{color:var(--orange);font-size:11px;font-weight:600;display:block}
+.btn{border:1px solid var(--accent2);background:var(--accent2);color:var(--onfill);border-radius:var(--radius);padding:9px 16px;cursor:pointer;font-size:13px;font-weight:700}
+.btn.ghost{background:rgba(26,58,107,.08);border-color:var(--accent);color:var(--accent)}
+.btn.quiet{border-color:var(--border);background:var(--surface2);color:var(--text)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.empty{border:1px dashed var(--border);background:var(--surface2);border-radius:var(--radius);padding:20px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center;font-size:13px}
+.empty b{color:var(--text)}
+
+.sec td:nth-child(1){width:150px}
+.sec td:nth-child(3),.sec td:nth-child(4){width:80px}
+.sec td:nth-child(5){width:170px}
+.sec td:nth-child(6){width:96px}
+td.act{white-space:nowrap;text-align:right;width:1%}
+td.act .chip{margin-right:4px}
+input[type=date].in{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;width:100%;text-align:left;min-height:34px}
+input[type=date].in::-webkit-date-and-time-value{text-align:left;margin:0}
+input[type=date].in::-webkit-datetime-edit{padding:0}
+@media (max-width:700px){
+  table.stack thead{display:none}
+  table.stack, table.stack tbody, table.stack tr, table.stack td{display:block;width:auto!important}
+  table.stack tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px 0;border-bottom:1px solid var(--border)}
+  table.stack td{border:0;padding:0}
+  table.stack td[data-l]::before{content:attr(data-l);display:block;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  table.stack td.w2,table.stack td.pc{grid-column:span 2}
+  table.stack td.pc,table.stack td.dom-amt{text-align:left}
+  table.stack td:last-child{grid-column:span 2;text-align:right;align-self:end}
+  table.stack tfoot{display:block}
+  table.stack tfoot tr{grid-template-columns:1fr auto}
+  table.stack tfoot td:last-child{display:none}
+}
+
+/* Payslip */
+.slip{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.slip > div{padding:14px 16px;min-width:0}
+.slip > div + div{border-left:1px solid var(--border)}
+.slip h3{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.line{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--surface2);font-size:14px}
+.line span:first-child{min-width:0}
+.line .sm{display:block;font-size:11.5px;color:var(--muted)}
+.line .v{white-space:nowrap;font-weight:600}
+.line.tot{border-bottom:0;border-top:2px solid var(--text);margin-top:6px;padding-top:8px;font-weight:800}
+.netbar{grid-column:1/-1;border-left:0!important;border-top:1px solid var(--border);background:var(--surface2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.netbar span{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.netbar b{font-size:30px;font-weight:800;color:var(--green)}
+.netbar .extra{flex-basis:100%;font-size:12.5px;letter-spacing:0;text-transform:none;font-weight:500}
+@media (max-width:700px){.slip{grid-template-columns:1fr}.slip > div + div{border-left:0;border-top:1px solid var(--border)}}
+
+.cmp{display:grid;grid-template-columns:auto 1fr 1fr 1fr}
+.cmp > div{padding:7px 10px;border-bottom:1px solid var(--border);font-size:14px}
+.cmp .h{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.cmp .v{text-align:right;white-space:nowrap}
+.up{color:var(--green);font-weight:700} .down{color:var(--red);font-weight:700}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+label.f .in,label.f select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:14px;font-weight:400;letter-spacing:0;text-transform:none}
+.fx th:not(:first-child),.fx td:not(:first-child){text-align:right}
+.fx td:first-child{white-space:nowrap;font-size:14px}
+.fx .in{max-width:150px;margin-left:auto;display:block}
+
+.chart svg{width:100%;height:auto;display:block}
+.chart text{font-size:10px;font-weight:600;fill:var(--muted);font-family:var(--f-body)}
+.bar{fill:var(--accent)}
+.bar.rev{fill:var(--green)}
+footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:12px}
+@media (prefers-reduced-motion:no-preference){nav.tabs button,.btn,.iconbtn{transition:all .15s}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="strip" aria-label="Pilot and month">
+    <div class="cs"><b id="hName">Pay Tracker</b><span id="hRole">Air India Express pilot pay</span></div>
+    <div class="mid">
+      <button class="iconbtn" id="prevM" aria-label="Previous month">‹</button>
+      <div class="mlabel" id="mLabel">Month</div>
+      <button class="iconbtn" id="nextM" aria-label="Next month">›</button>
+      
+    </div>
+    <div class="kpis">
+      <div class="kpi"><small>Payable block</small><b id="kBlock">0:00</b></div>
+      <div class="kpi"><small>Gross</small><b id="kGross">₹0</b></div>
+      <div class="kpi"><small>Est. net</small><b id="kNet">₹0</b></div>
+    </div>
+  </header>
+
+  <div id="topBanner"></div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="log" id="t-log">Flight log</button>
+    <button role="tab" data-tab="intl" id="t-intl">Intl layovers</button>
+    <button role="tab" data-tab="pay" id="t-pay">Pay</button>
+    <button role="tab" data-tab="year" id="t-year">Year</button>
+    <button role="tab" data-tab="setup" id="t-setup">Setup</button>
+  </nav>
+
+  <main id="view" class="panel"></main>
+
+  <footer><span>Made by Sahil Gupta · rates from PAC/SOP/27, AIEXPRESS/HR/6631 and AIXL/HR/2022/3918</span><span id="saveState">Saved on this device</span></footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- Policy data (company circulars) ---------- */
+const RANKS = {
+  jfo:{label:"Junior First Officer",short:"JFO",p1:false,dom:1600},
+  fo:{label:"First Officer",short:"FO",p1:false,dom:1600},
+  sfo:{label:"Captain (SFO)",short:"SFO",p1:false,dom:1600},
+  cdr:{label:"Commander",short:"CDR",p1:true,dom:2200},
+  scdr:{label:"Senior Commander",short:"SR CDR",p1:true,dom:2200}
+};
+// Hourly flying allowance by band: 0-40, 40-70, 70-80, 80-90, 90+
+const RATES = {
+  rev:{ // PAC/SOP/27, w.e.f. 1 Oct 2026
+    jfo:[1600,1700,1800,1900,2000], fo:[3100,3300,3400,3700,3800], sfo:[4600,4900,5000,5400,5600],
+    cdr:[7800,8200,8300,8875,9230], scdr:[7800,8200,8300,8875,9230]}
+};
+const REV_FROM = "2026-10";
+const STRUCT = {rev:"Revised structure, w.e.f. 1 Oct 2026"};
+const COMP = [ // annual INR, as written in the offer/revision letter
+  ["basic","Basic",true],["hra","House Rent Allowance",true],["grooming","Grooming Allowance",true],
+  ["other","Other Allowances",true],["gfa","Guaranteed Flying Allowance (40 h)",true],
+  ["narrowBody","Narrow Body Allowance",true],["mgmt","Management Allowance",true],["trainer","Trainer Allowance (fixed part)",true],
+  ["pfEr","Provident Fund (employer)",false],["gratuity","Gratuity",false]
+];
+const FX_RAW = "Afghanistan|115|150;Albania|115|150;Algeria|115|150;American Samoa|90|120;Angola|115|150;Anguilla|115|150;Antigua|115|150;Argentina|115|150;Armenia|115|150;Australia|150|200;Austria|150|200;Azerbaijan|115|150;Aruba|115|150;Bahamas|115|150;Bahrain|115|150;Bangladesh|90|120;Barbados|115|150;Belgium|150|200;Belize|90|120;Belarus|115|150;Benin|90|120;Bermuda|115|150;Bhutan|90|120;Bolivia|115|150;Botswana|115|150;Bosnia Herzegovina|115|150;Brazil|115|150;British Virgin Islands|90|120;Brunei|150|200;Bulgaria|115|150;Burkina Faso|90|120;Burundi|90|120;Cameroon|90|120;Canada|150|200;Cape Verde Islands|90|120;Cayman Islands|90|120;Central African Republic|90|120;Chad|90|120;Chile|115|150;China|150|200;Colombia|115|150;Comoros|90|120;Congo|90|120;Cooks Island|90|120;Costa Rica|115|150;Croatia|115|150;Cuba|115|150;Cyprus|150|200;Czech Republic|115|150;Denmark|150|200;Djibouti|90|120;Dominica|115|150;Dominican Rep.|115|150;Ecuador|115|150;Egypt|115|150;El Salvador|115|150;Eritrea|90|120;Equatorial Guinea|90|120;Estonia|115|150;Ethiopia|90|120;Fiji|150|200;Finland|150|200;France|150|200;French Guinea|115|150;Gabon|90|120;Gambia|90|120;Gaza (PNA)|115|150;Georgia|115|150;Germany|150|200;Ghana|90|120;Gibraltar|150|200;Greece|150|200;Grenada|115|150;Guadeloupe|115|150;Guam|90|120;Guatemala|115|150;Guinea|90|120;Guinea Bissau|90|120;Guyana|115|150;Haiti|115|150;Honduras|115|150;Hong Kong|150|200;Holy See (Vatican)|150|200;Hungary|115|150;Iceland|150|200;India|115|150;Indonesia|115|150;Iran|115|150;Iraq|115|150;Ireland|150|200;Israel|115|150;Italy|150|200;Ivory Coast|90|120;Jamaica|115|150;Japan|150|200;Jordan|90|120;Kampuchea (Cambodia)|115|150;Kazakhstan|115|150;Kenya|90|120;Kiribati|90|120;Korea (North)|90|120;Korea (South)|150|200;Kuwait|115|150;Kyrgyzstan|115|150;Leos|90|120;Latvia|115|150;Lebanon|90|120;Lesotho|90|120;Libya|90|120;Lithuania|150|200;Luxembourg|150|200;Macao|150|200;Madagascar|90|120;Malawi|90|120;Malaysia|115|150;Maldives|90|120;Mali|90|120;Malta|150|200;Martinique|115|150;Macedonia|115|150;Mauritania|90|120;Mauritius|90|120;Mexico|115|150;Micronesia|150|200;Moldova|115|150;Monaco|90|120;Montenegro|115|150;Mongolia|90|120;Montserrat|115|150;Morocco|90|120;Mozambique|90|120;Myanmar|90|120;Namibia|115|150;Nauru|90|120;Nepal|90|120;Netherland|150|200;Netherlands Antilles|115|150;New Caledonia|90|120;New Zealand|150|200;Nicaragua|115|150;Niger|90|120;Nigeria|90|120;Nave|90|120;Norway|150|200;Liberia|90|120;Oman|115|150;Pacific Islands (Trust territory)|115|150;Pakistan|90|120;Panama|115|150;Papua New Guinea|150|200;Paraguay|115|150;Puerto Rico|115|150;Principality of Lichtenstein (Vaduz)|150|200;Peru|115|150;Philippines|115|150;Poland|115|150;Portugal|150|200;Qatar|115|150;Reunion|90|120;Republic of Palau|115|150;Republic of Slovenia|150|200;Republic of San Marino|150|200;Romania|150|200;Rwanda|90|120;Samoa|90|120;Sai Tome & Principe|90|120;Saudi Arabia|115|150;Senegal|90|120;Serbia|115|150;Seychelles|115|150;Sierra Leone|90|120;Singapore|115|150;Slovak Republic|115|150;Solomon Islands|90|120;Somalia|90|120;South Africa|115|150;Spain|150|200;Sri Lanka|90|120;St Kits & Nevis|90|120;St. Lucia|90|120;St. Vincent & Grenadines|90|120;Sudan|90|120;Surinam|115|150;Swaziland|90|120;Sweden|150|200;Switzerland|150|200;Syria|115|150;Tajikistan|115|150;Tanzania|90|120;Thailand|115|150;Togo|90|120;Tonga|90|120;Trinidad & Tobago|115|150;Tunisia|90|120;Turkey|150|200;Turkmenistan|115|150;Turks & Caicos|115|150;Tuvalu|90|120;Uganda|90|120;UAE|115|150;United Kingdom|150|200;United States of America|150|200;Russian Federation|115|150;Ukraine|115|150;Uruguay|115|150;US Virgin Islands|90|120;Uzbekistan|115|150;Vanuatu|115|150;Venezuela|115|150;Vietnam|90|120;Yemen|90|120;Was Future Islands|90|120;Zaire|90|120;Zambia|90|120;Zimbabwe|115|150";
+const FX = FX_RAW.split(";").map(s=>{const [n,p2,p1]=s.split("|");return {n,p2:+p2,p1:+p1,k:n.toLowerCase()}});
+
+/* ---------- Helpers ---------- */
+const $ = s=>document.querySelector(s);
+const inr = v=>"₹"+Math.round(v||0).toLocaleString("en-IN");
+const usd = v=>"$"+(Math.round((v||0)*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc = s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const hm = m=>{m=Math.round(m||0);const s=m<0?"-":"";m=Math.abs(m);return s+Math.floor(m/60)+":"+String(m%60).padStart(2,"0")};
+function parseHM(v){ // "2:35", "2.5", "0235", "235" -> minutes
+  v=String(v||"").trim(); if(!v) return 0;
+  let m=v.match(/^(\d{1,3})[:h\s](\d{1,2})m?$/i); if(m) return (+m[1])*60+(+m[2]);
+  if(/^\d{3,4}$/.test(v)){const n=v.padStart(4,"0");return (+n.slice(0,2))*60+(+n.slice(2))}
+  const f=parseFloat(v); return isFinite(f)?Math.round(f*60):0;
+}
+const ymNow = ()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")};
+const ymShift = (ym,n)=>{let [y,m]=ym.split("-").map(Number);m+=n;while(m<1){m+=12;y--}while(m>12){m-=12;y++}return y+"-"+String(m).padStart(2,"0")};
+const ymLabel = ym=>{const [y,m]=ym.split("-").map(Number);return new Date(y,m-1,1).toLocaleString("en-GB",{month:"long",year:"numeric"})};
+const ymShort = ym=>{const [y,m]=ym.split("-").map(Number);return new Date(y,m-1,1).toLocaleString("en-GB",{month:"short"})};
+const uid = ()=>Math.random().toString(36).slice(2,9);
+const structFor = ()=>"rev";
+const ALIAS = {
+  "united arab emirates":"UAE","u.a.e":"UAE","emirates":"UAE","dubai":"UAE","dxb":"UAE","abu dhabi":"UAE","auh":"UAE","sharjah":"UAE","shj":"UAE","ras al khaimah":"UAE","rkt":"UAE","al ain":"UAE","aan":"UAE",
+  "riyadh":"Saudi Arabia","ruh":"Saudi Arabia","jeddah":"Saudi Arabia","jed":"Saudi Arabia","dammam":"Saudi Arabia","dmm":"Saudi Arabia","medina":"Saudi Arabia","madinah":"Saudi Arabia","med":"Saudi Arabia","ksa":"Saudi Arabia","saudi":"Saudi Arabia",
+  "muscat":"Oman","mct":"Oman","salalah":"Oman","sll":"Oman","doha":"Qatar","doh":"Qatar","kwi":"Kuwait","kuwait city":"Kuwait","manama":"Bahrain","bah":"Bahrain",
+  "sin":"Singapore","kathmandu":"Nepal","ktm":"Nepal","dhaka":"Bangladesh","dac":"Bangladesh","bangkok":"Thailand","bkk":"Thailand","phuket":"Thailand","hkt":"Thailand",
+  "kuala lumpur":"Malaysia","kul":"Malaysia","colombo":"Sri Lanka","cmb":"Sri Lanka","male":"Maldives","mle":"Maldives",
+  "usa":"United States of America","us":"United States of America","united states":"United States of America","america":"United States of America",
+  "uk":"United Kingdom","england":"United Kingdom","great britain":"United Kingdom","london":"United Kingdom",
+  "south korea":"Korea (South)","north korea":"Korea (North)","russia":"Russian Federation","viet nam":"Vietnam","turkiye":"Turkey","türkiye":"Turkey",
+  "czechia":"Czech Republic","eswatini":"Swaziland","north macedonia":"Macedonia","cote d'ivoire":"Ivory Coast","côte d'ivoire":"Ivory Coast","cabo verde":"Cape Verde Islands","cape verde":"Cape Verde Islands"
+};
+function byName(n){ n=n.toLowerCase(); return FX.find(c=>c.k===n)||null }
+function findCountry(q){
+  q=String(q||"").trim().toLowerCase().replace(/\s+/g," "); if(!q) return null;
+  const tries=[q, ...q.split(/[,/()-]/).map(s=>s.trim()).filter(Boolean).reverse()];
+  for(const t of tries){ const hit=byName(t)||(ALIAS[t]&&byName(ALIAS[t])); if(hit) return hit }
+  // longest table name or alias contained in the text wins
+  let best=null, len=0;
+  for(const c of FX){ if(c.k.length>len && new RegExp("\\b"+c.k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b").test(q)){best=c;len=c.k.length} }
+  for(const a in ALIAS){ if(a.length>len && a.length>3 && new RegExp("\\b"+a.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b").test(q)){best=byName(ALIAS[a]);len=a.length} }
+  return best;
+}
+function dayFrac(remH){ if(remH<=0) return 0; if(remH<=6) return .3; if(remH<=12) return .7; return 1 }
+
+/* ---------- State ---------- */
+const DEFAULT_PROFILE = ()=>({
+  name:"", rank:"fo", fleet:"B737", base:"BOM",
+  fixed:{cur:{},rev:{}},
+  regime:"new", oldDeductions:0, layoverExempt:false
+});
+let profile = DEFAULT_PROFILE();
+let months = {};          // ym -> {sectors:[], dom:[], intl:[]}
+let cur = ymNow();
+let tab = "log";
+let mode = "loading";     // db | local | loading
+
+function monthData(ym){ return months[ym] || (months[ym]={sectors:[],dom:[],intl:[]}) }
+function normMonth(d){ return {sectors:Array.isArray(d&&d.sectors)?d.sectors.map(x=>({...x})):[], dom:Array.isArray(d&&d.dom)?d.dom.map(x=>({...x})):[], intl:Array.isArray(d&&d.intl)?d.intl.map(x=>({...x})):[]} }
+function normProfile(p){ const d=DEFAULT_PROFILE(); p=p||{}; return {...d,...p, fixed:{cur:{...(p.fixed&&p.fixed.cur||{})},rev:{...(p.fixed&&p.fixed.rev||{})}}} }
+
+/* ---------- Pay engine ---------- */
+function taxNew(t){
+  t=Math.max(0,t); const b=[[400000,0],[800000,.05],[1200000,.10],[1600000,.15],[2000000,.20],[2400000,.25],[Infinity,.30]];
+  let tax=0,lo=0; for(const [hi,r] of b){ if(t>lo) tax+=(Math.min(t,hi)-lo)*r; lo=hi }
+  if(t<=1200000) tax=0;
+  let sc=t>20000000?.25:t>10000000?.15:t>5000000?.10:0;
+  return tax*(1+sc)*1.04;
+}
+function taxOld(t){
+  t=Math.max(0,t); const b=[[250000,0],[500000,.05],[1000000,.20],[Infinity,.30]];
+  let tax=0,lo=0; for(const [hi,r] of b){ if(t>lo) tax+=(Math.min(t,hi)-lo)*r; lo=hi }
+  if(t<=500000) tax=0;
+  let sc=t>20000000?.25:t>10000000?.15:t>5000000?.10:0;
+  return tax*(1+sc)*1.04;
+}
+function calc(ym, st){
+  st = st || structFor(ym);
+  const d = monthData(ym), rank = profile.rank in RANKS ? profile.rank : "fo";
+  const r = RATES[st][rank], fx = profile.fixed[st] || {};
+  const mon = k=>(+fx[k]||0)/12;
+  const fixedLines = COMP.filter(c=>c[2]).map(([k,l])=>[l,mon(k)]).filter(x=>x[1]>0);
+  const fixedCash = fixedLines.reduce((a,x)=>a+x[1],0);
+  let opMin=0, dhMin=0;
+  for(const s of d.sectors){
+    const b=(+s.fixed||0)||(+s.actual||0);   // older rows may only hold actual
+    if(s.kind==="dh") dhMin += b; else opMin += b;
+  }
+  const H = opMin/60;
+  const bands=[[40,70,r[1]],[70,80,r[2]],[80,90,r[3]],[90,Infinity,r[4]]];
+  const addLines=[]; let addFly=0;
+  for(const [lo,hi,rate] of bands){ const h=Math.max(0,Math.min(H,hi)-lo); if(h>0){ addLines.push([lo,hi,h,rate]); addFly+=h*rate } }
+  const sodRate = .65*r[0], sod = dhMin/60*sodRate;
+  const domRate = RANKS[rank].dom, domNights = d.dom.reduce((a,x)=>a+(+x.nights||0),0), dom = domNights*domRate;
+  const p1 = RANKS[rank].p1;
+  const intlRows = d.intl.map(x=>{
+    const c=findCountry(x.country), min=+x.mins||0, h=min/60, full=Math.floor(h/24), rem=h-full*24, frac=dayFrac(rem);
+    const rate=c?(p1?c.p1:c.p2):0, days=full+frac;
+    return {...x, c, rate, full, rem, frac, days, amt:days*rate};
+  });
+  const intlUSD = intlRows.reduce((a,x)=>a+x.amt,0);   // tax-exempt, outside CTC and gross
+  const gross = fixedCash + addFly + sod + dom;
+  const exempt = profile.layoverExempt ? dom : 0;
+  const annual = (gross-exempt)*12;
+  const isFeb = ym.endsWith("-02"), pt = isFeb?300:200;
+  const taxN = taxNew(annual-75000), taxO = taxOld(annual-50000-2500-(+profile.oldDeductions||0));
+  const annTax = profile.regime==="old" ? taxO : taxN;
+  const tds = annTax/12, pfEe = mon("basic")*.12;
+  const net = gross - tds - pfEe - pt;
+  return {st, rank, r, fixedLines, fixedCash, opMin, dhMin, H, addLines, addFly, sodRate, sod, domRate, domNights, dom,
+    intlRows, intlUSD, gross, annual, taxN, taxO, tds, pfEe, pt, net, p1,
+    hasFixed: fixedCash>0, ctc: COMP.reduce((a,[k])=>a+(+fx[k]||0),0)};
+}
+
+/* ---------- Storage (this device only) ---------- */
+const LS_KEY = "crewpaylog.v1";
+function lsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LS_KEY)||"null"); if(j) applyData(j) }catch(e){} }
+function applyData(j){ profile=normProfile(j.profile); months={}; for(const k in (j.months||{})) months[k]=normMonth(j.months[k]) }
+function lsSave(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify({profile, months})); setSave("Saved on this device") }
+  catch(e){ setSave("Could not save. Storage may be full or blocked in private browsing.") }
+}
+function setSave(t){ $("#saveState").textContent=t }
+let saveTimer=null;
+function queueSave(){ setSave("Saving…"); clearTimeout(saveTimer); saveTimer=setTimeout(lsSave,400) }
+const queueMonth = ()=>queueSave();
+const queueProfile = ()=>queueSave();
+
+function backupData(){
+  const m={}; for(const k in months){ const d=months[k]; if(d.sectors.length||d.dom.length||d.intl.length) m[k]=d }
+  return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m};
+}
+function downloadBackup(){
+  const d=new Date(), stamp=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const blob=new Blob([JSON.stringify(backupData(),null,1)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="pay-tracker-backup-"+stamp+".json";
+  document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove()},1000);
+  try{ localStorage.setItem(LS_KEY+".lastBackup", stamp) }catch(e){}
+  showBanner("Backup downloaded. Keep it somewhere safe, like Files or iCloud Drive.");
+}
+function restoreBackup(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const j=JSON.parse(r.result);
+      if(!j || typeof j!=="object" || !j.profile || typeof j.months!=="object") throw new Error("shape");
+      applyData(j); lsSave();
+      const n=Object.values(months).reduce((a,d)=>a+d.sectors.length,0);
+      showBanner(`Backup restored: ${n} sector${n===1?"":"s"} across ${Object.keys(j.months).length} month${Object.keys(j.months).length===1?"":"s"}, plus your Setup.`);
+      render();
+    }catch(e){ showBanner("That file is not a Pay Tracker backup. Choose the .json file the Download backup button made.") }
+  };
+  r.readAsText(file);
+}
+
+function initStore(){
+  lsLoad(); mode="local"; render(); setSave("Saved on this device");
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist() }catch(e){}
+}
+
+/* ---------- Rendering ---------- */
+let bannerMsg="";
+function showBanner(m){ bannerMsg=m; renderBanner() }
+function renderBanner(){
+  const el=$("#topBanner"); let html="";
+  if(bannerMsg) html+=`<div class="banner info"><span>${esc(bannerMsg)}</span></div>`;
+  const k=calc(cur);
+  if(!k.hasFixed && tab!=="setup") html+=`<div class="banner"><span>Fixed pay is empty, so gross and net leave it out. Copy the annual figures from your compensation revision letter into Setup.</span><button class="btn ghost" data-go="setup">Open Setup</button></div>`;
+  el.innerHTML=html;
+}
+function renderHeader(){
+  const rk=RANKS[profile.rank]||RANKS.fo;
+  $("#hName").textContent = profile.name || "Pay Tracker";
+  $("#hRole").textContent = [rk.short, profile.fleet, profile.base].filter(Boolean).join(" · ");
+  $("#mLabel").textContent = ymLabel(cur);
+  const k=calc(cur);
+  $("#kBlock").textContent=hm(k.opMin); $("#kGross").textContent=inr(k.gross); $("#kNet").textContent=inr(k.net);
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected", String(b.dataset.tab===tab)));
+}
+
+function viewLog(){
+  const d=monthData(cur), k=calc(cur), rev=k.st==="rev";
+  const rows = d.sectors.map(s=>{
+    const b=(+s.fixed||0)||(+s.actual||0);
+    const lbl = s.kind==="div" ? "Actual block" : "Fixed block";
+    return `<tr data-id="${s.id}">
+      <td data-l="Date" class="w2"><input class="in" type="date" id="s-${s.id}-date" data-f="date" value="${esc(s.date)}"></td>
+      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off"></td>
+      <td data-l="From"><input class="in caps" id="s-${s.id}-from" data-f="from" value="${esc(s.from)}" placeholder="BOM" maxlength="4" autocomplete="off"></td>
+      <td data-l="To"><input class="in caps" id="s-${s.id}-to" data-f="to" value="${esc(s.to)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
+      <td data-l="Type" class="w2"><select class="in" id="s-${s.id}-kind" data-f="kind">
+        <option value="op"${s.kind==="op"?" selected":""}>Operating</option>
+        <option value="dh"${s.kind==="dh"?" selected":""}>Deadhead (SOD)</option>
+        <option value="div"${s.kind==="div"?" selected":""}>Diversion / ferry</option></select></td>
+      <td data-l="${lbl}" class="w2"><input class="in n" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
+      <td class="act">${s.example?'<span class="chip ex">Example</span>':""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
+  }).join("");
+  const domRows = d.dom.map(x=>`<tr data-id="${x.id}">
+      <td data-l="Date" class="w2"><input class="in" type="date" id="d-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
+      <td data-l="Station" class="w2"><input class="in caps" id="d-${x.id}-stn" data-f="stn" value="${esc(x.stn)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
+      <td data-l="Nights"><input class="in n" id="d-${x.id}-nights" data-f="nights" data-num="1" value="${esc(x.nights)}" inputmode="numeric"></td>
+      <td data-l="Amount" class="pay dom-amt">${inr((+x.nights||0)*k.domRate)}${x.example?' <span class="chip ex">Example</span>':""}</td>
+      <td><button class="del" data-del="dom" aria-label="Delete layover">×<span class="dl"> Remove</span></button></td></tr>`).join("");
+  const hasEx = d.sectors.some(s=>s.example)||d.dom.some(s=>s.example);
+  return `
+  ${hasEx?`<div class="banner"><span>Rows marked Example are sample data to show how the log works. Replace them with your own sectors.</span><button class="btn ghost" id="clearEx">Remove examples</button></div>`:""}
+  <section class="card">
+    <h2>Sectors</h2>
+    <p class="sub">Enter the fixed block hours published for each sector (PAC/SOP/27). For a diversion or ferry flight, enter the actual block instead. Deadhead sectors earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
+    ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Block</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="pay">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
+    : `<div class="empty"><b>No sectors logged for ${esc(ymLabel(cur))}</b><span>Add each sector from your roster as you fly it. Payable hours, SOD and the tiered flying allowance update as you type.</span><div class="btns"><button class="btn" data-add="sectors">Add first sector</button>${Object.keys(months).some(m=>monthData(m).sectors.length)?"":`<button class="btn quiet" id="loadEx">Show an example month</button>`}</div></div>`}
+    ${d.sectors.length?`<div class="btns"><button class="btn" data-add="sectors">Add sector</button><button class="btn quiet" data-add="sectors" data-copy="1">Repeat last sector</button></div>`:""}
+  </section>
+  <section class="card">
+    <h2>Domestic layovers</h2>
+    <p class="sub">${esc(inr(k.domRate))} per night for ${esc(RANKS[k.rank].label)} (AIEXPRESS/HR/6631). International layovers go in the next tab.</p>
+    ${d.dom.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station</th><th class="n">Nights</th><th class="n">Amount</th><th></th></tr></thead><tbody>${domRows}</tbody>
+      <tfoot><tr><td colspan="2">${k.domNights} night${k.domNights===1?"":"s"}</td><td></td><td class="pay">${inr(k.dom)}</td><td></td></tr></tfoot></table></div>`:""}
+    <div class="btns"><button class="btn ${d.dom.length?"":"ghost"}" data-add="dom">Add domestic layover</button></div>
+  </section>`;
+}
+
+function viewIntl(){
+  const d=monthData(cur), k=calc(cur);
+  const rows = k.intlRows.map(x=>`<tr data-id="${x.id}">
+    <td data-l="Date" class="w2"><input class="in" type="date" id="i-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
+    <td data-l="Station / country" class="w2"><input class="in" list="countries" id="i-${x.id}-country" data-f="country" value="${esc(x.country)}" placeholder="Riyadh, Saudi Arabia" autocomplete="off">${x.country&&!x.c?'<span class="short">Country not found in the rate table</span>':(x.c&&x.c.n.toLowerCase()!==String(x.country).trim().toLowerCase()?`<span class="short" style="color:var(--muted)">Rate for ${esc(x.c.n)}</span>`:"")}</td>
+    <td data-l="Layover hrs"><input class="in n" id="i-${x.id}-mins" data-f="mins" data-hm="1" value="${x.mins?hm(x.mins):""}" placeholder="0:00" inputmode="numeric"></td>
+    <td data-l="Rate/day" class="pay">${x.rate?usd(x.rate):"–"}</td>
+    <td data-l="Days" class="pay">${x.full} + ${Math.round(x.frac*100)}%</td>
+    <td data-l="Payable days" class="pay">${x.days.toFixed(2)}</td>
+    <td data-l="Amount" class="pay pc">${usd(x.amt)}</td>
+    <td><button class="del" data-del="intl" aria-label="Delete layover">×<span class="dl"> Remove</span></button></td></tr>`).join("");
+  return `<section class="card">
+    <h2>International layovers</h2>
+    <p class="sub">Per diem in USD from AIXL/HR/2022/3918, at the ${k.p1?"P1 (Commander)":"P2 (First Officer)"} rate for your rank. It is tax-exempt and sits outside CTC, so it never enters gross, tax or take-home. Each full 24 hours counts as a day; the part left over pays 30% up to 6 hours, 70% up to 12 hours and a full day beyond that.</p>
+    ${d.intl.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station / country</th><th class="n">Hours</th><th class="n">Rate/day</th><th class="n">Full + part</th><th class="n">Days</th><th class="n">USD</th><th></th></tr></thead><tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="6">Tax-exempt, paid separately from salary</td><td class="pay">${usd(k.intlUSD)}</td><td></td></tr></tfoot></table></div>`
+     :`<div class="empty"><b>No international layovers in ${esc(ymLabel(cur))}</b><span>Type the station or country as it appears on your roster. "Muscat, Oman" or just "Oman" both find the rate.</span></div>`}
+    <div class="btns"><button class="btn" data-add="intl">Add international layover</button></div>
+    <datalist id="countries">${FX.map(c=>`<option value="${esc(c.n)}">`).join("")}</datalist>
+  </section>`;
+}
+
+function slip(k){
+  const L=(a,b,sm)=>`<div class="line"><span>${a}${sm?`<span class="sm">${sm}</span>`:""}</span><span class="v">${b}</span></div>`;
+  let earn = k.fixedLines.map(([l,v])=>L(esc(l),inr(v))).join("");
+  if(!k.hasFixed) earn += L("Fixed pay","–","Not entered yet");
+  earn += k.addLines.map(([lo,hi,h,rate])=>L(`Flying ${lo} to ${hi===Infinity?"+":hi} h`, inr(h*rate), `${hm(h*60)} × ${inr(rate)}`)).join("");
+  if(!k.addLines.length) earn += L("Flying above 40 h", inr(0), `${hm(k.opMin)} payable, none above 40 h`);
+  earn += L("SOD / deadhead", inr(k.sod), `${hm(k.dhMin)} × ${inr(k.sodRate)}`);
+  earn += L("Domestic layover", inr(k.dom), `${k.domNights} × ${inr(k.domRate)}`);
+  earn += `<div class="line tot"><span>Gross</span><span class="v">${inr(k.gross)}</span></div>`;
+  let ded = L("Income tax (TDS)", inr(k.tds), `${profile.regime==="old"?"Old":"New"} regime, this month annualised`);
+  ded += L("Employee PF", inr(k.pfEe), "12% of Basic");
+  ded += L("Professional tax", inr(k.pt), "Maharashtra");
+  ded += `<div class="line tot"><span>Deductions</span><span class="v">${inr(k.tds+k.pfEe+k.pt)}</span></div>`;
+  return `<div class="slip"><div><h3>Earnings</h3>${earn}</div><div><h3>Deductions</h3>${ded}
+    <p class="note" style="margin-top:12px">Employer PF and gratuity are part of CTC but are not paid out monthly, so they are left out of gross.</p></div>
+    <div class="netbar"><span>Estimated take-home</span><b class="num">${inr(k.net)}</b>${k.intlUSD?`<span class="extra">Plus ${usd(k.intlUSD)} international layover allowance, tax-exempt and paid separately</span>`:""}</div></div>`;
+}
+
+function viewPay(){
+  const k=calc(cur);
+  return `<section class="card">
+      <h2>${esc(ymLabel(cur))} pay</h2>
+      <p class="sub">${esc(RANKS[k.rank].label)} rates ${k.r.map(inr).join(" / ")} per hour across the 0-40, 40-70, 70-80, 80-90 and 90+ bands.</p>
+      ${slip(k)}
+    </section>
+    <section class="card">
+      <h2>Tax regime</h2>
+      <p class="sub">Annualised from this month: taxable pay of about ${inr(k.annual)} a year.</p>
+      <div class="cmp" style="grid-template-columns:1fr auto auto">
+        <div class="h"></div><div class="h v">Annual tax</div><div class="h v">Per month</div>
+        <div>New regime${profile.regime==="new"?" (selected)":""}</div><div class="v">${inr(k.taxN)}</div><div class="v">${inr(k.taxN/12)}</div>
+        <div>Old regime${profile.regime==="old"?" (selected)":""}</div><div class="v">${inr(k.taxO)}</div><div class="v">${inr(k.taxO/12)}</div>
+      </div>
+      <p class="note">The old-regime figure uses the ${inr(profile.oldDeductions)} of deductions entered in Setup (HRA exemption, 80C, 80D, home-loan interest and so on). The revised HRA of 75% of Basic only lowers tax under the old regime. Confirm the final choice with your CA.</p>
+    </section>`;
+}
+
+function viewYear(){
+  const [y,m]=cur.split("-").map(Number), fyStart = m>=4?y:y-1;
+  const yms = Array.from({length:12},(_,i)=>ymShift(fyStart+"-04",i));
+  const data = yms.map(ym=>{ const has = months[ym] && (months[ym].sectors.length||months[ym].dom.length||months[ym].intl.length); return {ym, has, k: has?calc(ym):null} });
+  const logged = data.filter(x=>x.has);
+  const sum=f=>logged.reduce((a,x)=>a+f(x.k),0);
+  const max = Math.max(1,...logged.map(x=>x.k.net));
+  const W=720,H=220,pl=8,pr=8,pt=16,pb=28,bw=(W-pl-pr)/12;
+  const sc=v=>(H-pb)-(v/max)*(H-pb-pt);
+  let bars="";
+  data.forEach((x,i)=>{
+    const xx=pl+i*bw;
+    bars+=`<text x="${xx+bw/2}" y="${H-10}" text-anchor="middle">${ymShort(x.ym)}</text>`;
+    if(x.has){ const top=sc(x.k.net); bars+=`<rect class="bar${x.k.st==="rev"?" rev":""}" x="${xx+bw*.18}" y="${top}" width="${bw*.64}" height="${(H-pb)-top}" rx="2"><title>${ymLabel(x.ym)}: ${inr(x.k.net)}</title></rect>` }
+    else bars+=`<rect x="${xx+bw*.18}" y="${H-pb-2}" width="${bw*.64}" height="2" fill="var(--border)"></rect>`;
+  });
+  const revIdx = -1;
+  if(revIdx>0) bars+=`<line x1="${pl+revIdx*bw}" x2="${pl+revIdx*bw}" y1="${pt-6}" y2="${H-pb}" stroke="var(--muted)" stroke-dasharray="3 3"></line><text x="${pl+revIdx*bw+4}" y="${pt}">Revision</text>`;
+  const rows = data.map(x=>`<tr><td><button class="btn quiet" style="padding:2px 8px" data-month="${x.ym}">${ymLabel(x.ym)}</button></td>${x.has?`<td class="n">${hm(x.k.opMin)}</td><td class="n">${hm(x.k.dhMin)}</td><td class="n">${x.k.domNights}</td><td class="n">${usd(x.k.intlUSD)}</td><td class="n">${inr(x.k.gross)}</td><td class="n">${inr(x.k.tds)}</td><td class="n">${inr(x.k.net)}</td>`:`<td colspan="7" style="color:var(--muted)">Nothing logged</td>`}</tr>`).join("");
+  return `<section class="card">
+    <h2>FY ${fyStart}-${String(fyStart+1).slice(2)}</h2>
+    <p class="sub">${logged.length} of 12 months logged. Bars show estimated take-home.</p>
+    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Take-home by month">${bars}</svg></div>
+    <div class="tbl"><table><thead><tr><th>Month</th><th class="n">Block</th><th class="n">SOD</th><th class="n">Dom nts</th><th class="n">Intl USD</th><th class="n">Gross</th><th class="n">TDS</th><th class="n">Take-home</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td>Total</td><td class="n">${hm(sum(k=>k.opMin))}</td><td class="n">${hm(sum(k=>k.dhMin))}</td><td class="n">${sum(k=>k.domNights)}</td><td class="n">${usd(sum(k=>k.intlUSD))}</td><td class="n">${inr(sum(k=>k.gross))}</td><td class="n">${inr(sum(k=>k.tds))}</td><td class="n">${inr(sum(k=>k.net))}</td></tr></tfoot></table></div>
+    <p class="note">TDS here is each month's pay annualised, so it will not match payroll exactly when pay swings between months.</p>
+  </section>`;
+}
+
+function viewSetup(){
+  const fxRows = COMP.map(([k,l,cash])=>`<tr><td>${esc(l)}${cash?"":' <span class="chip">CTC only</span>'}</td>
+    ${["rev"].map(st=>`<td><input class="in n" id="fx-${st}-${k}" data-fx="${st}" data-k="${k}" value="${profile.fixed[st][k]?Number(profile.fixed[st][k]).toLocaleString("en-IN"):""}" placeholder="0" inputmode="numeric"></td>`).join("")}</tr>`).join("");
+  const tot = st=>COMP.reduce((a,[k])=>a+(+profile.fixed[st][k]||0),0);
+  return `<section class="card">
+    <h2>Pilot</h2>
+    <div class="grid2">
+      <label class="f">Name<input class="in" id="p-name" data-p="name" value="${esc(profile.name)}" placeholder="Your name"></label>
+      <label class="f">Rank<select id="p-rank" data-p="rank">${Object.entries(RANKS).map(([k,v])=>`<option value="${k}"${profile.rank===k?" selected":""}>${v.label}</option>`).join("")}</select></label>
+      <label class="f">Fleet<input class="in" id="p-fleet" data-p="fleet" value="${esc(profile.fleet)}"></label>
+      <label class="f">Base<input class="in" id="p-base" data-p="base" value="${esc(profile.base)}"></label>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Fixed pay</h2>
+    <p class="sub">Annual figures in rupees, exactly as printed in Annexure A of your compensation revision letter.</p>
+    <div class="tbl"><table class="fx"><thead><tr><th>Component</th><th>Per year</th></tr></thead><tbody>${fxRows}</tbody>
+    <tfoot><tr><td>Total fixed pay</td><td class="n">${inr(tot("rev"))}</td></tr></tfoot></table></div>
+  </section>
+  <section class="card">
+    <h2>Tax</h2>
+    <div class="grid2">
+      <label class="f">Tax regime<select id="p-regime" data-p="regime"><option value="new"${profile.regime==="new"?" selected":""}>New regime</option><option value="old"${profile.regime==="old"?" selected":""}>Old regime</option></select></label>
+      <label class="f">Old-regime deductions per year (₹)<input class="in n" id="p-oldDeductions" data-p="oldDeductions" data-num="1" value="${esc(profile.oldDeductions)}" inputmode="numeric"></label>
+      <label class="f">Domestic layover allowance<select id="p-layoverExempt" data-p="layoverExempt"><option value="0"${!profile.layoverExempt?" selected":""}>Taxed with salary</option><option value="1"${profile.layoverExempt?" selected":""}>Tax-exempt</option></select></label>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Backup</h2>
+    <p class="sub">Everything is saved in this browser on this device and nowhere else. Phone browsers can clear saved data, so download a backup now and then and keep it in Files or iCloud Drive.${(()=>{try{const l=localStorage.getItem(LS_KEY+".lastBackup");return l?` Last backup: ${esc(l)}.`:" No backup downloaded yet."}catch(e){return ""}})()}</p>
+    <div class="btns">
+      <button class="btn" id="backupBtn">Download backup</button>
+      <label class="btn quiet" for="restoreFile" style="display:inline-flex;align-items:center">Restore from file</label>
+      <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+    </div>
+  </section>`;
+}
+
+function render(){
+  renderHeader(); renderBanner();
+  const ae=document.activeElement, aid=ae&&ae.id, sel=ae&&ae.selectionStart;
+  const v = {log:viewLog,intl:viewIntl,pay:viewPay,year:viewYear,setup:viewSetup}[tab]();
+  $("#view").innerHTML = v;
+  if(aid){ const el=document.getElementById(aid); if(el && el!==document.activeElement){ el.focus(); try{ if(sel!=null) el.setSelectionRange(sel,sel) }catch(e){} } }
+}
+
+/* ---------- Events ---------- */
+document.addEventListener("click", e=>{
+  const t=e.target.closest("button"); if(!t) return;
+  if(t.dataset.tab){ bannerMsg=""; tab=t.dataset.tab; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){}; render(); return }
+  if(t.dataset.go){ tab=t.dataset.go; render(); return }
+  if(t.dataset.month){ cur=t.dataset.month; tab="log"; render(); return }
+  if(t.id==="backupBtn"){ downloadBackup(); return }
+  if(t.id==="prevM"){ cur=ymShift(cur,-1); render(); return }
+  if(t.id==="nextM"){ cur=ymShift(cur,1); render(); return }
+  const d=monthData(cur);
+  if(t.dataset.add){
+    const list=t.dataset.add, now=new Date(), today=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+    const date = cur===ymNow()?today:cur+"-01";
+    let row={id:uid(), date};
+    if(list==="sectors"){ const last=d.sectors[d.sectors.length-1];
+      row = t.dataset.copy&&last ? {...last,id:uid(),example:false,from:last.to,to:last.from} : {...row,flt:"",from:last?last.to:(profile.base||""),to:"",kind:"op",fixed:0} }
+    if(list==="dom") row.nights=1;
+    if(list==="intl"){ row.country=""; row.mins=0 }
+    d[list].push(row); queueMonth(cur); render();
+    const first = document.querySelector(`tr[data-id="${row.id}"] input:not([type=date])`); if(first) first.focus();
+    return;
+  }
+  if(t.dataset.del){ const id=t.closest("tr").dataset.id; d[t.dataset.del]=d[t.dataset.del].filter(r=>r.id!==id); queueMonth(cur); render(); return }
+  if(t.id==="clearEx"){ d.sectors=d.sectors.filter(s=>!s.example); d.dom=d.dom.filter(s=>!s.example); queueMonth(cur); render(); return }
+  if(t.id==="loadEx"){
+    const D=n=>cur+"-"+String(n).padStart(2,"0"), b=profile.base||"BOM";
+    d.sectors.push(
+      {id:uid(),date:D(3),flt:"IX1237",from:b,to:"IXR",kind:"op",fixed:155,example:true},
+      {id:uid(),date:D(4),flt:"IX1238",from:"IXR",to:b,kind:"op",fixed:150,example:true},
+      {id:uid(),date:D(9),flt:"IX1101",from:b,to:"HYD",kind:"dh",fixed:85,example:true},
+      {id:uid(),date:D(9),flt:"IX1102",from:"HYD",to:"BLR",kind:"op",fixed:80,example:true});
+    d.dom.push({id:uid(),date:D(3),stn:"IXR",nights:1,example:true});
+    queueMonth(cur); render(); return;
+  }
+});
+document.addEventListener("change", e=>{
+  const el=e.target;
+  if(el.id==="restoreFile"){ if(el.files&&el.files[0]) restoreBackup(el.files[0]); el.value=""; return }
+  if(el.dataset.p){ let v=el.value;
+    if(el.dataset.num) v=parseFloat(String(v).replace(/,/g,""))||0;
+    if(el.dataset.p==="layoverExempt") v=v==="1";
+    profile[el.dataset.p]=v; queueProfile(); render(); return }
+  if(el.dataset.fx){ profile.fixed[el.dataset.fx][el.dataset.k]=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0; queueProfile(); render(); return }
+  const tr=el.closest("tr"); if(!tr||!el.dataset.f) return;
+  const list = el.id[0]==="s"?"sectors":el.id[0]==="d"?"dom":"intl";
+  const row = monthData(cur)[list].find(r=>r.id===tr.dataset.id); if(!row) return;
+  let v=el.value;
+  if(el.dataset.hm) v=parseHM(v); else if(el.dataset.num) v=parseFloat(v)||0; else if(el.classList.contains("caps")) v=v.toUpperCase().trim();
+  row[el.dataset.f]=v; if(row.example) row.example=false;
+  // a sector dated in another month moves there
+  if(el.dataset.f==="date" && v && v.slice(0,7)!==cur){ const tgt=v.slice(0,7); monthData(cur)[list]=monthData(cur)[list].filter(r=>r!==row); monthData(tgt)[list].push(row); queueMonth(tgt) }
+  queueMonth(cur); render();
+});
+document.addEventListener("keydown", e=>{ if(e.key==="Enter" && e.target.matches("input.in")){ e.target.blur(); } });
+
+try{ const t=localStorage.getItem(LS_KEY+".tab"); if(t && ["log","intl","pay","year","setup"].includes(t)) tab=t }catch(e){}
+initStore();
+if("serviceWorker" in navigator && location.protocol==="https:"){
+  window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}) });
+}
+})();
+</script>
+
+</body>
+</html>
