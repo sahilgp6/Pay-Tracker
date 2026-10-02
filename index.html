@@ -144,6 +144,8 @@ input[type=date].in::-webkit-datetime-edit{padding:0}
 .verdict{border-radius:8px;padding:10px 12px;font-size:13.5px;font-weight:600;border:1px solid}
 .verdict.ok{color:var(--green);border-color:rgba(45,106,48,.35);background:rgba(45,106,48,.08)}
 .verdict.bad{color:var(--red);border-color:rgba(158,42,28,.35);background:rgba(158,42,28,.08)}
+.verdict.warn{color:var(--orange);border-color:rgba(160,88,40,.4);background:rgba(160,88,40,.08)}
+.verdict+.verdict{margin-top:-4px}
 .verdict.info{color:var(--accent);border-color:rgba(26,58,107,.3);background:rgba(26,58,107,.06)}
 
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
@@ -527,13 +529,25 @@ function payslipCard(k){
   const p=(months[cur]&&months[cur].paid)||{}, g=+p.gross||0, n=+p.net||0;
   const fmt=v=>v?Number(v).toLocaleString("en-IN"):"";
   const paidIn=ymLabel(ymShift(cur,1)).split(" ")[0];
-  const diffCell=(est,act)=>{ if(!act) return `<div class="v" style="color:var(--muted)">–</div>`; const dv=act-est; const cls=Math.abs(dv)<1?"":dv<0?"down":"up"; return `<div class="v ${cls}">${dv>0?"+":dv<0?"−":""}${inr(Math.abs(dv))}</div>` };
+  const diffCell=(est,act)=>{ if(!act) return `<div class="v" style="color:var(--muted)">–</div>`; const dv=Math.round(act-est); const cls=dv===0?"":dv<0?"down":"up"; return `<div class="v ${cls}">${dv>0?"+":dv<0?"−":""}${inr(Math.abs(dv))}</div>` };
+  // Judge gross and net separately; each gets its own tolerance (₹500 or 0.5%, whichever is larger)
+  const judge=(est,act)=>{ if(!act) return null; const dv=act-est; return Math.abs(dv)<=Math.max(500,est*0.005)?{s:"ok",dv}:{s:dv<0?"low":"high",dv} };
+  const G=judge(k.gross,g), N=judge(k.net,n), mon=esc(ymLabel(cur));
+  const V=(cls,txt)=>`<div class="verdict ${cls}">${txt}</div>`;
+  const abs=v=>inr(Math.abs(v));
+  const checkPay=`Check the sectors, fixed block hours, SOD and layover nights logged for ${mon} against your payslip and roster.`;
+  const checkDed=`Look at the deductions on the payslip: income tax (TDS) is the usual reason, as payroll spreads tax across the year differently from this estimate. Also check PF, professional tax and any other recovery.`;
   let verdict="";
-  if(g){
-    const dv=g-k.gross, tol=Math.max(500,k.gross*0.005);
-    if(Math.abs(dv)<=tol) verdict=`<div class="verdict ok">Gross matches the estimate${Math.abs(dv)>=1?` (within ${inr(Math.abs(dv))})`:""}.</div>`;
-    else if(dv<0) verdict=`<div class="verdict bad">Payslip gross is ${inr(-dv)} lower than the estimate. Check the sectors, fixed block hours, SOD and layover nights logged for ${esc(ymLabel(cur))} against your payslip and roster.</div>`;
-    else verdict=`<div class="verdict info">Payslip gross is ${inr(dv)} higher than the estimate. This may be arrears, a reimbursement or an allowance the app does not track.</div>`;
+  if(G&&N){
+    if(G.s==="ok"&&N.s==="ok") verdict=V("ok","Gross and net both match the estimate.");
+    else if(G.s==="low") verdict=V("bad",`Gross is ${abs(G.dv)} lower than the estimate${N.s!=="ok"?`, and net is ${abs(N.dv)} ${N.dv<0?"lower":"higher"}`:""}. ${checkPay}`);
+    else if(G.s==="high") verdict=V("info",`Gross is ${abs(G.dv)} higher than the estimate${N.s!=="ok"?` and net is ${abs(N.dv)} ${N.dv<0?"lower":"higher"}`:""}. This may be arrears, a reimbursement or an allowance the app does not track.`);
+    else if(N.s==="low") verdict=V("ok","Gross matches the estimate.")+V("warn",`Net is ${abs(N.dv)} lower than the estimate even though gross matches, so the difference is in deductions. ${checkDed}`);
+    else verdict=V("ok","Gross matches the estimate.")+V("info",`Net is ${abs(N.dv)} higher than the estimate, so less was deducted than expected, most likely lower TDS this month.`);
+  } else if(G){
+    verdict = G.s==="ok"?V("ok","Gross matches the estimate. Add the net to check deductions too."):G.s==="low"?V("bad",`Gross is ${abs(G.dv)} lower than the estimate. ${checkPay}`):V("info",`Gross is ${abs(G.dv)} higher than the estimate. This may be arrears, a reimbursement or an allowance the app does not track.`);
+  } else if(N){
+    verdict = N.s==="ok"?V("ok","Net matches the estimate. Add the gross to confirm your flying pay."):V(N.s==="low"?"warn":"info",`Net is ${abs(N.dv)} ${N.s==="low"?"lower":"higher"} than the estimate. Add the gross from the payslip to see whether the difference is in pay or in deductions.`);
   }
   return `<section class="card">
     <h2>Payslip check</h2>
@@ -547,7 +561,7 @@ function payslipCard(k){
       <div>Gross</div><div class="v">${inr(k.gross)}</div><div class="v">${g?inr(g):"–"}</div>${diffCell(k.gross,g)}
       <div>Net</div><div class="v">${inr(k.net)}</div><div class="v">${n?inr(n):"–"}</div>${diffCell(k.net,n)}
     </div>${verdict}
-    <p class="note">Compare gross first. Net also depends on how payroll spreads your tax across the year, so it can differ from the estimate even when your pay is right.</p>`:""}
+    <p class="note">A gross difference points to pay: hours, sectors or allowances. A net difference with gross matching points to deductions, usually tax.</p>`:""}
   </section>`;
 }
 
