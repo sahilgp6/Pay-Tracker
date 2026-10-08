@@ -446,6 +446,8 @@ function trainingType(summary, desc){
   if(isStandby) return /train/i.test(t)?TRAIN_TYPES[7]:null;
   if(/\bsim\b|simulator|\bppc\b|\bIR\b|\bloft\b/i.test(t)||/^(SIM|PPC|IR|LOFT)$/.test(code)) return TRAIN_TYPES[1];
   if(/agtr|avsec|\bdgr\b/i.test(t)||/^(AGTR|AVSEC|DGR)$/.test(code)) return TRAIN_TYPES[0];
+  // Crew Access "Training" events list their course codes; classroom recurrent training (SEP, tech, CRM, AGTR...) is one bucket
+  if(/Training Code:/i.test(desc) && !/conversion|upgrade|\bccq\b|\bmff\b|endorsement|cbta|trainer|instructor/i.test(t)) return TRAIN_TYPES[0];
   if(/endorsement/i.test(t)) return TRAIN_TYPES[2];
   if(/cbta|\bcore\b|\boem\b/i.test(t)) return TRAIN_TYPES[3];
   if(/conversion|upgrade|\bccq\b|\bmff\b|command/i.test(t)||/^(CCQ|MFF)$/.test(code)) return TRAIN_TYPES[5];
