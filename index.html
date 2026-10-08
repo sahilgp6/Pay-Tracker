@@ -284,7 +284,7 @@ function dayFrac(remH){ if(remH<=0) return 0; if(remH<=6) return .3; if(remH<=12
 const DEFAULT_PROFILE = ()=>({
   name:"", rank:"fo", fleet:"B737", base:"BOM",
   fixed:{cur:{},rev:{}},
-  regime:"new", oldDeductions:0, layoverExempt:false
+  regime:"new", oldDeductions:0, layoverExempt:false, fleetAvg:40
 });
 let profile = DEFAULT_PROFILE();
 let months = {};          // ym -> {sectors:[], dom:[], intl:[]}
@@ -293,9 +293,9 @@ let tab = "log";
 let yearMode = (()=>{ try{ return localStorage.getItem("crewpaylog.v1.year")||"cal" }catch(e){ return "cal" } })();
 let mode = "loading";     // db | local | loading
 
-function monthData(ym){ return months[ym] || (months[ym]={sectors:[],dom:[],intl:[]}) }
-function normMonth(d){ const m={sectors:Array.isArray(d&&d.sectors)?d.sectors.map(x=>({...x})):[], dom:Array.isArray(d&&d.dom)?d.dom.map(x=>({...x})):[], intl:Array.isArray(d&&d.intl)?d.intl.map(x=>({...x})):[]}; if(d&&d.record&&typeof d.record==="object") m.record={...d.record}; if(d&&d.paid&&typeof d.paid==="object") m.paid={...d.paid}; return m }
-const hasLog = d=>!!d && (d.sectors.length||d.dom.length||d.intl.length);
+function monthData(ym){ const m=months[ym] || (months[ym]={sectors:[],dom:[],intl:[],train:[]}); if(!m.train) m.train=[]; return m }
+function normMonth(d){ const m={sectors:Array.isArray(d&&d.sectors)?d.sectors.map(x=>({...x})):[], dom:Array.isArray(d&&d.dom)?d.dom.map(x=>({...x})):[], intl:Array.isArray(d&&d.intl)?d.intl.map(x=>({...x})):[], train:Array.isArray(d&&d.train)?d.train.map(x=>({...x})):[]}; if(d&&d.record&&typeof d.record==="object") m.record={...d.record}; if(d&&d.paid&&typeof d.paid==="object") m.paid={...d.paid}; return m }
+const hasLog = d=>!!d && (d.sectors.length||d.dom.length||d.intl.length||(d.train&&d.train.length));
 const isRecorded = ym=>{ const d=months[ym]; return !!(d && d.record && !hasLog(d)) };
 // One summary shape for both kinds of month: logged sectors (calculated) or recorded totals (as entered)
 function summary(ym){
@@ -345,7 +345,10 @@ function calc(ym, st){
     return {...x, c, rate, full, rem, frac, days, amt:days*rate};
   });
   const intlUSD = intlRows.reduce((a,x)=>a+x.amt,0);   // tax-exempt, outside CTC and gross
-  const gross = fixedCash + addFly + sod + dom;
+  // Training (PAC/SOP/27 E): each day credits fleet average / 22 hours, paid on top at the 0-40 rate
+  const train = d.train||[], trainDays = train.reduce((a,x)=>a+(+x.days||0),0);
+  const fleetAvg = +profile.fleetAvg||40, trainPerDay = fleetAvg/22, trainHrs = trainDays*trainPerDay, trainPay = trainHrs*r[0];
+  const gross = fixedCash + addFly + sod + dom + trainPay;
   const exempt = profile.layoverExempt ? dom : 0;
   const annual = (gross-exempt)*12;
   const isFeb = ym.endsWith("-02"), pt = isFeb?300:200;
@@ -354,7 +357,7 @@ function calc(ym, st){
   const tds = annTax/12, pfEe = mon("basic")*.12;
   const net = gross - tds - pfEe - pt;
   return {st, rank, r, fixedLines, fixedCash, opMin, dhMin, H, addLines, addFly, sodRate, sod, domRate, domNights, dom,
-    intlRows, intlUSD, gross, annual, taxN, taxO, tds, pfEe, pt, net, p1,
+    intlRows, intlUSD, trainDays, trainPerDay, trainHrs, trainPay, fleetAvg, gross, annual, taxN, taxO, tds, pfEe, pt, net, p1,
     hasFixed: fixedCash>0, ctc: COMP.reduce((a,[k])=>a+(+fx[k]||0),0)};
 }
 
@@ -409,6 +412,7 @@ function initStore(){
 }
 
 /* ---------- Roster import (Crew Access calendar, .ics) ---------- */
+const TRAIN_TYPES = ["AGTR (Recurrent) / AVSEC / DGR", "IR PPC (Recurrent)", "Licence endorsement", "Management-nominated (CBTA / Core / OEM)", "Ground training / Office duty", "Upgrade / Conversion (incl. CCQ, MFF)", "CRM / ELP trainer duty", "Training standby"];
 const IN_AIRPORTS = new Set(("BOM DEL BLR MAA CCU HYD COK CCJ CNN TRV IXE GOI GOX PNQ AMD JAI LKO VNS PAT IXR BBI GAU IXB IMF IXA DIB JRH IXS AJL SHL "+
   "IXC ATQ SXR IXJ IXL DED VTZ VGA RJA TIR IXM TRZ CJB IXZ NAG IDR BHO RPR JLR GWL UDR JDH BDQ STV RAJ BHJ IXU NDC IXG HBX MYQ IXY IXK KLH TCR "+
   "GAY DBR AYJ KNU HDO JSA ISK GOP IXD BEK AGR DGH PGH JGB IXW KJB SAG HJR TEZ IXH IXT IXV IXI CDP PYG RQY BPM").split(" "));
@@ -624,6 +628,18 @@ function viewLog(){
     ${d.dom.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station</th><th class="n">Nights</th><th class="n">Amount</th><th></th></tr></thead><tbody>${domRows}</tbody>
       <tfoot><tr><td colspan="2">${k.domNights} night${k.domNights===1?"":"s"}</td><td></td><td class="pay">${inr(k.dom)}</td><td></td></tr></tfoot></table></div>`:""}
     <div class="btns"><button class="btn ${d.dom.length?"":"ghost"}" data-add="dom">Add domestic layover</button></div>
+  </section>
+  <section class="card">
+    <h2>Training</h2>
+    <p class="sub">Each training day is credited at the fleet average of ${esc(String(k.fleetAvg))} hours ÷ 22 = ${hm(k.trainPerDay*60)} per day, paid at the 0 to 40 hour rate of ${inr(k.r[0])} (PAC/SOP/27). That is ${inr(k.trainPerDay*k.r[0])} per day. Change the fleet average in Setup.</p>
+    ${d.train.length?`<div class="tbl"><table class="stack"><thead><tr><th>Start date</th><th>Training</th><th class="n">Days</th><th class="n">Amount</th><th></th></tr></thead><tbody>${d.train.map(x=>`<tr data-id="${x.id}">
+      <td data-l="Start date" class="w2"><input class="in" type="date" id="t-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
+      <td data-l="Training" class="w2"><select class="in" id="t-${x.id}-type" data-f="type">${TRAIN_TYPES.map(t=>`<option${x.type===t?" selected":""}>${esc(t)}</option>`).join("")}</select></td>
+      <td data-l="Days"><input class="in n" id="t-${x.id}-days" data-f="days" data-num="1" value="${esc(x.days)}" inputmode="numeric"></td>
+      <td data-l="Amount" class="pay dom-amt">${inr((+x.days||0)*k.trainPerDay*k.r[0])}</td>
+      <td><button class="del" data-del="train" aria-label="Delete training">×<span class="dl"> Remove</span></button></td></tr>`).join("")}</tbody>
+      <tfoot><tr><td colspan="2">${k.trainDays} day${k.trainDays===1?"":"s"} · ${hm(k.trainHrs*60)} credited</td><td></td><td class="pay">${inr(k.trainPay)}</td><td></td></tr></tfoot></table></div>`:""}
+    <div class="btns"><button class="btn ${d.train.length?"":"ghost"}" data-add="train">Add training</button></div>
   </section>`;
 }
 
@@ -657,6 +673,7 @@ function slip(k){
   if(!k.addLines.length) earn += L("Flying above 40 h", inr(0), `${hm(k.opMin)} payable, none above 40 h`);
   earn += L("SOD / deadhead", inr(k.sod), `${hm(k.dhMin)} × ${inr(k.sodRate)}`);
   earn += L("Domestic layover", inr(k.dom), `${k.domNights} × ${inr(k.domRate)}`);
+  if(k.trainDays) earn += L("Training", inr(k.trainPay), `${k.trainDays} day${k.trainDays===1?"":"s"} × ${hm(k.trainPerDay*60)} × ${inr(k.r[0])}`);
   earn += `<div class="line tot"><span>Gross</span><span class="v">${inr(k.gross)}</span></div>`;
   let ded = L("Income tax (TDS)", inr(k.tds), `${profile.regime==="old"?"Old":"New"} regime, this month annualised`);
   ded += L("Employee PF", inr(k.pfEe), "12% of Basic");
@@ -793,6 +810,7 @@ function viewSetup(){
     <h2>Tax</h2>
     <div class="grid2">
       <label class="f">Tax regime<select id="p-regime" data-p="regime"><option value="new"${profile.regime==="new"?" selected":""}>New regime</option><option value="old"${profile.regime==="old"?" selected":""}>Old regime</option></select></label>
+      <label class="f">Fleet average for training (hours per month)<input class="in n" id="p-fleetAvg" data-p="fleetAvg" data-num="1" value="${esc(profile.fleetAvg||40)}" inputmode="decimal"></label>
       <label class="f">Old-regime deductions per year (₹)<input class="in n" id="p-oldDeductions" data-p="oldDeductions" data-num="1" value="${esc(profile.oldDeductions)}" inputmode="numeric"></label>
       <label class="f">Domestic layover allowance<select id="p-layoverExempt" data-p="layoverExempt"><option value="0"${!profile.layoverExempt?" selected":""}>Taxed with salary</option><option value="1"${profile.layoverExempt?" selected":""}>Tax-exempt</option></select></label>
     </div>
@@ -837,6 +855,7 @@ document.addEventListener("click", e=>{
       row = t.dataset.copy&&last ? {...last,id:uid(),example:false,from:last.to,to:last.from} : {...row,flt:"",from:last?last.to:(profile.base||""),to:"",kind:"op",fixed:0} }
     if(list==="dom") row.nights=1;
     if(list==="intl"){ row.country=""; row.mins=0 }
+    if(list==="train"){ row.type=TRAIN_TYPES[1]; row.days=1 }
     d[list].push(row); queueMonth(cur); render();
     const first = document.querySelector(`tr[data-id="${row.id}"] input:not([type=date])`); if(first) first.focus();
     return;
@@ -867,7 +886,7 @@ document.addEventListener("change", e=>{
     d.paid={...(d.paid||{}),[el.dataset.paid]:v}; if(!d.paid.gross&&!d.paid.net) delete d.paid; queueMonth(cur); render(); return }
   if(el.dataset.fx){ profile.fixed[el.dataset.fx][el.dataset.k]=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0; queueProfile(); render(); return }
   const tr=el.closest("tr"); if(!tr||!el.dataset.f) return;
-  const list = el.id[0]==="s"?"sectors":el.id[0]==="d"?"dom":"intl";
+  const list = el.id[0]==="s"?"sectors":el.id[0]==="d"?"dom":el.id[0]==="t"?"train":"intl";
   const row = monthData(cur)[list].find(r=>r.id===tr.dataset.id); if(!row) return;
   let v=el.value;
   if(el.dataset.hm) v=parseHM(v); else if(el.dataset.num) v=parseFloat(v)||0; else if(el.classList.contains("caps")) v=v.toUpperCase().trim();
