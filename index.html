@@ -173,6 +173,12 @@ label.f .in,label.f select{background:var(--surface2);border:1px solid var(--bor
 .mlink:hover{text-decoration:underline}
 .rtime{display:block;font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap}
 textarea.in{resize:vertical;width:100%}
+.fleet{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.fleet label.f{flex:0 0 190px}
+.fleet-out{display:flex;flex-direction:column;padding-bottom:6px}
+.fleet-out b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.fleet-out span{font-size:11px;color:var(--muted)}
+.fleet .chip{margin-bottom:9px}
 footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:12px}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.btn,.iconbtn{transition:all .15s}}
 </style>
@@ -670,7 +676,12 @@ function viewLog(){
   </section>
   <section class="card">
     <h2>Training</h2>
-    <p class="sub">Each training day adds the fleet average of ${esc(String(k.fleetAvg))} hours ÷ 22 = ${hm(k.trainPerDay*60)} to your hours for the month (PAC/SOP/27). It only adds pay once flying plus training passes the guaranteed 40 hours. Training on your roster comes in when you paste it; remove any day that is not paid training. Change the fleet average in Setup.</p>
+    <div class="fleet">
+      <label class="f" for="p-fleetAvg2">Fleet average (hours per month)<input class="in n" id="p-fleetAvg2" data-p="fleetAvg" data-num="1" data-fleet="1" value="${esc(String(profile.fleetAvg||40))}" inputmode="decimal"></label>
+      <div class="fleet-out"><b>${hm(k.trainPerDay*60)}</b><span>per training day</span></div>
+      ${profile.fleetAvgSet?"":`<span class="chip ex">Placeholder</span>`}
+    </div>
+    <p class="sub">${profile.fleetAvgSet?"":"40 hours is a conservative placeholder. Enter the published 737 fleet average once you have it; every month's training updates straight away. "}Each training day adds the fleet average ÷ 22 to your hours for the month (PAC/SOP/27). It only adds pay once flying plus training passes the guaranteed 40 hours. Training on your roster comes in when you paste it; remove any day that is not paid training.</p>
     ${d.train.length?`<div class="tbl"><table class="stack"><thead><tr><th>Start date</th><th>Training</th><th class="n">Days</th><th class="n">Hours</th><th></th></tr></thead><tbody>${d.train.map(x=>`<tr data-id="${x.id}">
       <td data-l="Start date" class="w2"><input class="in" type="date" id="t-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
       <td data-l="Training" class="w2"><select class="in" id="t-${x.id}-type" data-f="type">${TRAIN_TYPES.map(t=>`<option${x.type===t?" selected":""}>${esc(t)}</option>`).join("")}</select></td>
@@ -850,7 +861,7 @@ function viewSetup(){
     <h2>Tax</h2>
     <div class="grid2">
       <label class="f">Tax regime<select id="p-regime" data-p="regime"><option value="new"${profile.regime==="new"?" selected":""}>New regime</option><option value="old"${profile.regime==="old"?" selected":""}>Old regime</option></select></label>
-      <label class="f">Fleet average for training (hours per month)<input class="in n" id="p-fleetAvg" data-p="fleetAvg" data-num="1" value="${esc(profile.fleetAvg||40)}" inputmode="decimal"></label>
+      <label class="f">Fleet average for training (hours per month)<input class="in n" id="p-fleetAvg" data-p="fleetAvg" data-num="1" data-fleet="1" value="${esc(profile.fleetAvg||40)}" inputmode="decimal"></label>
       <label class="f">Old-regime deductions per year (₹)<input class="in n" id="p-oldDeductions" data-p="oldDeductions" data-num="1" value="${esc(profile.oldDeductions)}" inputmode="numeric"></label>
       <label class="f">Domestic layover allowance<select id="p-layoverExempt" data-p="layoverExempt"><option value="0"${!profile.layoverExempt?" selected":""}>Taxed with salary</option><option value="1"${profile.layoverExempt?" selected":""}>Tax-exempt</option></select></label>
     </div>
@@ -921,6 +932,7 @@ document.addEventListener("change", e=>{
   if(el.dataset.p){ let v=el.value;
     if(el.dataset.num) v=parseFloat(String(v).replace(/,/g,""))||0;
     if(el.dataset.p==="layoverExempt") v=v==="1";
+    if(el.dataset.fleet){ if(!(v>0)) v=40; profile.fleetAvgSet = true }
     profile[el.dataset.p]=v; queueProfile(); render(); return }
   if(el.dataset.paid){ const d=monthData(cur); const v=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0;
     d.paid={...(d.paid||{}),[el.dataset.paid]:v}; if(!d.paid.gross&&!d.paid.net) delete d.paid; queueMonth(cur); render(); return }
