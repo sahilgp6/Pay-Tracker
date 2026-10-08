@@ -434,6 +434,24 @@ function icsTime(prop){ // {params, value} -> epoch ms
 }
 function istParts(ms){ const d=new Date(ms+330*60000); const p=n=>String(n).padStart(2,"0");
   return {date:`${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}`, time:`${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`} }
+const dutyCode = desc=>((String(desc).match(/Duty Type:\s*([^\n]+)/i)||[])[1]||"").trim();
+// Paid training per PAC/SOP/27 section E, recognised from the calendar title, notes or duty type
+function trainingType(summary, desc){
+  const t=(summary+" "+desc), code=dutyCode(desc).toUpperCase();
+  const isStandby=/stand\s*by|\bSBY\b/i.test(t), isOff=/day off|\bW-?OFF\b|\bR-?OFF\b|\bLEAVE\b/i.test(t);
+  if(isOff) return null;
+  const trainingWord=/ground duty|training|trg|simulator|\bsim\b|classroom|course|\bcbt\b|cbta|refresher|recurrent|\bcrm\b|\belp\b|\bdgr\b|avsec|agtr|\bppc\b|\bloft\b|\bccq\b|\bmff\b|conversion|upgrade|endorsement|office duty/i.test(t)
+    || /^(GRD|GD|GND|TRG|TRN|SIM|CRM|DGR|AVSEC|AGTR|PPC|IR|LOFT|CBT|CBTA|OFC|OFFICE|PADT|ELP|CCQ|MFF)$/.test(code);
+  if(!trainingWord) return null;
+  if(isStandby) return /train/i.test(t)?TRAIN_TYPES[7]:null;
+  if(/\bsim\b|simulator|\bppc\b|\bIR\b|\bloft\b/i.test(t)||/^(SIM|PPC|IR|LOFT)$/.test(code)) return TRAIN_TYPES[1];
+  if(/agtr|avsec|\bdgr\b/i.test(t)||/^(AGTR|AVSEC|DGR)$/.test(code)) return TRAIN_TYPES[0];
+  if(/endorsement/i.test(t)) return TRAIN_TYPES[2];
+  if(/cbta|\bcore\b|\boem\b/i.test(t)) return TRAIN_TYPES[3];
+  if(/conversion|upgrade|\bccq\b|\bmff\b|command/i.test(t)||/^(CCQ|MFF)$/.test(code)) return TRAIN_TYPES[5];
+  if(/\bcrm\b|\belp\b/i.test(t)&&/trainer|instructor|facilitat/i.test(t)) return TRAIN_TYPES[6];
+  return TRAIN_TYPES[4];
+}
 function parseICS(text){
   const lines=String(text).replace(/\r\n|\r/g,"\n").replace(/\n[ \t]/g,"").split("\n");
   const evs=[]; let ev=null;
@@ -456,8 +474,10 @@ function rosterItems(events){
   events=events.slice().sort((a,b)=>a.start-b.start);
   const sectors=[], hotels=[], reports=[];
   const route=s=>{ const m=s.match(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/); return m?[m[1],m[2]]:null };
+  const training=[];
   for(const e of events){
     const s=e.summary, end=e.end||e.start;
+    const tt=trainingType(s, e.desc); if(tt){ training.push({e, type:tt}); continue }
     if(/check\s*in/i.test(s)){ reports.push(e); continue }
     if(/layover in hotel|hotel/i.test(s)){ hotels.push(e); continue }
     const r=route(s); if(!r) continue;
@@ -481,19 +501,28 @@ function rosterItems(events){
       const nights=Math.max(1,Math.round((Date.parse(b)-Date.parse(a))/86400000));
       lays.push({type:"dom", uid:h.uid, start:h.start, stn, nights}) }
   }
-  return {sectors, lays, from:events.length?events[0].start:0, to:events.length?events[events.length-1].start:0};
+  // one training day per calendar day; consecutive days of the same course become one entry
+  const days=[]; const seenDay=new Set();
+  for(const {e,type} of training){ const date=istParts(e.start).date, key=date+"|"+type; if(seenDay.has(key)) continue; seenDay.add(key); days.push({date,type,uid:e.uid||key,code:dutyCode(e.desc)}) }
+  days.sort((a,b)=>a.date<b.date?-1:1);
+  const courses=[];
+  for(const d of days){ const last=courses[courses.length-1];
+    const next=last&&new Date(Date.parse(last.end)+86400000).toISOString().slice(0,10);
+    if(last && last.type===d.type && next===d.date && last.date.slice(0,7)===d.date.slice(0,7)){ last.days++; last.end=d.date }
+    else courses.push({...d, days:1, end:d.date}) }
+  return {sectors, lays, courses, from:events.length?events[0].start:0, to:events.length?events[events.length-1].start:0};
 }
 function importRoster(text){
   const evs=parseICS(text);
   if(!evs.length) return {error:"No calendar events found. Copy the whole roster calendar, not a single event."};
-  const {sectors,lays,from,to}=rosterItems(evs);
-  if(!sectors.length && !lays.length) return {error:"The calendar had events but no flights, deadheads or hotel layovers the app recognises."};
+  const {sectors,lays,courses,from,to}=rosterItems(evs);
+  if(!sectors.length && !lays.length && !courses.length) return {error:"The calendar had events but no flights, deadheads or hotel layovers the app recognises."};
   const st={added:0, updated:0, removed:0, skipped:new Set(), touched:new Set()};
   const lo=istParts(from).date, hi=istParts(to).date;
   const put=(list, item, match)=>{ // update by uid, else adopt a matching manual row, else add
     let row=list.find(r=>r.uid===item.uid);
     if(!row){ row=list.find(r=>!r.uid && match(r)); if(row){ row.edited=true; row.example=false } }   // your own entry: keep your hours
-    if(row){ const keep=row.edited?["fixed","nights","mins"]:[]; const before=JSON.stringify(row);
+    if(row){ const keep=row.edited?["fixed","nights","mins","days","type"]:[]; const before=JSON.stringify(row);
       for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
       if(JSON.stringify(row)!==before) st.updated++ }
     else { list.push({id:uid(), ...item}); st.added++ }
@@ -513,9 +542,15 @@ function importRoster(text){
     if(l.type==="dom") put(d.dom,{uid:l.uid,date,stn:l.stn,nights:l.nights,roster:true}, r=>r.date===date && (r.stn||"").toUpperCase()===l.stn);
     else put(d.intl,{uid:l.uid,date,country:l.country,mins:l.mins,roster:true}, r=>r.date===date);
   }
+  for(const c of courses){
+    const ym=c.date.slice(0,7);
+    if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
+    const d=monthData(ym); seen.add(c.uid); st.touched.add(ym);
+    put(d.train,{uid:c.uid,date:c.date,type:c.type,days:c.days,code:c.code,roster:true}, r=>r.date===c.date);
+  }
   // Duties dropped from the roster: remove synced rows in the roster's date range that you have not edited
   for(const ym in months){ const d=months[ym]; if(d.record) continue;
-    for(const key of ["sectors","dom","intl"]){ const n0=d[key].length;
+    for(const key of ["sectors","dom","intl","train"]){ if(!d[key]) continue; const n0=d[key].length;
       d[key]=d[key].filter(r=>!(r.roster && r.uid && !r.edited && !seen.has(r.uid) && r.date>=lo && r.date<=hi)); st.removed+=n0-d[key].length } }
   lsSave();
   return st;
@@ -544,7 +579,7 @@ function rosterCard(){
   let last=""; try{ const l=localStorage.getItem(LS_KEY+".lastSync"); if(l){ const d=new Date(l); last=` Last synced ${d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}, ${d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}.` } }catch(e){}
   return `<section class="card">
     <h2>Roster</h2>
-    <p class="sub">Run the Copy Roster shortcut, then tap Paste roster. Flights, deadheads and hotel layovers come in from your Crew Access calendar; standby and days off are skipped.${last}</p>
+    <p class="sub">Run the Copy Roster shortcut, then tap Paste roster. Flights, deadheads, hotel layovers and training come in from your Crew Access calendar; standby and days off are skipped.${last}</p>
     <div class="btns">
       <button class="btn" id="pasteRoster">Paste roster</button>
       <label class="btn quiet" for="rosterFile" style="display:inline-flex;align-items:center">Choose .ics file</label>
@@ -633,13 +668,13 @@ function viewLog(){
   </section>
   <section class="card">
     <h2>Training</h2>
-    <p class="sub">Each training day adds the fleet average of ${esc(String(k.fleetAvg))} hours ÷ 22 = ${hm(k.trainPerDay*60)} to your hours for the month (PAC/SOP/27). It only adds pay once flying plus training passes the guaranteed 40 hours. Change the fleet average in Setup.</p>
+    <p class="sub">Each training day adds the fleet average of ${esc(String(k.fleetAvg))} hours ÷ 22 = ${hm(k.trainPerDay*60)} to your hours for the month (PAC/SOP/27). It only adds pay once flying plus training passes the guaranteed 40 hours. Training on your roster comes in when you paste it; remove any day that is not paid training. Change the fleet average in Setup.</p>
     ${d.train.length?`<div class="tbl"><table class="stack"><thead><tr><th>Start date</th><th>Training</th><th class="n">Days</th><th class="n">Hours</th><th></th></tr></thead><tbody>${d.train.map(x=>`<tr data-id="${x.id}">
       <td data-l="Start date" class="w2"><input class="in" type="date" id="t-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
       <td data-l="Training" class="w2"><select class="in" id="t-${x.id}-type" data-f="type">${TRAIN_TYPES.map(t=>`<option${x.type===t?" selected":""}>${esc(t)}</option>`).join("")}</select></td>
       <td data-l="Days"><input class="in n" id="t-${x.id}-days" data-f="days" data-num="1" value="${esc(x.days)}" inputmode="numeric"></td>
-      <td data-l="Hours" class="pay dom-amt">${hm((+x.days||0)*k.trainPerDay*60)}</td>
-      <td><button class="del" data-del="train" aria-label="Delete training">×<span class="dl"> Remove</span></button></td></tr>`).join("")}</tbody>
+      <td data-l="Hours" class="pay dom-amt">${hm((+x.days||0)*k.trainPerDay*60)}${x.code?`<span class="rtime">Roster code ${esc(x.code)}</span>`:""}</td>
+      <td class="act">${x.roster?`<span class="chip${x.edited?"":" rev"}">${x.edited?"Edited":"Roster"}</span>`:""}<button class="del" data-del="train" aria-label="Delete training">×<span class="dl"> Remove</span></button></td></tr>`).join("")}</tbody>
       <tfoot><tr><td colspan="4">Flying ${hm(k.opMin)} + training ${hm(k.trainHrs*60)} = ${hm(k.totMin)}<span class="rtime" style="white-space:normal">${k.trainPay>0.5?`Training adds ${inr(k.trainPay)} this month`:`Under 40 hours in total, so training adds no extra pay this month`}</span></td><td></td></tr></tfoot></table></div>`:""}
     <div class="btns"><button class="btn ${d.train.length?"":"ghost"}" data-add="train">Add training</button></div>
   </section>`;
