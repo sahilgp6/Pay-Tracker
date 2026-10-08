@@ -189,7 +189,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
       
     </div>
     <div class="kpis">
-      <div class="kpi"><small>Payable block</small><b id="kBlock">0:00</b></div>
+      <div class="kpi"><small>Payable hours</small><b id="kBlock">0:00</b></div>
       <div class="kpi"><small>Gross</small><b id="kGross">₹0</b></div>
       <div class="kpi"><small>Est. net</small><b id="kNet">₹0</b></div>
     </div>
@@ -332,10 +332,15 @@ function calc(ym, st){
     const b=(+s.fixed||0)||(+s.actual||0);   // older rows may only hold actual
     if(s.kind==="dh") dhMin += b; else opMin += b;
   }
-  const H = opMin/60;
+  // Training (PAC/SOP/27 E): each day credits fleet average / 22 hours, added to the month's hours.
+  // Pay above the guaranteed 40 hours starts only once flying + training passes 40.
+  const train = d.train||[], trainDays = train.reduce((a,x)=>a+(+x.days||0),0);
+  const fleetAvg = +profile.fleetAvg||40, trainPerDay = fleetAvg/22, trainHrs = trainDays*trainPerDay;
   const bands=[[40,70,r[1]],[70,80,r[2]],[80,90,r[3]],[90,Infinity,r[4]]];
-  const addLines=[]; let addFly=0;
-  for(const [lo,hi,rate] of bands){ const h=Math.max(0,Math.min(H,hi)-lo); if(h>0){ addLines.push([lo,hi,h,rate]); addFly+=h*rate } }
+  const above=H=>{ let pay=0; const lines=[]; for(const [lo,hi,rate] of bands){ const h=Math.max(0,Math.min(H,hi)-lo); if(h>0){ lines.push([lo,hi,h,rate]); pay+=h*rate } } return {pay,lines} };
+  const flyH = opMin/60, H = flyH + trainHrs, totMin = H*60;
+  const {pay:addFly, lines:addLines} = above(H);
+  const trainPay = addFly - above(flyH).pay;   // what training added this month
   const sodRate = .65*r[0], sod = dhMin/60*sodRate;
   const domRate = RANKS[rank].dom, domNights = d.dom.reduce((a,x)=>a+(+x.nights||0),0), dom = domNights*domRate;
   const p1 = RANKS[rank].p1;
@@ -345,10 +350,7 @@ function calc(ym, st){
     return {...x, c, rate, full, rem, frac, days, amt:days*rate};
   });
   const intlUSD = intlRows.reduce((a,x)=>a+x.amt,0);   // tax-exempt, outside CTC and gross
-  // Training (PAC/SOP/27 E): each day credits fleet average / 22 hours, paid on top at the 0-40 rate
-  const train = d.train||[], trainDays = train.reduce((a,x)=>a+(+x.days||0),0);
-  const fleetAvg = +profile.fleetAvg||40, trainPerDay = fleetAvg/22, trainHrs = trainDays*trainPerDay, trainPay = trainHrs*r[0];
-  const gross = fixedCash + addFly + sod + dom + trainPay;
+  const gross = fixedCash + addFly + sod + dom;
   const exempt = profile.layoverExempt ? dom : 0;
   const annual = (gross-exempt)*12;
   const isFeb = ym.endsWith("-02"), pt = isFeb?300:200;
@@ -357,7 +359,7 @@ function calc(ym, st){
   const tds = annTax/12, pfEe = mon("basic")*.12;
   const net = gross - tds - pfEe - pt;
   return {st, rank, r, fixedLines, fixedCash, opMin, dhMin, H, addLines, addFly, sodRate, sod, domRate, domNights, dom,
-    intlRows, intlUSD, trainDays, trainPerDay, trainHrs, trainPay, fleetAvg, gross, annual, taxN, taxO, tds, pfEe, pt, net, p1,
+    intlRows, intlUSD, trainDays, trainPerDay, trainHrs, trainPay, fleetAvg, totMin, gross, annual, taxN, taxO, tds, pfEe, pt, net, p1,
     hasFixed: fixedCash>0, ctc: COMP.reduce((a,[k])=>a+(+fx[k]||0),0)};
 }
 
@@ -568,7 +570,7 @@ function renderHeader(){
   $("#hRole").textContent = [rk.short, profile.fleet, profile.base].filter(Boolean).join(" · ");
   $("#mLabel").textContent = ymLabel(cur);
   const k=summary(cur);
-  $("#kBlock").textContent=hm(k.opMin); $("#kGross").textContent=inr(k.gross); $("#kNet").textContent=inr(k.net);
+  $("#kBlock").textContent=hm(k.totMin!=null?k.totMin:k.opMin); $("#kGross").textContent=inr(k.gross); $("#kNet").textContent=inr(k.net);
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected", String(b.dataset.tab===tab)));
 }
 
@@ -631,14 +633,14 @@ function viewLog(){
   </section>
   <section class="card">
     <h2>Training</h2>
-    <p class="sub">Each training day is credited at the fleet average of ${esc(String(k.fleetAvg))} hours ÷ 22 = ${hm(k.trainPerDay*60)} per day, paid at the 0 to 40 hour rate of ${inr(k.r[0])} (PAC/SOP/27). That is ${inr(k.trainPerDay*k.r[0])} per day. Change the fleet average in Setup.</p>
-    ${d.train.length?`<div class="tbl"><table class="stack"><thead><tr><th>Start date</th><th>Training</th><th class="n">Days</th><th class="n">Amount</th><th></th></tr></thead><tbody>${d.train.map(x=>`<tr data-id="${x.id}">
+    <p class="sub">Each training day adds the fleet average of ${esc(String(k.fleetAvg))} hours ÷ 22 = ${hm(k.trainPerDay*60)} to your hours for the month (PAC/SOP/27). It only adds pay once flying plus training passes the guaranteed 40 hours. Change the fleet average in Setup.</p>
+    ${d.train.length?`<div class="tbl"><table class="stack"><thead><tr><th>Start date</th><th>Training</th><th class="n">Days</th><th class="n">Hours</th><th></th></tr></thead><tbody>${d.train.map(x=>`<tr data-id="${x.id}">
       <td data-l="Start date" class="w2"><input class="in" type="date" id="t-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
       <td data-l="Training" class="w2"><select class="in" id="t-${x.id}-type" data-f="type">${TRAIN_TYPES.map(t=>`<option${x.type===t?" selected":""}>${esc(t)}</option>`).join("")}</select></td>
       <td data-l="Days"><input class="in n" id="t-${x.id}-days" data-f="days" data-num="1" value="${esc(x.days)}" inputmode="numeric"></td>
-      <td data-l="Amount" class="pay dom-amt">${inr((+x.days||0)*k.trainPerDay*k.r[0])}</td>
+      <td data-l="Hours" class="pay dom-amt">${hm((+x.days||0)*k.trainPerDay*60)}</td>
       <td><button class="del" data-del="train" aria-label="Delete training">×<span class="dl"> Remove</span></button></td></tr>`).join("")}</tbody>
-      <tfoot><tr><td colspan="2">${k.trainDays} day${k.trainDays===1?"":"s"} · ${hm(k.trainHrs*60)} credited</td><td></td><td class="pay">${inr(k.trainPay)}</td><td></td></tr></tfoot></table></div>`:""}
+      <tfoot><tr><td colspan="4">Flying ${hm(k.opMin)} + training ${hm(k.trainHrs*60)} = ${hm(k.totMin)}<span class="rtime" style="white-space:normal">${k.trainPay>0.5?`Training adds ${inr(k.trainPay)} this month`:`Under 40 hours in total, so training adds no extra pay this month`}</span></td><td></td></tr></tfoot></table></div>`:""}
     <div class="btns"><button class="btn ${d.train.length?"":"ghost"}" data-add="train">Add training</button></div>
   </section>`;
 }
@@ -669,11 +671,12 @@ function slip(k){
   const L=(a,b,sm)=>`<div class="line"><span>${a}${sm?`<span class="sm">${sm}</span>`:""}</span><span class="v">${b}</span></div>`;
   let earn = k.fixedLines.map(([l,v])=>L(esc(l),inr(v))).join("");
   if(!k.hasFixed) earn += L("Fixed pay","–","Not entered yet");
+  if(k.trainDays) earn += `<div class="line"><span>Hours this month<span class="sm">Flying ${hm(k.opMin)} + training ${hm(k.trainHrs*60)} (${k.trainDays} day${k.trainDays===1?"":"s"} × ${hm(k.trainPerDay*60)})</span></span><span class="v">${hm(k.totMin)}</span></div>`;
   earn += k.addLines.map(([lo,hi,h,rate])=>L(`Flying ${lo} to ${hi===Infinity?"+":hi} h`, inr(h*rate), `${hm(h*60)} × ${inr(rate)}`)).join("");
-  if(!k.addLines.length) earn += L("Flying above 40 h", inr(0), `${hm(k.opMin)} payable, none above 40 h`);
+  if(!k.addLines.length) earn += L("Flying above 40 h", inr(0), `${hm(k.totMin)} payable${k.trainDays?" incl. training":""}, none above 40 h`);
   earn += L("SOD / deadhead", inr(k.sod), `${hm(k.dhMin)} × ${inr(k.sodRate)}`);
   earn += L("Domestic layover", inr(k.dom), `${k.domNights} × ${inr(k.domRate)}`);
-  if(k.trainDays) earn += L("Training", inr(k.trainPay), `${k.trainDays} day${k.trainDays===1?"":"s"} × ${hm(k.trainPerDay*60)} × ${inr(k.r[0])}`);
+
   earn += `<div class="line tot"><span>Gross</span><span class="v">${inr(k.gross)}</span></div>`;
   let ded = L("Income tax (TDS)", inr(k.tds), `${profile.regime==="old"?"Old":"New"} regime, this month annualised`);
   ded += L("Employee PF", inr(k.pfEe), "12% of Basic");
