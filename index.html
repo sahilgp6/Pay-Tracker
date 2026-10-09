@@ -438,6 +438,8 @@ function icsTime(prop){ // {params, value} -> epoch ms
   const tz=(prop.params.TZID||IST).replace(/^"|"$/g,"");
   let t=naive-tzOffsetMin(tz,naive)*60000; return t-(tzOffsetMin(tz,t)-tzOffsetMin(tz,naive))*60000;
 }
+function utcParts(ms){ const d=new Date(ms); const p=n=>String(n).padStart(2,"0");
+  return {date:`${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}`, time:`${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`} }
 function istParts(ms){ const d=new Date(ms+330*60000); const p=n=>String(n).padStart(2,"0");
   return {date:`${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}`, time:`${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`} }
 const dutyCode = desc=>((String(desc).match(/Duty Type:\s*([^\n]+)/i)||[])[1]||"").trim();
@@ -482,11 +484,12 @@ function rosterItems(events){
   events=events.slice().sort((a,b)=>a.start-b.start);
   const sectors=[], hotels=[], reports=[];
   const route=s=>{ const m=s.match(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/); return m?[m[1],m[2]]:null };
-  const training=[];
+  const training=[]; let duty=null;   // a duty runs from check-in to check-out; its sectors share the check-in date
   for(const e of events){
     const s=e.summary, end=e.end||e.start;
     const tt=trainingType(s, e.desc); if(tt){ training.push({e, type:tt}); continue }
-    if(/check\s*in/i.test(s)){ reports.push(e); continue }
+    if(/check\s*in/i.test(s)){ reports.push(e); duty={start:e.start, date:utcParts(e.start).date}; continue }
+    if(/check\s*out/i.test(s)){ duty=null; continue }
     if(/layover in hotel|hotel/i.test(s)){ hotels.push(e); continue }
     const r=route(s); if(!r) continue;
     let kind=null;
@@ -494,9 +497,10 @@ function rosterItems(events){
     else if(/flight/i.test(s)) kind="op";
     if(!kind) continue;
     const fm=e.desc.match(/Flight Number:\s*([A-Z0-9]+)/i);
-    sectors.push({uid:e.uid||`${e.start}-${r[0]}-${r[1]}`, start:e.start, end, from:r[0], to:r[1], kind, flt:fm?fm[1].toUpperCase():"", fixed:Math.round((end-e.start)/60000)});
+    const date = duty && e.start-duty.start <= 20*3600000 ? duty.date : utcParts(e.start).date;   // UTC, logbook style
+    sectors.push({uid:e.uid||`${e.start}-${r[0]}-${r[1]}`, start:e.start, date, end, from:r[0], to:r[1], kind, flt:fm?fm[1].toUpperCase():"", fixed:Math.round((end-e.start)/60000)});
   }
-  for(const rp of reports){ const nx=sectors.find(x=>x.start>=rp.start && x.start-rp.start<=6*3600000); if(nx && !nx.report) nx.report=istParts(rp.start).time }
+  for(const rp of reports){ const nx=sectors.find(x=>x.start>=rp.start && x.start-rp.start<=6*3600000); if(nx && !nx.report) nx.report=utcParts(rp.start).time }
   const lays=[];
   for(const h of hotels){
     const prev=[...sectors].reverse().find(x=>x.end<=h.start+60000), next=sectors.find(x=>x.start>=(h.end||h.start));
@@ -527,34 +531,43 @@ function importRoster(text){
   if(!sectors.length && !lays.length && !courses.length) return {error:"The calendar had events but no flights, deadheads or hotel layovers the app recognises."};
   const st={added:0, updated:0, removed:0, skipped:new Set(), touched:new Set()};
   const lo=istParts(from).date, hi=istParts(to).date;
-  const put=(list, item, match)=>{ // update by uid, else adopt a matching manual row, else add
-    let row=list.find(r=>r.uid===item.uid);
-    if(!row){ row=list.find(r=>!r.uid && match(r)); if(row){ row.edited=true; row.example=false } }   // your own entry: keep your hours
-    if(row){ const keep=row.edited?["fixed","nights","mins","days","type"]:[]; const before=JSON.stringify(row);
+  const HOURS=["fixed","nights","mins","days"];
+  const put=(key, ym, item, match)=>{ // update by uid, else adopt a matching manual row, else add
+    const list=monthData(ym)[key];
+    let row=list.find(r=>r.uid===item.uid), moved=false;
+    if(!row){ // synced earlier under another month: move it here
+      for(const m in months){ if(m===ym||!months[m][key]) continue; const i=months[m][key].findIndex(r=>r.uid===item.uid);
+        if(i>=0){ row=months[m][key].splice(i,1)[0]; list.push(row); moved=true; break } } }
+    let dup=null;
+    if(row){ dup=list.find(r=>r!==row && !r.uid && match(r)) }        // you also typed this one in by hand
+    else { row=list.find(r=>!r.uid && match(r)); if(row){ row.edited=true; row.example=false } }   // your own entry: keep your hours
+    if(row){ const before=JSON.stringify(row);
+      if(dup){ for(const h of HOURS) if(dup[h]!=null && dup[h]!=="") row[h]=dup[h]; row.edited=true; list.splice(list.indexOf(dup),1) }
+      const keep=row.edited?["fixed","nights","mins","days","type"]:[];
       for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
-      if(JSON.stringify(row)!==before) st.updated++ }
+      if(moved||dup||JSON.stringify(row)!==before) st.updated++ }
     else { list.push({id:uid(), ...item}); st.added++ }
   };
   const seen=new Set();
   for(const s of sectors){
-    const {date,time}=istParts(s.start), ym=date.slice(0,7);
+    const date=s.date, time=utcParts(s.start).time, ym=date.slice(0,7);
     if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
-    const d=monthData(ym); seen.add(s.uid); st.touched.add(ym);
-    put(d.sectors,{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:time,report:s.report||"",roster:true},
+    seen.add(s.uid); st.touched.add(ym);
+    put("sectors",ym,{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:time,report:s.report||"",roster:true},
         r=>r.date===date && (r.from||"").toUpperCase()===s.from && (r.to||"").toUpperCase()===s.to);
   }
   for(const l of lays){
     const date=istParts(l.start).date, ym=date.slice(0,7);
     if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
-    const d=monthData(ym); seen.add(l.uid); st.touched.add(ym);
-    if(l.type==="dom") put(d.dom,{uid:l.uid,date,stn:l.stn,nights:l.nights,roster:true}, r=>r.date===date && (r.stn||"").toUpperCase()===l.stn);
-    else put(d.intl,{uid:l.uid,date,country:l.country,mins:l.mins,roster:true}, r=>r.date===date);
+    seen.add(l.uid); st.touched.add(ym);
+    if(l.type==="dom") put("dom",ym,{uid:l.uid,date,stn:l.stn,nights:l.nights,roster:true}, r=>r.date===date && (r.stn||"").toUpperCase()===l.stn);
+    else put("intl",ym,{uid:l.uid,date,country:l.country,mins:l.mins,roster:true}, r=>r.date===date);
   }
   for(const c of courses){
     const ym=c.date.slice(0,7);
     if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
-    const d=monthData(ym); seen.add(c.uid); st.touched.add(ym);
-    put(d.train,{uid:c.uid,date:c.date,type:c.type,days:c.days,code:c.code,roster:true}, r=>r.date===c.date);
+    seen.add(c.uid); st.touched.add(ym);
+    put("train",ym,{uid:c.uid,date:c.date,type:c.type,days:c.days,code:c.code,roster:true}, r=>r.date===c.date);
   }
   // Duties dropped from the roster: remove synced rows in the roster's date range that you have not edited
   for(const ym in months){ const d=months[ym]; if(d.record) continue;
@@ -631,15 +644,20 @@ function recordCard(){
   </section>`;
 }
 
+// Date order, then departure (or report) time; rows without a time keep their place after timed ones on the same day
+const byDate=(a,b)=>(a.date||"").localeCompare(b.date||"");
+const byDateTime=(a,b)=>byDate(a,b) || (a.dep||a.report||"99:99").localeCompare(b.dep||b.report||"99:99");
+function sortMonth(d){ d.sectors.sort(byDateTime); d.dom.sort(byDate); d.intl.sort(byDate); if(d.train) d.train.sort(byDate) }
+
 function viewLog(){
   if(isRecorded(cur)) return recordCard();
-  const d=monthData(cur), k=calc(cur), rev=k.st==="rev";
+  const d=monthData(cur); sortMonth(d); const k=calc(cur), rev=k.st==="rev";
   const rows = d.sectors.map(s=>{
     const b=(+s.fixed||0)||(+s.actual||0);
     const lbl = s.kind==="div" ? "Actual block" : "Fixed block";
     return `<tr data-id="${s.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="s-${s.id}-date" data-f="date" value="${esc(s.date)}"></td>
-      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}`:""}</span>`:""}</td>
+      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
       <td data-l="From"><input class="in caps" id="s-${s.id}-from" data-f="from" value="${esc(s.from)}" placeholder="BOM" maxlength="4" autocomplete="off"></td>
       <td data-l="To"><input class="in caps" id="s-${s.id}-to" data-f="to" value="${esc(s.to)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
       <td data-l="Type" class="w2"><select class="in" id="s-${s.id}-kind" data-f="kind">
@@ -660,7 +678,7 @@ function viewLog(){
   ${hasEx?`<div class="banner"><span>Rows marked Example are sample data to show how the log works. Replace them with your own sectors.</span><button class="btn ghost" id="clearEx">Remove examples</button></div>`:""}
   <section class="card">
     <h2>Sectors</h2>
-    <p class="sub">Flying pay uses the fixed block hours published for each sector (PAC/SOP/27). Synced sectors come in at their rostered block time: if the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
+    <p class="sub">Flying pay uses the fixed block hours published for each sector (PAC/SOP/27). Dates and times are UTC; each sector takes the date of its duty's check-in. Synced sectors come in at their rostered block time: if the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
     ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Block</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="pay">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
@@ -694,7 +712,7 @@ function viewLog(){
 }
 
 function viewIntl(){
-  const d=monthData(cur), k=calc(cur);
+  const d=monthData(cur); sortMonth(d); const k=calc(cur);
   const rows = k.intlRows.map(x=>`<tr data-id="${x.id}">
     <td data-l="Date" class="w2"><input class="in" type="date" id="i-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
     <td data-l="Station / country" class="w2"><input class="in" list="countries" id="i-${x.id}-country" data-f="country" value="${esc(x.country)}" placeholder="Riyadh, Saudi Arabia" autocomplete="off">${x.country&&!x.c?'<span class="short">Country not found in the rate table</span>':(x.c&&x.c.n.toLowerCase()!==String(x.country).trim().toLowerCase()?`<span class="short" style="color:var(--muted)">Rate for ${esc(x.c.n)}</span>`:"")}</td>
