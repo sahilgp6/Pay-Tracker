@@ -186,6 +186,9 @@ textarea.in{resize:vertical;width:100%}
 .dn-mid{display:flex;flex-direction:column;align-items:center}
 .dn-mid b{font-size:19px;font-weight:800}
 .dn-mid span{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+table.chk .rtime{white-space:normal}
+.wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
+.wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
 .ds{flex:0 0 58px;scroll-snap-align:center;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;cursor:pointer;font:inherit;color:var(--ink)}
 .ds b{font-size:18px;font-weight:800;line-height:1.1}
@@ -833,7 +836,70 @@ function fdtlAll(){
       x.rest={avail, req, why, needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:p.signout, stn:prev.restStn};
     }
   }
-  return {duties, standbys};
+  const all={duties, standbys};
+  for(const k of ["P","A"]) all["wk"+k]=cycleRules(all, k);
+  return all;
+}
+
+/* Weekly rest, consecutive nights, Note 3 frequency and early-morning reports, per mode (P planned, A actual) */
+const istDate = ms=>new Date(ms+IST_OFF).toISOString().slice(0,10);
+const istMin  = ms=>{ const d=new Date(ms+IST_OFF); return d.getUTCHours()*60+d.getUTCMinutes() };
+function nightsIn(a,b){ // local nights (00:00-08:00 IST) lying wholly inside [a,b]
+  const out=[]; const d0=Math.floor((a+IST_OFF)/DAY), d1=Math.floor((b+IST_OFF)/DAY);
+  for(let d=d0; d<=d1; d++){ const s=d*DAY-IST_OFF; if(s>=a && s+8*HR<=b) out.push(s) } return out;
+}
+function cycleRules(all, k){
+  const base=(profile.base||"BOM").toUpperCase();
+  const D=all.duties.map(d=>({d, x:d[k]}));
+  // Busy periods: every duty and standby (rest means free of duty, standby and reserve, OM-A 2.3)
+  const busy=[...D.map(o=>({a:o.x.report, b:o.x.signout, d:o.d})), ...all.standbys.map(s=>({a:s.start, b:s.end, sby:true}))].sort((p,q)=>p.a-q.a);
+  const nightFdp=D.filter(o=>o.x.night).map(o=>o.x.report);
+  const rests=[];
+  let endSoFar=null, lastBusy=null;
+  for(const bz of busy){
+    if(endSoFar!=null && bz.a>endSoFar){
+      const a=endSoFar, b=bz.a, hrs=(b-a)/MIN;
+      if(hrs>=48*60){
+        const nights=nightsIn(a,b);
+        // RP 2.6.2 (b): sign out by 23:14 LT, so a night that starts less than 46 min after sign-out does not count
+        const counted=nights.filter(n=>n-a>=46*MIN);
+        const n3=nightFdp.filter(r=>r<a && r>=a-168*HR).length;
+        const req=n3>3?60*60:48*60;
+        const stn=(lastBusy&&lastBusy.d&&lastBusy.d.restStn)||"";
+        const ok=hrs>=req && counted.length>=2;
+        rests.push({a,b,hrs,nights:nights.length,counted:counted.length,req,n3,stn,away:!!stn&&stn!==base,ok,
+          lateSignout: nights.length>counted.length});
+      }
+    }
+    if(endSoFar==null || bz.b>endSoFar){ endSoFar=bz.b; lastBusy=bz }
+  }
+  const valid=rests.filter(r=>r.ok);
+  // Per duty
+  const nightDates=new Map();   // IST date of a 00:00-06:00 window -> duties touching it
+  for(const o of D){ if(o.x.fdpEnd==null || !o.x.night) continue;
+    const d0=Math.floor((o.x.report+IST_OFF)/DAY), d1=Math.floor((o.x.fdpEnd+IST_OFF)/DAY);
+    for(let d=d0; d<=d1; d++){ const s=d*DAY-IST_OFF; if(Math.min(o.x.fdpEnd,s+6*HR)>Math.max(o.x.report,s)) nightDates.set(d,(nightDates.get(d)||[]).concat(o.d.uid)) } }
+  const nd=[...nightDates.keys()].sort((p,q)=>p-q), runOf=new Map(), runs=[];
+  for(let i=0;i<nd.length;i++){ const len=(i>0&&nd[i-1]===nd[i]-1)?runOf.get(nd[i-1]).len+1:1; const start=len>1?runOf.get(nd[i-1]).start:nd[i];
+    runOf.set(nd[i],{len,start}) }
+  for(const [day,r] of runOf) if(r.len===3) runs.push(day);   // the day each run reaches 3 nights
+  const per=new Map(); let early=0, lastRestEnd=null;
+  for(const o of D){
+    const x=o.x;
+    const prevRest=valid.filter(r=>r.b<=x.report).pop();
+    if(prevRest && prevRest.b!==lastRestEnd){ early=0; lastRestEnd=prevRest.b }
+    const isEarly=istMin(x.report)<6*60;   // RP: early morning = report 00:00-06:00 IST
+    early=isEarly?early+1:0;
+    const since=prevRest?(x.signout-prevRest.b)/MIN:null;
+    // consecutive nights for the nights this duty touches
+    let nights=null;
+    for(const [day,uids] of nightDates) if(uids.includes(o.d.uid)){ const r=runOf.get(day);
+      const threes=runs.filter(t=>t<=day && (day-t)*DAY<168*HR);   // runs of 3 that reached 3 in the last 168 h, this one included
+      const n={len:r.len, threes:threes.length}; if(!nights || n.len>nights.len || n.threes>nights.threes) nights=n }
+    const n3=x.note3>0 ? D.filter(q=>q.x.note3>0 && q.x.report<=x.report && q.x.report>x.report-168*HR).length : 0;
+    per.set(o.d.uid,{since, prevRest, early: isEarly?early:0, nights, n3});
+  }
+  return {rests, per};
 }
 function cumulative(all, dayEndMs, mode){
   const out=[];
@@ -918,9 +984,35 @@ function viewDuty(){
   const meters=`<section class="card">
     <h2>Cumulative to end of ${esc(DOW(day))}</h2>
     <p class="sub">Flight time and duty in the rolling windows of OM-A 2.8, using your actual times where entered. History starts on 1 October 2026, so longer windows show what has built up since then.</p>
+    ${weeklyLine(all, dayEnd)}
     <div class="meters">${cum.map(c=>meterRow(c)).join("")}</div>
   </section>`;
-  return nav+cards+sbCard+meters;
+  const wkCards=all.wkA.rests.filter(r=>utcDate(r.a)===day).map(weeklyCard).join("");
+  return nav+cards+sbCard+wkCards+meters;
+}
+function weeklyLine(all, dayEnd){
+  const last=all.wkA.rests.filter(r=>r.ok && r.b<=dayEnd).pop();
+  if(!last) return `<p class="note">Weekly rest: none on record yet. History starts on 1 October 2026.</p>`;
+  const due=last.b+168*HR, left=(due-dayEnd)/MIN;
+  return `<div class="wkline"><b>Weekly rest</b><span>Last ended ${hhmmZ(last.b)}Z ${esc(DOW(utcDate(last.b)))}. The next must start by <b>${hhmmZ(due)}Z ${esc(DOW(utcDate(due)))}</b>${left>0?` (${hm(left)} after this day ends)`:""}.</span></div>`;
+}
+function weeklyCard(r){
+  const reasons=[];
+  if(r.hrs<r.req) reasons.push(`${hm(r.hrs)} is short of the ${hm(r.req)} needed`);
+  if(r.counted<2) reasons.push(`only ${r.counted} local night${r.counted===1?"":"s"} counted`);
+  const st=r.ok?(r.away?"warn":"ok"):"bad";
+  const L=(a,b,c)=>`<tr><td>${a}${c?`<span class="rtime">${c}</span>`:""}</td><td class="n">${b}</td></tr>`;
+  const so=istMin(r.a), soTxt=`${String(Math.floor(so/60)).padStart(2,"0")}:${String(so%60).padStart(2,"0")} IST`;
+  return `<section class="card duty">
+    <div class="dhead"><div><h2>${r.ok?"Weekly rest":"Long rest, not a weekly rest"}</h2><p class="sub">${hhmmZ(r.a)}Z ${esc(DOW(utcDate(r.a)))} to ${hhmmZ(r.b)}Z ${esc(DOW(utcDate(r.b)))}${r.stn?` · ${esc(r.stn)}`:""}</p></div>${chipFor(st, r.ok?(r.away?"Check base":"Valid"):"Not valid")}</div>
+    <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">This rest</th></tr></thead><tbody>
+      ${L("Length", `<span class="fv ${r.hrs>=r.req?"ok":"bad"}">${hm(r.hrs)}</span>`, `At least ${hm(r.req)} continuous (2.10.6)${r.req>48*60?`: ${r.n3} night duties in the 168 h before it, so 60 h applies (2.10.6.1)`:""}`)}
+      ${L("Local nights", `<span class="fv ${r.counted>=2?"ok":"bad"}">${r.counted}</span>`, "00:00–08:00 IST, at least 2")}
+      ${L("Sign-out before it", `<span class="fv ${r.lateSignout?"warn":"ok"}">${soTxt}</span>`, r.lateSignout?"After 23:14 local, so the night that follows does not count (Rostering Policy 2.6.2)":"By 23:14 local, or early enough for the next night to count (Rostering Policy 2.6.2)")}
+    </tbody></table></div>
+    ${reasons.length?`<p class="note">${esc(reasons.join("; "))}.</p>`:""}
+    ${r.away?`<p class="note">Taken at ${esc(r.stn)}, not your home base. It counts only if ${esc(r.stn)} is a temporary base for this period (2.10.6 Note 1).</p>`:""}
+  </section>`;
 }
 function meterRow(c){
   const bar=(v,l)=>{ const st=fdtlStatus(v,l), pct=Math.min(100,v/l*100); return `<div class="bar-t"><div class="bar-f ${st}" style="width:${pct.toFixed(1)}%"></div></div>` };
@@ -961,6 +1053,32 @@ function dutyCard(d){
   } else {
     chk.push(`<tr><td>Duty period<span class="rtime">Counts towards cumulative duty</span></td><td class="n muted">–</td><td class="n">${hm(P.duty)}</td><td class="n">${act?hm(A.duty):"–"}</td></tr>`);
   }
+  // Step 2: weekly-rest cycle, consecutive nights, Note 3 frequency, early mornings
+  const all2=fdtlCache, wP=all2&&all2.wkP.per.get(d.uid), wA=all2&&all2.wkA.per.get(d.uid);
+  const cyc=[];   // statuses for the overall chip
+  if(wP){
+    const pair=(fP,fA)=>`<td class="n">${fP(wP)}</td>`+(act&&wA?`<td class="n">${fA(wA)}</td>`:`<td class="n muted">–</td>`);
+    const vc=(st,txt)=>`<span class="fv ${st}">${txt}</span>`;
+    const sinceSt=w=> w.since==null?"na":fdtlStatus(w.since,168*60);
+    if(wP.since==null) chk.push(`<tr><td>Since your last weekly rest<span class="rtime">No weekly rest on record yet (history starts 1 Oct)</span></td><td class="n">168:00</td><td class="n" colspan="2"><span class="fv na">Not checked</span></td></tr>`);
+    else { chk.push(`<tr><td>Since your last weekly rest<span class="rtime">Last one ended ${hhmmZ(wP.prevRest.b)}Z ${esc(DOW(utcDate(wP.prevRest.b)))}; the next must start within 168 h (2.10.6)</span></td><td class="n">168:00</td>${pair(w=>vc(sinceSt(w),hm(w.since)),w=>vc(sinceSt(w),hm(w.since)))}</tr>`);
+      cyc.push(sinceSt(wP)); if(act&&wA) cyc.push(sinceSt(wA)) }
+    const nSt=n=>!n?"ok":n.len<=2?"ok":(n.len===3&&n.threes<=1)?"warn":"bad";
+    if(wP.nights||(act&&wA&&wA.nights)){
+      const nTxt=w=>w.nights?vc(nSt(w.nights),w.nights.len):"–";
+      chk.push(`<tr><td>Night duties in a row<span class="rtime">Touching 00:00–06:00 IST; 3 allowed once in 168 h (2.13.1)${[wP,wA].some(w=>w&&w.nights&&nSt(w.nights)==="warn")?". This uses the once-in-168 h allowance":""}</span></td><td class="n">2</td>${pair(nTxt,nTxt)}</tr>`);
+      cyc.push(nSt(wP.nights)); if(act&&wA) cyc.push(nSt(wA.nights)) }
+    const n3St=w=>w.n3>4?"bad":"ok";
+    if(wP.n3||(act&&wA&&wA.n3)){
+      const t=w=>w.n3?vc(n3St(w),w.n3):"–";
+      chk.push(`<tr><td>Note 3 duties in 168 h<span class="rtime">In the last 168 h (2.6.1 Note 3)</span></td><td class="n">4</td>${pair(t,t)}</tr>`);
+      cyc.push(n3St(wP)); if(act&&wA) cyc.push(n3St(wA)) }
+    const eSt=w=>w.early>3?"warn":"ok";
+    if(wP.early||(act&&wA&&wA.early)){
+      const t=w=>w.early?vc(eSt(w),w.early):"–";
+      chk.push(`<tr><td>Early-morning reports in a row<span class="rtime">Reporting 00:00–06:00 IST; a 4th needs your consent (Rostering Policy 2.3.4)</span></td><td class="n">3</td>${pair(t,t)}</tr>`);
+      cyc.push(eSt(wP)); if(act&&wA) cyc.push(eSt(wA)) }
+  }
   const rp=P.rest, ra=A.rest;
   if(rp){
     const restCell=r=> r ? `<td class="n"><span class="fv ${r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok"}">${hm(r.avail)}</span></td>` : '<td class="n muted">–</td>';
@@ -968,7 +1086,7 @@ function dutyCard(d){
   } else chk.push(`<tr><td>Rest before this duty<span class="rtime">No earlier duty on record (history starts 1 Oct)</span></td><td class="n muted">–</td><td class="n" colspan="2"><span class="fv na">Not checked</span></td></tr>`);
 
   const worst=[...[P,act?A:null].filter(Boolean).flatMap(x=> d.type==="flight"?[x.landings>x.lim.land?"bad":"ok",fdtlStatus(x.ft,x.lim.ft),fdtlStatus(x.fdp,x.lim.fdp),fdtlStatus(x.duty,x.lim.fdp+60)]:d.type==="asby"?[fdtlStatus(x.duty,480)]:[]),
-    ...[rp,act?ra:null].filter(Boolean).map(r=>r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok")];
+    ...[rp,act?ra:null].filter(Boolean).map(r=>r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok"), ...cyc.filter(x=>x!=="na")];
   const overall=worst.includes("bad")?"bad":worst.includes("warn")?"warn":"ok";
   const planOnlyBad = act && ["bad"].includes(overall) && ![fdtlStatus(P.fdp,P.lim.fdp),fdtlStatus(P.ft,P.lim.ft),fdtlStatus(P.duty,P.lim.fdp+60)].includes("bad");
   const notes=[];
