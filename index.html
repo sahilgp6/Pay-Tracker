@@ -288,7 +288,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 24</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 25</span></span></footer>
 </div>
 
 <script>
@@ -973,8 +973,10 @@ function buildDuties(){
   for(const sb of standbys){ const d=pick(sb.start,sb.end,sb.uid); sb.called=!!d; if(d) d.sby={kind:"home", uid:sb.uid, start:sb.start, end:sb.end, bare:!!sb.bare} }
   for(const a of kept.filter(d=>!d.items.length)){ const d=pick(a.report,a.signoutPlanned,a.uid);
     if(d){ d.sby={kind:"airport", uid:a.uid, start:a.report, end:a.signoutPlanned, stn:a.checkinStn}; a.merged=true } }
-  const hid=u=>!!(actuals[u]&&actuals[u].hide);   // removed by you from the Duty tab
-  return {duties:kept.filter(d=>!d.merged && !hid(d.uid)).map(d=>evalDuty(d)), standbys:standbys.filter(x=>!hid(x.uid))};
+  // Removed by you from the Duty tab. A removal applies only to the kind of thing you removed: a standby you removed
+  // never hides a flight duty that later turns out to share its check-in.
+  const hk=u=>{ const a=actuals[u]; if(!a||!a.hide) return ""; return a.hk || (/standby/i.test(a.hl||"") && !/^Airport/i.test(a.hl||"") ? "sby" : "duty") };
+  return {duties:kept.filter(d=>!d.merged && hk(d.uid)!=="duty").map(d=>evalDuty(d)), standbys:standbys.filter(x=>hk(x.uid)!=="sby")};
 }
 
 function evalDuty(d){
@@ -1265,7 +1267,8 @@ function viewDuty(){
       <label class="f">Type<select class="in" data-sby="msby|${day}"><option value="home"${msb.sby==="airport"?"":" selected"}>Home standby (25% counts)</option><option value="airport"${msb.sby==="airport"?" selected":""}>Airport standby (100% counts)</option></select></label>
     </div>
     <div class="btns rmrow"><button class="btn quiet rm" data-delsby="${day}">Delete this standby</button></div></section>` : "";
-  const gone=Object.entries(actuals).filter(([k,v])=>v&&v.hide&&v.hd===day);
+  // only list removals that still hide something here (an old standby removal no longer hides the duty on its check-in)
+  const gone=Object.entries(actuals).filter(([k,v])=>v&&v.hide&&v.hd===day && !(list.some(d=>d.uid===k) && (v.hk==="sby"||(!v.hk&&/^Home standby/.test(v.hl||"")))));
   const goneCard=gone.length?`<section class="card"><h2>Removed from this day</h2><ul class="gone">${gone.map(([k,v])=>`<li><span>${esc(v.hl||"Duty")}</span><button class="btn quiet" data-unhide="${esc(k)}">Restore</button></li>`).join("")}</ul><p class="note">Removed items are left out of every FDTL check. Your Flight log and pay are unchanged.</p></section>`:"";
   return nav+sbyEdit+cards+sbCard+goneCard+changesCard(day,list)+wkCards+meters;
 }
@@ -1438,7 +1441,7 @@ function offCard(all, day, off){
     <p class="note">${off.manual?"Marked by you. ":""}${wr ? (wr.ok ? `Part of a valid weekly rest, ${t(wr.a)} to ${t(wr.b)}: ${hm(wr.hrs)} with ${wr.counted} local nights.` : `Inside a ${hm(wr.hrs)} break that does not meet the weekly rest rules (${hm(wr.req)} with 2 local nights).`) : "No duty on this day."}</p></section>`;
 }
 function rmBtn(uid, date, label){
-  return `<div class="btns rmrow"><button class="btn quiet rm" data-hide="${esc(uid)}" data-hd="${esc(date)}" data-hl="${esc(label)}">Remove from Duty tab</button></div>`;
+  return `<div class="btns rmrow"><button class="btn quiet rm" data-hide="${esc(uid)}" data-hd="${esc(date)}" data-hl="${esc(label)}" data-hk="${/^Home standby/.test(label)?"sby":"duty"}">Remove from Duty tab</button></div>`;
 }
 function callPick(uid){
   const v=(actuals[uid]||{}).called, val=v===true?"yes":v===false?"no":"auto";
@@ -1824,8 +1827,8 @@ document.addEventListener("click", e=>{
   if(t.dataset.delsby){ delete actuals["msby|"+t.dataset.delsby]; queueSave(); render(); return }
   if(t.dataset.markoff){ const k="off|"+t.dataset.markoff; if(t.dataset.code) actuals[k]={code:t.dataset.code}; else delete actuals[k]; queueSave(); render(); return }
   if(t.dataset.hide){ if(!confirm("Remove this from the Duty tab? It stops counting in the FDTL checks. Your Flight log and pay are not changed, and you can restore it from this day.")) return;
-    actuals[t.dataset.hide]={...(actuals[t.dataset.hide]||{}), hide:true, hd:t.dataset.hd, hl:t.dataset.hl}; queueSave(); render(); return }
-  if(t.dataset.unhide){ const c2={...(actuals[t.dataset.unhide]||{})}; delete c2.hide; delete c2.hd; delete c2.hl;
+    actuals[t.dataset.hide]={...(actuals[t.dataset.hide]||{}), hide:true, hd:t.dataset.hd, hl:t.dataset.hl, hk:t.dataset.hk||"duty"}; queueSave(); render(); return }
+  if(t.dataset.unhide){ const c2={...(actuals[t.dataset.unhide]||{})}; delete c2.hide; delete c2.hd; delete c2.hl; delete c2.hk;
     if(Object.keys(c2).length) actuals[t.dataset.unhide]=c2; else delete actuals[t.dataset.unhide]; queueSave(); render(); return }
   if(t.dataset.ref){ const k=t.dataset.ref, o=!openRefs.has(k); if(o) openRefs.add(k); else openRefs.delete(k); setRef(k,o); return }
   if(t.dataset.tb){ const k=t.dataset.tb; if(t.dataset.undo) delete actuals[k]; else actuals[k]={tb:true}; queueSave(); render(); return }
