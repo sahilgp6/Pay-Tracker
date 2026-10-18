@@ -217,6 +217,8 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
 .ds b{font-size:18px;font-weight:800;line-height:1.1}
 .ds-w{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .ds-t{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap}
+.ds-off{background:rgba(45,106,48,.08);border-color:rgba(45,106,48,.35)}.ds-off .ds-t{color:var(--green)}
+.ds-free{opacity:.6}
 .ds.on{background:var(--accent);border-color:var(--accent);color:var(--onfill)}.ds.on .ds-w,.ds.on .ds-t{color:var(--onfill);opacity:.85}
 .ds-m{flex:0 0 auto;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted);align-self:center}
 html,body,*{touch-action:manipulation}
@@ -766,6 +768,7 @@ function evType(e){
 function slimEvent(e){
   const t=evType(e), o={uid:e.uid||(e.start+"|"+e.summary), t, start:e.start, end:e.end||e.start, s:e.summary};
   if(e.lm) o.lm=e.lm;
+  if(t==="off"){ const m=(e.desc||"").match(/Duty Type:\s*([A-Za-z\-]+)/); o.code=m?m[1].toUpperCase():"OFF" }
   if(t==="sector"){ const m=e.summary.match(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/); o.from=m[1]; o.to=m[2];
     o.kind=/deadhead|\bOAT\b|positioning|\bDHD?\b/i.test(e.summary)?"dh":"op";
     const fm=(e.desc||"").match(/Flight Number:\s*([A-Z0-9]+)/i); o.flt=fm?fm[1].toUpperCase():"" }
@@ -1142,16 +1145,30 @@ const fdtlStatus=(v,lim)=> v==null||lim==null ? "na" : v>lim+0.01 ? "bad" : v>=0
 let dutyDay = null;            // UTC date being viewed
 let fdtlCache = null;          // recomputed on every render
 const DOW = d=>new Date(d+"T00:00:00Z").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
+function offDays(){
+  const m=new Map();
+  for(const e of rosterEvents){ if(e.t!=="off") continue;
+    for(let d=Math.floor(e.start/DAY)*DAY; d<e.end; d+=DAY){ const cov=Math.min(e.end,d+DAY)-Math.max(e.start,d);
+      if(cov>=12*HR) m.set(new Date(d).toISOString().slice(0,10), {code:e.code||"OFF", start:e.start, end:e.end}) } }
+  return m;
+}
 function dutyDays(all){
   const s=new Set(all.duties.map(d=>d.date)); for(const b of all.standbys) s.add(utcDate(b.start));
   for(const c of rosterChanges) if(c.kind==="removed") s.add(utcDate(c.oldStart));
   for(const k in actuals) if(actuals[k]&&actuals[k].hide&&actuals[k].hd) s.add(actuals[k].hd);   // keep removed days reachable for Restore
-  return [...s].sort();
+  for(const d of offDays().keys()) s.add(d);
+  const known=[...s].filter(d=>d>="2026-10-01").sort(); if(!known.length) return [];
+  // fill every day from the first of the first month to the last of the last month
+  const out=[]; const a=new Date(known[0].slice(0,8)+"01T00:00:00Z"), z=new Date(known[known.length-1]+"T00:00:00Z"); z.setUTCMonth(z.getUTCMonth()+1,0);
+  for(let t=a.getTime(); t<=z.getTime(); t+=DAY) out.push(new Date(t).toISOString().slice(0,10));
+  return out;
 }
 // One chip per duty day, scrolled sideways: weekday, date and what the day holds
 function dayStrip(all, days, day){
+  const offs=offDays();
+  const kind=d=> all.duties.some(x=>x.date===d) ? "duty" : all.standbys.some(b=>utcDate(b.start)===d) ? "sby" : offs.has(d) ? "off" : "free";
   const tag=d=>{ const L=all.duties.filter(x=>x.date===d);
-    if(!L.length) return "SBY";
+    if(!L.length){ if(all.standbys.some(b=>utcDate(b.start)===d)) return "SBY"; if(offs.has(d)) return offs.get(d).code; return "–" }
     const x=L[0];
     if(x.type==="flight"){ const ops=x.secs.filter(s=>s.kind==="op"); const far=ops.flatMap(s=>[s.from,s.to]).filter(t=>t!==x.secs[0].from); return far[0]||ops[0].to }
     if(x.type==="positioning") return "DH "+x.secs[x.secs.length-1].to;
@@ -1161,9 +1178,9 @@ function dayStrip(all, days, day){
   return (days.includes(day)?days:[...days,day].sort()).map(d=>{
     const dt=new Date(d+"T00:00:00Z"), m=dt.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"});
     const mark=m!==lastM?`<span class="ds-m">${m}</span>`:""; lastM=m;
-    const has=days.includes(d);
-    return `${mark}<button class="ds${d===day?" on":""}" data-dday="${d}" role="option" aria-selected="${d===day}">
-      <span class="ds-w">${dt.toLocaleDateString("en-GB",{weekday:"short",timeZone:"UTC"})}</span><b>${dt.getUTCDate()}</b><span class="ds-t">${has?esc(tag(d)):"–"}</span></button>`;
+    const k=kind(d);
+    return `${mark}<button class="ds ds-${k}${d===day?" on":""}" data-dday="${d}" role="option" aria-selected="${d===day}">
+      <span class="ds-w">${dt.toLocaleDateString("en-GB",{weekday:"short",timeZone:"UTC"})}</span><b>${dt.getUTCDate()}</b><span class="ds-t">${esc(tag(d))}</span></button>`;
   }).join("");
 }
 function pickDutyDay(all){
@@ -1191,15 +1208,16 @@ function viewDuty(){
   const dayEnd=Date.parse(day+"T00:00:00Z")+DAY;
   const cum=cumulative(all, dayEnd, "A");
 
+  const off=offDays().get(day);
   const nav=`<section class="card daynav">
-    <div class="dn-mid"><b>${esc(DOW(day))}</b><span>UTC date · ${list.length?list.length===1?"1 duty":list.length+" duties":sbs.length?"standby":"no duty"}</span></div>
+    <div class="dn-mid"><b>${esc(DOW(day))}</b><span>UTC date · ${list.length?list.length===1?"1 duty":list.length+" duties":sbs.length?"standby":off?"day off ("+esc(off.code)+")":"no duty"}</span></div>
     <div class="dstrip" id="dstrip" role="listbox" aria-label="Duty days">${dayStrip(all, days, day)}</div>
     <div class="dn-tools"><label class="f" for="dutyJump">Go to date<input class="in" type="date" id="dutyJump" value="${day}"></label>
       <button class="btn quiet" data-dday="${esc(days.find(d=>d>=utcDate(Date.now()))||days[days.length-1]||"")}">Next duty from today</button></div>
   </section>`;
 
   const cards=list.map(d=>dutyCard(d)).join("") ||
-    (sbs.length ? "" : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Scroll the strip above to move between duty days.</span></div></section>`);
+    (sbs.length ? "" : off ? offCard(all, day, off) : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Nothing on your roster for this day.</span></div></section>`);
   const sbCard = sbs.map(s=>{ const m=(s.end-s.start)/MIN;
     return `<section class="card duty"><div class="dhead"><div><h2>Home standby</h2><p class="sub">${hhmmZ(s.start)}–${hhmmZ(s.end)}Z · ${hm(m)}</p></div>${chipFor(m>720?"bad":"ok", m>720?"Over 12 h":"Legal")}</div>
       ${s.called?"":`<p class="note">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty (2.11.2.4). A flight after it needs 12 h rest from the end of the standby (2.10.3.1).</p>`}
@@ -1372,6 +1390,15 @@ function nextPanel(d){
         : (n.dom!=null?dep("Domestic from "+esc(n.stn||""), n.dom, REPORT_DOM):"") + dep("International from "+esc(n.stn||""), n.intl, intlLead(n.stn))}
     </div>
     <p class="sub refx" data-refof="${esc(k)}">From ${d.hasActual?"your actual":"the planned"} sign-out at ${hhmmZ(X.signout)}Z: ${esc(n.why.join("; "))}. Earliest report ${hhmmZ(n.report)}Z. Training or office duty from ${hhmmZ(n.train)}Z (10 h rest + transport).</p></div>`;
+}
+// A day off from the roster, and whether it sits inside a weekly rest that meets OM-A 2.10.6
+function offCard(all, day, off){
+  const d0=Date.parse(day+"T00:00:00Z"), d1=d0+DAY;
+  const wr=all.wkA.rests.find(r=>r.a<d1 && r.b>d0);
+  const NAMES={"W-OFF":"Weekly off","ROFF":"Rest day off","HOFF":"Day off for high hours"};
+  const t=ms=>`${hhmmZ(ms)}Z ${esc(DOW(utcDate(ms)))}`;
+  return `<section class="card duty"><div class="dhead"><div><h2>${esc(NAMES[off.code]||"Day off")}</h2><p class="sub">${esc(off.code)} · ${t(off.start)} to ${t(off.end)}</p></div>${wr?chipFor(wr.ok?"ok":"bad", wr.ok?"Weekly rest":"Short rest"):""}</div>
+    <p class="note">${wr ? (wr.ok ? `Part of a valid weekly rest, ${t(wr.a)} to ${t(wr.b)}: ${hm(wr.hrs)} with ${wr.counted} local nights.` : `Inside a ${hm(wr.hrs)} break that does not meet the weekly rest rules (${hm(wr.req)} with 2 local nights).`) : "No duty on this day."}</p></section>`;
 }
 function rmBtn(uid, date, label){
   return `<div class="btns rmrow"><button class="btn quiet rm" data-hide="${esc(uid)}" data-hd="${esc(date)}" data-hl="${esc(label)}">Remove from Duty tab</button></div>`;
