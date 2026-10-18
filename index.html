@@ -104,6 +104,7 @@ td .del:hover{color:var(--red)}
 .sec td:nth-child(6){width:96px}
 td.act{white-space:nowrap;text-align:right;width:1%}
 td.act .chip{margin-right:4px}
+.chip.warn{color:var(--yellow);border-color:var(--yellow)}
 input[type=date].in{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;width:100%;text-align:left;min-height:34px}
 input[type=date].in::-webkit-date-and-time-value{text-align:left;margin:0}
 input[type=date].in::-webkit-datetime-edit{padding:0}
@@ -606,7 +607,7 @@ function importRoster(text){
   for(const s of sectors){
     const date=s.date, ym=date.slice(0,7);
     if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
-    jobs.push({key:"sectors", ym, item:{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:utcParts(s.start).time,report:s.report||"",roster:true},
+    jobs.push({key:"sectors", ym, flown:s.start<=Date.now(), item:{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:utcParts(s.start).time,report:s.report||"",roster:true},
       same:r=>(r.from||"").toUpperCase()===s.from && (r.to||"").toUpperCase()===s.to});
   }
   for(const l of lays){
@@ -647,9 +648,12 @@ function importRoster(text){
         if((!dup.uid || dup.edited) && !(adopted && row.edited)){ for(const h of [...HOURS,"type"]) if(dup[h]!=null && dup[h]!=="") row[h]=dup[h]; row.edited=true }
         list.splice(list.indexOf(dup),1) }
       const keep=row.edited?["fixed","nights","mins","days","type"]:[];
+      // A flown sector comes back at actual block; keep the fixed block we had from before it flew
+      if(key==="sectors" && j.flown && row.sched) keep.push("fixed","dep");
       for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
+      if(key==="sectors"){ if(!j.flown){ row.sched=true; delete row.checkFixed } else if(!row.sched && !row.edited) row.checkFixed=true; else delete row.checkFixed }
       if(moved||dups||JSON.stringify(row)!==before) st.updated++ }
-    else { list.push({id:uid(), ...item}); st.added++ }
+    else { const r={id:uid(), ...item}; if(key==="sectors"){ if(j.flown) r.checkFixed=true; else r.sched=true } list.push(r); st.added++ }
   };
   for(const j of jobs){ seen.add(j.item.uid); if(j.alias) for(const a of j.alias) seen.add(a); st.touched.add(j.ym); put(j) }
   // Duties dropped from the roster: remove synced rows in the roster's date range that you have not edited
@@ -755,7 +759,22 @@ function storeRosterEvents(evs){
   const keep=evs.filter(e=>e.start>=FDTL_START-DAY).map(slimEvent);
   if(!keep.length) return;
   const lo=Math.min(...evs.map(e=>e.start)), hi=Math.max(...evs.map(e=>e.start));
-  detectChanges(rosterEvents, keep, lo, hi, Date.now());
+  const now=Date.now();
+  detectChanges(rosterEvents, keep, lo, hi, now);
+  // Crew Access rewrites a duty with actual times once it has operated. If we saw it before then, keep that
+  // version as planned and take the rewrite as actual (sectors: off/on blocks, check-in: report).
+  const byUid=new Map(rosterEvents.map(e=>[e.uid,e])), newUids=new Set(keep.map(e=>e.uid));
+  const twin=e=>byUid.get(e.uid) || rosterEvents.find(o=>!newUids.has(o.uid) && o.t===e.t && (e.t!=="sector"||(o.from===e.from&&o.to===e.to)) && Math.abs(o.start-e.start)<=6*HR);
+  for(let i=0;i<keep.length;i++){ const e=keep[i];
+    if(!["sector","checkin","checkout"].includes(e.t)) continue;
+    const o=twin(e);
+    e.seen = o&&o.seen!=null ? o.seen : now;
+    const plannedKnown = o && o.seen!=null && o.seen < (o.pStart??o.start);
+    if(plannedKnown && e.start<=now){
+      const pS=o.pStart??o.start, pE=o.pEnd??o.end;
+      if(e.t==="sector"||e.t==="checkin"){ if(e.start!==pS||e.end!==pE){ e.aStart=e.start; e.aEnd=e.end } else if(o.aStart!=null){ e.aStart=o.aStart; e.aEnd=o.aEnd } }
+      e.start=pS; e.end=pE; e.pStart=pS; e.pEnd=pE }
+  }
   const map=new Map(rosterEvents.filter(e=>e.start<lo||e.start>hi).map(e=>[e.uid,e]));
   for(const e of keep) map.set(e.uid,e);
   rosterEvents=[...map.values()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:1));
@@ -793,7 +812,7 @@ function fdpLimits(landings, night){
 function buildDuties(){
   const ev=rosterEvents, duties=[], standbys=[];
   let cur=null;
-  const open=(e,report)=>{ cur={uid:e.uid, report, items:[], checkinStn:e.stn||"" } };
+  const open=(e,report)=>{ cur={uid:e.uid, report, items:[], checkinStn:e.stn||"", aReport:e.t==="checkin"?e.aStart:null } };
   const close=(endMs, stn)=>{ if(!cur) return; cur.signoutPlanned=endMs; cur.signoutStn=stn||""; duties.push(cur); cur=null };
   for(let i=0;i<ev.length;i++){ const e=ev[i];
     // A check-in while a bare check-in (standby) is open: called out, so the standby ends here
@@ -841,9 +860,9 @@ function evalDuty(d){
   const a=actuals[d.uid]||{};
   const airport = d.sby && d.sby.kind==="airport";
   // Called from an airport standby: the whole standby is FDP and duty (2.11.2.2 a), so the duty starts when the standby did
-  const rep={plan:airport?d.sby.start:d.report, act:nearUTC(a.report,d.report)};
+  const rep={plan:airport?d.sby.start:d.report, act:nearUTC(a.report,d.report) ?? (d.aReport!=null && d.aReport!==d.report ? d.aReport : null)};
   const nofly = !!a.nofly && (d.items.some(x=>x.t==="sector"));
-  const secs=sectors.map(s=>{ const x=actuals[s.uid]||{}; const off=nearUTC(x.off,s.start), on=nearUTC(x.on,s.end);
+  const secs=sectors.map(s=>{ const x=actuals[s.uid]||{}; const off=nearUTC(x.off,s.start) ?? (s.aStart??null), on=nearUTC(x.on,s.end) ?? (s.aEnd??null);
     return {...s, offA:off, onA:on, blockP:(s.end-s.start)/MIN, blockA:(off!=null||on!=null)?((on??s.end)-(off??s.start))/MIN:null} });
   const one=(which)=>{
     const R = which==="act" ? (airport ? rep.plan : (rep.act??rep.plan)) : rep.plan;
@@ -1104,7 +1123,7 @@ function dutyCard(d){
   const rows=[];
   const a=actuals[d.uid]||{};
   if(d.sby&&d.sby.kind==="airport") rows.push(`<tr class="tl-rep"><td>Airport standby${d.sby.stn?` ${esc(d.sby.stn)}`:""}<span class="rtime">Counts as FDP from here (2.11.2.2 a)</span></td><td class="n">${hhmmZ(d.sby.start)}</td><td class="n muted">–</td><td></td></tr>`);
-  rows.push(`<tr class="tl-rep"><td>Report${d.checkinStn?` ${esc(d.checkinStn)}`:""}</td><td class="n">${hhmmZ(d.report)}</td><td class="n">${d.sby&&d.sby.kind==="airport"?'<span class="muted">–</span>':actInput(d.uid,"report",a.report,hhmmZ(P.report),"Actual report time UTC")}</td><td class="n muted">${A.report!==P.report&&!(d.sby&&d.sby.kind==="airport")?diffTxt((A.report-P.report)/MIN):""}</td></tr>`);
+  rows.push(`<tr class="tl-rep"><td>Report${d.checkinStn?` ${esc(d.checkinStn)}`:""}</td><td class="n">${hhmmZ(d.report)}</td><td class="n">${d.sby&&d.sby.kind==="airport"?'<span class="muted">–</span>':actInput(d.uid,"report",a.report||(d.aReport!=null&&d.aReport!==d.report?hhmmZ(d.aReport):""),hhmmZ(P.report),"Actual report time UTC")}</td><td class="n muted">${A.report!==P.report&&!(d.sby&&d.sby.kind==="airport")?diffTxt((A.report-P.report)/MIN):""}</td></tr>`);
   const haltsBy=new Map(X.halts.map(h=>[h.before,h]));
   for(const it of d.items){
     if(it.t==="training"){ rows.push(`<tr class="tl-trn"><td colspan="4"><b>Training</b> ${hhmmZ(it.start)}–${hhmmZ(it.end)}Z<span class="rtime" style="white-space:normal">${esc(it.desc||it.code||"")}</span></td></tr>`); continue }
@@ -1112,7 +1131,7 @@ function dutyCard(d){
     const h=haltsBy.get(s.uid); if(h) rows.push(haltRow(h));
     rows.push(`<tr class="tl-sec"><td><b>${esc(s.flt||(s.kind==="dh"?"Positioning":""))}</b> ${esc(s.from)} → ${esc(s.to)}${s.kind==="dh"?' <span class="chip">Deadhead</span>':""}<span class="rtime">Planned block ${hm(s.blockP)}${s.blockA!=null?` · actual ${hm(s.blockA)}`:""}</span></td>
       <td class="n">${hhmmZ(s.start)}<br>${hhmmZ(s.end)}</td>
-      <td class="n act2">${d.nofly?'<span class="muted">Not flown</span>':`<div class="stack">${actInput(s.uid,"off",x.off,hhmmZ(s.start),"Actual off-blocks UTC")}${actInput(s.uid,"on",x.on,hhmmZ(s.end),"Actual on-blocks UTC")}</div>`}</td>
+      <td class="n act2">${d.nofly?'<span class="muted">Not flown</span>':`<div class="stack">${actInput(s.uid,"off",x.off||(s.aStart!=null?hhmmZ(s.aStart):""),hhmmZ(s.start),"Actual off-blocks UTC")}${actInput(s.uid,"on",x.on||(s.aEnd!=null?hhmmZ(s.aEnd):""),hhmmZ(s.end),"Actual on-blocks UTC")}</div>`}</td>
       <td class="n muted">${s.blockA!=null?diffTxt(s.blockA-s.blockP):""}</td></tr>`);
   }
   if(d.nofly) rows.push(`<tr class="tl-rep"><td>Released, no flying<span class="rtime">When you were released</span></td><td class="n muted">–</td><td class="n">${actInput(d.uid,"rel",a.rel,"",'Release time UTC')}</td><td></td></tr>`);
@@ -1191,7 +1210,7 @@ function dutyCard(d){
   return `<section class="card duty">
     <div class="dhead"><div><h2>${esc(typeName)}</h2><p class="sub">${esc(route||d.trn.map(t=>t.code).join(", ")||(d.type==="asby"?`${d.checkinStn||""} ${hhmmZ(P.report)}–${hhmmZ(P.signout)}Z`.trim():""))}</p></div>${chipFor(overall, overall==="ok"?"Legal":overall==="warn"?"Close to a limit":"Limit exceeded")}</div>
     <div class="tbl"><table class="tl"><thead><tr><th>UTC</th><th class="n">Planned</th><th class="n">Actual</th><th class="n">Diff</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
-    <p class="note">Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
+    <p class="note">${d.secs.some(s=>s.aStart!=null)?"Actual times came from your calendar, which Crew Access updates after each flight. ":""}Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
     <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">Limit</th><th class="n">Planned</th><th class="n">Actual</th></tr></thead><tbody>${chk.join("")}</tbody></table></div>
     ${notes.length?`<ul class="fnotes">${notes.map(n=>`<li>${n}</li>`).join("")}</ul>`:""}
     ${d.type==="asby"?sbyPick(d.uid,"airport")+callPick(d.uid):""}
@@ -1299,7 +1318,7 @@ function viewLog(){
         <option value="dh"${s.kind==="dh"?" selected":""}>Deadhead (SOD)</option>
         <option value="div"${s.kind==="div"?" selected":""}>Diversion / ferry</option></select></td>
       <td data-l="${lbl}" class="w2"><input class="in n" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
-      <td class="act">${s.example?'<span class="chip ex">Example</span>':""}${s.roster?`<span class="chip${s.edited?"":" rev"}" title="${s.edited?"From roster, edited by you":"From roster"}">${s.edited?"Edited":"Roster"}</span>`:""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
+      <td class="act">${s.example?'<span class="chip ex">Example</span>':""}${s.roster?`<span class="chip${s.edited?"":" rev"}" title="${s.edited?"From roster, edited by you":"From roster"}">${s.edited?"Edited":"Roster"}</span>${s.checkFixed&&!s.edited?'<span class="chip warn" title="First synced after it flew, so this is the actual block. Type the fixed block over it.">Check block</span>':""}`:""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
   }).join("");
   const domRows = d.dom.map(x=>`<tr data-id="${x.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="d-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
@@ -1312,7 +1331,7 @@ function viewLog(){
   ${hasEx?`<div class="banner"><span>Rows marked Example are sample data to show how the log works. Replace them with your own sectors.</span><button class="btn ghost" id="clearEx">Remove examples</button></div>`:""}
   <section class="card">
     <h2>Sectors</h2>
-    <p class="sub">Flying pay uses the fixed block hours published for each sector (PAC/SOP/27). Dates and times are UTC; each sector takes the date of its duty's check-in. Synced sectors come in at their rostered block time: if the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
+    <p class="sub">Flying pay uses the fixed block hours published for each sector (PAC/SOP/27). Dates and times are UTC; each sector takes the date of its duty's check-in. Synced sectors come in at their rostered block time, and keep it after Crew Access rewrites the flight with actual times; those actual times go to the Duty tab. A sector first synced after it flew is tagged Check block, because only its actual time was available. If the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
     ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Block</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="pay">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
