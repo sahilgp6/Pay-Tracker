@@ -288,7 +288,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 29</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 30</span></span></footer>
 </div>
 
 <script>
@@ -304,7 +304,7 @@ const RANKS = {
 };
 // Hourly flying allowance by band: 0-40, 40-70, 70-80, 80-90, 90+
 const RATES = {
-  rev:{ // PAC/SOP/27, w.e.f. 1 Oct 2026
+  rev:{ // w.e.f. 1 Oct 2026
     jfo:[1600,1700,1800,1900,2000], fo:[3100,3300,3400,3700,3800], sfo:[4600,4900,5000,5400,5600],
     cdr:[7800,8200,8300,8875,9230], scdr:[7800,8200,8300,8875,9230]}
 };
@@ -422,7 +422,7 @@ function calc(ym, st){
     if(s.kind==="dhx") continue;   // unpaid deadhead: duty, but no SOD
     if(s.kind==="dh") dhMin += b; else opMin += b;
   }
-  // Training (PAC/SOP/27 E): each day credits fleet average / 22 hours, added to the month's hours.
+  // Training: each day credits fleet average / 22 hours, added to the month's hours.
   // Pay above the guaranteed 40 hours starts only once flying + training passes 40.
   const train = d.train||[], trainDays = train.reduce((a,x)=>a+(+x.days||0),0);
   const fleetAvg = +profile.fleetAvg||40, trainPerDay = fleetAvg/22, trainHrs = trainDays*trainPerDay;
@@ -532,7 +532,7 @@ function utcParts(ms){ const d=new Date(ms); const p=n=>String(n).padStart(2,"0"
 function istParts(ms){ const d=new Date(ms+330*60000); const p=n=>String(n).padStart(2,"0");
   return {date:`${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}`, time:`${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`} }
 const dutyCode = desc=>((String(desc).match(/Duty Type:\s*([^\n]+)/i)||[])[1]||"").trim();
-// Paid training per PAC/SOP/27 section E, recognised from the calendar title, notes or duty type
+// Paid training, recognised from the calendar title, notes or duty type
 function trainingType(summary, desc){
   const t=(summary+" "+desc), code=dutyCode(desc).toUpperCase();
   const isStandby=/stand\s*by|\bSBY\b/i.test(t), isOff=/day off|\bW-?OFF\b|\bR-?OFF\b|\bLEAVE\b/i.test(t);
@@ -1569,7 +1569,7 @@ function viewLog(){
   <section class="card">
     <h2>Sectors</h2>
     <p class="sub">Pay uses the fixed block for each sector. Dates and times in UTC. <button class="refbtn" type="button" data-ref="help|sectors" aria-label="Show more">🔽</button></p>
-    <p class="sub refx" data-refof="help|sectors">Flying pay uses the fixed block hours published for each sector (PAC/SOP/27). Dates and times are UTC; each sector takes the date of its duty's check-in. Synced sectors come in at their rostered block time, and keep it after Crew Access rewrites the flight with actual times; those actual times go to the Duty tab. A sector first synced after it flew is tagged Check block, because only its actual time was available. If the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
+    <p class="sub refx" data-refof="help|sectors">Flying pay uses the fixed block hours published for each sector. Dates and times are UTC; each sector takes the date of its duty's check-in. Synced sectors come in at their rostered block time, and keep it after Crew Access rewrites the flight with actual times; those actual times go to the Duty tab. A sector first synced after it flew is tagged Check block, because only its actual time was available. If the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
     ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Block</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="pay">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
@@ -1578,7 +1578,7 @@ function viewLog(){
   </section>
   <section class="card">
     <h2>Domestic layovers</h2>
-    <p class="sub">${esc(inr(k.domRate))} per night. <button class="refbtn" type="button" data-ref="help|domlay" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|domlay">${esc(inr(k.domRate))} per night for ${esc(RANKS[k.rank].label)} (AIEXPRESS/HR/6631). International layovers go in the next tab.</p>
+    <p class="sub">${esc(inr(k.domRate))} per night. <button class="refbtn" type="button" data-ref="help|domlay" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|domlay">${esc(inr(k.domRate))} per night for ${esc(RANKS[k.rank].label)}. International layovers go in the next tab.</p>
     ${d.dom.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station</th><th class="n">Nights</th><th class="n">Amount</th><th></th></tr></thead><tbody>${domRows}</tbody>
       <tfoot><tr><td colspan="2">${k.domNights} night${k.domNights===1?"":"s"}</td><td></td><td class="pay">${inr(k.dom)}</td><td></td></tr></tfoot></table></div>`:""}
     <div class="btns"><button class="btn ${d.dom.length?"":"ghost"}" data-add="dom">Add domestic layover</button></div>
@@ -1590,7 +1590,7 @@ function viewLog(){
       <div class="fleet-out"><b>${hm(k.trainPerDay*60)}</b><span>per training day</span></div>
       ${profile.fleetAvgSet?"":`<span class="chip ex">Placeholder</span>`}
     </div>
-    <p class="sub">Each day adds fleet average ÷ 22 hours.${profile.fleetAvgSet?"":" Fleet average is a placeholder."} <button class="refbtn" type="button" data-ref="help|training" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|training">${profile.fleetAvgSet?"":"40 hours is a conservative placeholder. Enter the published 737 fleet average once you have it; every month's training updates straight away. "}Each training day adds the fleet average ÷ 22 to your hours for the month (PAC/SOP/27). It only adds pay once flying plus training passes the guaranteed 40 hours. Training on your roster comes in when you paste it; remove any day that is not paid training.</p>
+    <p class="sub">Each day adds fleet average ÷ 22 hours.${profile.fleetAvgSet?"":" Fleet average is a placeholder."} <button class="refbtn" type="button" data-ref="help|training" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|training">${profile.fleetAvgSet?"":"40 hours is a conservative placeholder. Enter the published 737 fleet average once you have it; every month's training updates straight away. "}Each training day adds the fleet average ÷ 22 to your hours for the month. It only adds pay once flying plus training passes the guaranteed 40 hours. Training on your roster comes in when you paste it; remove any day that is not paid training.</p>
     ${d.train.length?`<div class="tbl"><table class="stack"><thead><tr><th>Start date</th><th>Training</th><th class="n">Days</th><th class="n">Hours</th><th></th></tr></thead><tbody>${d.train.map(x=>`<tr data-id="${x.id}">
       <td data-l="Start date" class="w2"><input class="in" type="date" id="t-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
       <td data-l="Training" class="w2"><select class="in" id="t-${x.id}-type" data-f="type">${TRAIN_TYPES.map(t=>`<option${x.type===t?" selected":""}>${esc(t)}</option>`).join("")}</select></td>
@@ -1615,7 +1615,7 @@ function viewIntl(){
     <td><button class="del" data-del="intl" aria-label="Delete layover">×<span class="dl"> Remove</span></button></td></tr>`).join("");
   return `<section class="card">
     <h2>International layovers</h2>
-    <p class="sub">Per diem in USD, tax-free. <button class="refbtn" type="button" data-ref="help|intlay" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|intlay">Per diem in USD from AIXL/HR/2022/3918, at the ${k.p1?"P1 (Commander)":"P2 (First Officer)"} rate for your rank. It is tax-exempt and sits outside CTC, so it never enters gross, tax or take-home. Each full 24 hours counts as a day; the part left over pays 30% up to 6 hours, 70% up to 12 hours and a full day beyond that.</p>
+    <p class="sub">Per diem in USD, tax-free. <button class="refbtn" type="button" data-ref="help|intlay" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|intlay">Per diem in USD, at the ${k.p1?"P1 (Commander)":"P2 (First Officer)"} rate for your rank. It is tax-exempt and sits outside CTC, so it never enters gross, tax or take-home. Each full 24 hours counts as a day; the part left over pays 30% up to 6 hours, 70% up to 12 hours and a full day beyond that.</p>
     ${d.intl.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station / country</th><th class="n">Hours</th><th class="n">Rate/day</th><th class="n">Full + part</th><th class="n">Days</th><th class="n">USD</th><th></th></tr></thead><tbody>${rows}</tbody>
       <tfoot><tr><td colspan="6">Tax-exempt, paid separately from salary</td><td class="pay">${usd(k.intlUSD)}</td><td></td></tr></tfoot></table></div>`
      :`<div class="empty"><b>No international layovers in ${esc(ymLabel(cur))}</b><span>Type the station or country as it appears on your roster. "Muscat, Oman" or just "Oman" both find the rate.</span></div>`}

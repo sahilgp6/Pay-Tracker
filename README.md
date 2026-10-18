@@ -7,9 +7,9 @@ Live: https://sahilgp6.github.io/Pay-Tracker/
 Made by Sahil Gupta.
 
 ## Features
-- **Flight log:** sectors with fixed block hours (PAC/SOP/27), deadhead sectors for SOD, diversions and ferry flights on actual block, domestic layover nights
+- **Flight log:** sectors with fixed block hours, deadhead sectors for SOD, diversions and ferry flights on actual block, domestic layover nights
 - **Pay:** fixed pay from your compensation letter, tiered flying allowance above 40 hours (0-40, 40-70, 70-80, 80-90, 90+), SOD at 65% of the 0-40 rate, estimated TDS, employee PF and professional tax, with a new vs old tax regime comparison
-- **International layovers:** per diem in USD for 215 countries from AIXL/HR/2022/3918, with the 30% / 70% / full-day rule; tax-exempt and kept outside CTC
+- **International layovers:** per diem in USD for 215 countries, with the 30% / 70% / full-day rule; tax-exempt and kept outside CTC
 - **Year:** month-by-month block hours, gross, TDS and take-home for the financial year
 - **Ranks:** JFO, FO, Captain (SFO), Commander and Senior Commander rates
 - **Works offline** once opened from the live link (`sw.js` service worker), and can be added to the home screen
