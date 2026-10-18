@@ -288,7 +288,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span id="saveState">Saved on this device</span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 23</span></span></footer>
 </div>
 
 <script>
@@ -419,6 +419,7 @@ function calc(ym, st){
   let opMin=0, dhMin=0;
   for(const s of d.sectors){
     const b=(+s.fixed||0)||(+s.actual||0);   // older rows may only hold actual
+    if(s.kind==="dhx") continue;   // unpaid deadhead: duty, but no SOD
     if(s.kind==="dh") dhMin += b; else opMin += b;
   }
   // Training (PAC/SOP/27 E): each day credits fleet average / 22 hours, added to the month's hours.
@@ -457,9 +458,9 @@ const LS_KEY = "crewpaylog.v1";
 function lsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LS_KEY)||"null"); if(j) applyData(j) }catch(e){} }
 function applyData(j){ profile=normProfile(j.profile); months={}; for(const k in (j.months||{})) months[k]=normMonth(j.months[k]);
   rosterEvents=Array.isArray(j.rosterEvents)?j.rosterEvents:[]; actuals=(j.actuals&&typeof j.actuals==="object")?j.actuals:{};
-  rosterChanges=Array.isArray(j.rosterChanges)?j.rosterChanges:[]; lastPaste=+j.lastPaste||0; rosterHist=Array.isArray(j.rosterHist)?j.rosterHist:[] }
+  rosterChanges=Array.isArray(j.rosterChanges)?j.rosterChanges:[]; lastPaste=+j.lastPaste||0; rosterHist=Array.isArray(j.rosterHist)?j.rosterHist:[]; dismissed=Array.isArray(j.dismissed)?j.dismissed:[] }
 function lsSave(){
-  try{ localStorage.setItem(LS_KEY, JSON.stringify({profile, months, rosterEvents, actuals, rosterChanges, lastPaste, rosterHist})); setSave("Saved on this device") }
+  try{ localStorage.setItem(LS_KEY, JSON.stringify({profile, months, rosterEvents, actuals, rosterChanges, lastPaste, rosterHist, dismissed})); setSave("Saved on this device") }
   catch(e){ setSave("Could not save. Storage may be full or blocked in private browsing.") }
 }
 function setSave(t){ $("#saveState").textContent=t }
@@ -473,7 +474,7 @@ const queueProfile = ()=>queueSave();
 
 function backupData(){
   const m={}; for(const k in months){ const d=months[k]; if(hasLog(d)||d.record||d.paid) m[k]=d }
-  return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m, rosterEvents, actuals, rosterChanges, lastPaste, rosterHist};
+  return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m, rosterEvents, actuals, rosterChanges, lastPaste, rosterHist, dismissed};
 }
 function downloadBackup(){
   const d=new Date(), stamp=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
@@ -631,8 +632,8 @@ function importRoster(text){
       const row=L.find(r=>r.uid===sc.uid&&sameRoute(r)) || L.find(r=>r.date===sc.date&&sameRoute(r));
       if(!row||row.edited||row.sched||row.ownPlan) continue;
       row.fixed=sc.fixed; row.dep=utcParts(sc.start).time; row.sched=true; delete row.checkFixed; fixedN++ }
-    logPaste({historical:true, filled:info.filled, fixed:fixedN, events:evs.length}); lsSave();
-    return {historical:true, filled:info.filled, fixed:fixedN};
+    logPaste({historical:true, filled:info.filled, offs:info.offs, fixed:fixedN, events:evs.length}); lsSave();
+    return {historical:true, filled:info.filled, offs:info.offs, fixed:fixedN};
   }
   if(!sectors.length && !lays.length && !courses.length) return {error:"The calendar had events but no flights, deadheads or hotel layovers the app recognises."};
   const st={added:0, updated:0, removed:0, skipped:new Set(), touched:new Set()};
@@ -693,11 +694,15 @@ function importRoster(text){
       // A flown sector comes back at actual block; keep the fixed block we had from before it flew
       if(key==="sectors" && j.flown && row.sched) keep.push("fixed","dep");
       if(key==="sectors" && row.ownPlan) keep.push("fixed","dep","report");
+      if(key==="sectors" && row.kind==="dhx") keep.push("kind");   // you marked it unpaid
       for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
       if(key==="sectors"){ if(!j.flown){ row.sched=true; delete row.checkFixed } else if(!row.sched && !row.edited) row.checkFixed=true; else delete row.checkFixed }
       if(moved||dups||JSON.stringify(row)!==before) st.updated++ }
     else { const r={id:uid(), ...item}; if(key==="sectors"){ if(j.flown) r.checkFixed=true; else r.sched=true } list.push(r); st.added++ }
   };
+  // rows you deleted from the log stay deleted
+  const isDismissed=j=>dismissed.some(x=>x.key===j.key && ((x.uid && x.uid===j.item.uid) || (x.date===j.item.date && (j.key!=="sectors" || (x.from===j.item.from && x.to===j.item.to)) && (j.key!=="dom" || x.stn===j.item.stn))));
+  for(let i=jobs.length-1;i>=0;i--) if(isDismissed(jobs[i])){ seen.add(jobs[i].item.uid); jobs.splice(i,1) }
   for(const j of jobs){ seen.add(j.item.uid); if(j.alias) for(const a of j.alias) seen.add(a); st.touched.add(j.ym); put(j) }
   // Duties dropped from the roster: remove synced rows in the roster's date range that you have not edited
   for(const ym in months){ const d=months[ym]; if(d.record) continue;
@@ -711,7 +716,7 @@ function importRoster(text){
 function logPaste(x){ rosterHist=[{at:Date.now(), ...x}, ...rosterHist].slice(0,60) }
 function rosterMessage(st){
   if(st.error) return st.error;
-  if(st.historical) return st.filled||st.fixed ? `Older roster: planned times restored for ${st.filled} event${st.filled===1?"":"s"} already flown${st.fixed?`, and the fixed block for ${st.fixed} sector${st.fixed===1?"":"s"}`:""}. Nothing newer was changed.` : "This roster is older than the one already saved, and had no missing planned times to restore. Nothing was changed.";
+  if(st.historical) return st.filled||st.fixed||st.offs ? `Older roster used to fill gaps: ${[st.filled?`planned times for ${st.filled} event${st.filled===1?"":"s"} already flown`:"", st.fixed?`the fixed block for ${st.fixed} sector${st.fixed===1?"":"s"}`:"", st.offs?`${st.offs} day${st.offs===1?"":"s"} off or standby${st.offs===1?"":"s"} that newer pastes had dropped`:""].filter(Boolean).join(", ")}. Nothing newer was changed.` : "This roster is older than the one already saved, and had no missing planned times to restore. Nothing was changed.";
   const parts=[]; if(st.added) parts.push(`${st.added} added`); if(st.updated) parts.push(`${st.updated} updated`); if(st.removed) parts.push(`${st.removed} removed (no longer on your roster)`);
   let m = parts.length?`Roster synced: ${parts.join(", ")}.`:"Roster synced: everything was already up to date.";
   if(st.skipped.size) m+=` ${[...st.skipped].sort().map(ymLabel).join(", ")} kept as recorded totals.`;
@@ -740,6 +745,7 @@ function rosterCard(){
       <label class="btn quiet" for="rosterFile" style="display:inline-flex;align-items:center">Choose .ics file</label>
       <input type="file" id="rosterFile" accept=".ics,text/calendar" hidden>
     </div>
+    ${dismissed.length?`<p class="note">${dismissed.length} roster row${dismissed.length===1?"":"s"} you deleted will stay out of the log. <button class="linkbtn" id="undismiss">Bring them back</button></p>`:""}
     ${showRosterBox?`<label class="f" for="rosterText">Paste the copied roster here<textarea class="in" id="rosterText" rows="4" placeholder="BEGIN:VCALENDAR…" style="font-family:var(--f-mono);font-size:12px"></textarea></label><div class="btns"><button class="btn" id="rosterGo">Import</button></div>`:""}
   </section>`;
 }
@@ -750,7 +756,8 @@ let rosterEvents = [];                           // parsed Crew Access events fr
 let actuals = {};
 let rosterChanges = [];                          // duty changes seen between pastes (Rostering Policy 2.2, 2.3)
 let lastPaste = 0;
-let rosterHist = [];                             // one line per paste                               // when the roster was last pasted                                // uid -> {off, on} for sectors, duty uid -> {report}; UTC "HH:MM"
+let rosterHist = [];
+let dismissed = [];                              // roster rows you deleted; a paste does not bring them back                             // one line per paste                               // when the roster was last pasted                                // uid -> {off, on} for sectors, duty uid -> {report}; UTC "HH:MM"
 const MIN=60000, HR=3600000, DAY=86400000;
 const IST_OFF = 330*MIN;
 
@@ -824,15 +831,17 @@ function storeRosterEvents(evs){
     return rosterEvents.find(o=>!newUids.has(o.uid) && same(o,e) && Math.abs(o.start-e.start)<=6*HR) || null };
   const historical = rosterEvents.length>0 && lmOf(keep)>0 && lmOf(keep) < lmOf(rosterEvents)-60000;
   if(historical){
-    let filled=0;
+    let filled=0, offs=0;
     for(const e of keep){ if(!timed(e.t) || isRewrite(e,now)) continue;
       const o=twin(e); if(!o || isPlanVersion(o,now)) continue;
       const cal={s:o.start, e:o.end};
       o.start=e.start; o.end=e.end; o.pStart=e.start; o.pEnd=e.end; delete o.noPlan;
       if(o.t!=="checkout" && (cal.s!==e.start||cal.e!==e.end)){ o.aStart=cal.s; o.aEnd=cal.e } else if(o.t!=="checkout"){ delete o.aStart; delete o.aEnd }
       filled++ }
+    // and bring back past days off and standbys that newer pastes no longer carry
+    for(const e of keep){ if((e.t==="off"||e.t==="standby") && e.start<=now && !rosterEvents.some(o=>o.t===e.t && o.start<e.end && o.end>e.start)){ rosterEvents.push(e); offs++ } }
     rosterEvents.sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:1));
-    return {historical:true, filled};
+    return {historical:true, filled, offs};
   }
   const nChg=rosterChanges.length;
   detectChanges(rosterEvents, keep, lo, hi, now);
@@ -846,7 +855,9 @@ function storeRosterEvents(evs){
       e.start=plan.s; e.end=plan.e; e.pStart=plan.s; e.pEnd=plan.e }
     else if(e.t!=="checkout"){ e.noPlan=true; e.aStart=e.start; e.aEnd=e.end }   // first seen after it flew: actuals only
   }
-  const map=new Map(rosterEvents.filter(e=>e.start<lo||e.start>hi).map(e=>[e.uid,e]));
+  // Crew Access drops days off and standbys once they have started; keep the ones we already hold
+  const pastKeep=e=>(e.t==="off"||e.t==="standby") && e.start<=now && !keep.some(n=>n.t===e.t && n.start<e.end && n.end>e.start);
+  const map=new Map(rosterEvents.filter(e=>e.start<lo||e.start>hi||pastKeep(e)).map(e=>[e.uid,e]));
   for(const e of keep) map.set(e.uid,e);
   rosterEvents=[...map.values()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:1));
   return {historical:false, filled:0, changes:rosterChanges.length-nChg};
@@ -894,7 +905,7 @@ function logEvents(){
       const id=r.uid||("m|"+r.id);
       if(r.report){ let rep=Date.parse(r.date+"T"+r.report+":00Z"); if(!isNaN(rep)){ if(start<rep) start+=DAY;
         out.push({uid:"mr|"+id, t:"checkin", start:rep, end:rep, stn:from, manual:true}) } }
-      out.push({uid:id, t:"sector", start, end:start+(+r.fixed)*MIN, from, to, kind:r.kind==="dh"?"dh":"op", flt:(r.flt||"").toUpperCase(), manual:true});
+      out.push({uid:id, t:"sector", start, end:start+(+r.fixed)*MIN, from, to, kind:(r.kind==="dh"||r.kind==="dhx")?"dh":"op", flt:(r.flt||"").toUpperCase(), manual:true});
     } }
   return out;
 }
@@ -1147,9 +1158,10 @@ let fdtlCache = null;          // recomputed on every render
 const DOW = d=>new Date(d+"T00:00:00Z").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
 function offDays(){
   const m=new Map();
+  for(const k in actuals) if(k.startsWith("off|") && actuals[k] && actuals[k].code){ const d=k.slice(4), t=Date.parse(d+"T00:00:00Z"); m.set(d,{code:actuals[k].code, start:t, end:t+DAY, manual:true}) }
   for(const e of rosterEvents){ if(e.t!=="off") continue;
     for(let d=Math.floor(e.start/DAY)*DAY; d<e.end; d+=DAY){ const cov=Math.min(e.end,d+DAY)-Math.max(e.start,d);
-      if(cov>=12*HR) m.set(new Date(d).toISOString().slice(0,10), {code:e.code||"OFF", start:e.start, end:e.end}) } }
+      if(cov>=12*HR && !m.has(new Date(d).toISOString().slice(0,10))) m.set(new Date(d).toISOString().slice(0,10), {code:e.code||"OFF", start:e.start, end:e.end}) } }
   return m;
 }
 function dutyDays(all){
@@ -1217,7 +1229,7 @@ function viewDuty(){
   </section>`;
 
   const cards=list.map(d=>dutyCard(d)).join("") ||
-    (sbs.length ? "" : off ? offCard(all, day, off) : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Nothing on your roster for this day.</span></div></section>`);
+    (sbs.length ? "" : off ? offCard(all, day, off) : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Nothing on your roster for this day. If it was a day off, mark it:</span><div class="btns" style="justify-content:center">${["W-OFF","ROFF","LEAVE"].map(c=>`<button class="btn quiet" data-markoff="${day}" data-code="${c}">${c==="LEAVE"?"Leave":c}</button>`).join("")}</div></div></section>`);
   const sbCard = sbs.map(s=>{ const m=(s.end-s.start)/MIN;
     return `<section class="card duty"><div class="dhead"><div><h2>Home standby</h2><p class="sub">${hhmmZ(s.start)}–${hhmmZ(s.end)}Z · ${hm(m)}</p></div>${chipFor(m>720?"bad":"ok", m>720?"Over 12 h":"Legal")}</div>
       ${s.called?"":`<p class="note">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty (2.11.2.4). A flight after it needs 12 h rest from the end of the standby (2.10.3.1).</p>`}
@@ -1395,10 +1407,11 @@ function nextPanel(d){
 function offCard(all, day, off){
   const d0=Date.parse(day+"T00:00:00Z"), d1=d0+DAY;
   const wr=all.wkA.rests.find(r=>r.a<d1 && r.b>d0);
-  const NAMES={"W-OFF":"Weekly off","ROFF":"Rest day off","HOFF":"Day off for high hours"};
+  const NAMES={"W-OFF":"Weekly off","ROFF":"Rest day off","HOFF":"Day off for high hours","LEAVE":"Leave"};
   const t=ms=>`${hhmmZ(ms)}Z ${esc(DOW(utcDate(ms)))}`;
   return `<section class="card duty"><div class="dhead"><div><h2>${esc(NAMES[off.code]||"Day off")}</h2><p class="sub">${esc(off.code)} · ${t(off.start)} to ${t(off.end)}</p></div>${wr?chipFor(wr.ok?"ok":"bad", wr.ok?"Weekly rest":"Short rest"):""}</div>
-    <p class="note">${wr ? (wr.ok ? `Part of a valid weekly rest, ${t(wr.a)} to ${t(wr.b)}: ${hm(wr.hrs)} with ${wr.counted} local nights.` : `Inside a ${hm(wr.hrs)} break that does not meet the weekly rest rules (${hm(wr.req)} with 2 local nights).`) : "No duty on this day."}</p></section>`;
+    ${off.manual?`<div class="btns rmrow"><button class="btn quiet rm" data-markoff="${day}" data-code="">Unmark day off</button></div>`:""}
+    <p class="note">${off.manual?"Marked by you. ":""}${wr ? (wr.ok ? `Part of a valid weekly rest, ${t(wr.a)} to ${t(wr.b)}: ${hm(wr.hrs)} with ${wr.counted} local nights.` : `Inside a ${hm(wr.hrs)} break that does not meet the weekly rest rules (${hm(wr.req)} with 2 local nights).`) : "No duty on this day."}</p></section>`;
 }
 function rmBtn(uid, date, label){
   return `<div class="btns rmrow"><button class="btn quiet rm" data-hide="${esc(uid)}" data-hd="${esc(date)}" data-hl="${esc(label)}">Remove from Duty tab</button></div>`;
@@ -1512,6 +1525,7 @@ function viewLog(){
       <td data-l="Type" class="w2"><select class="in" id="s-${s.id}-kind" data-f="kind">
         <option value="op"${s.kind==="op"?" selected":""}>Operating</option>
         <option value="dh"${s.kind==="dh"?" selected":""}>Deadhead (SOD)</option>
+        <option value="dhx"${s.kind==="dhx"?" selected":""}>Deadhead (unpaid)</option>
         <option value="div"${s.kind==="div"?" selected":""}>Diversion / ferry</option></select></td>
       <td data-l="${lbl}" class="w2"><input class="in n" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
       <td class="act">${s.example?'<span class="chip ex">Example</span>':""}${s.roster?`<span class="chip${s.edited?"":" rev"}" title="${s.edited?"From roster, edited by you":"From roster"}">${s.edited?"Edited":"Roster"}</span>${s.checkFixed&&!s.edited?'<span class="chip warn" title="First synced after it flew, so this is the actual block. Type the fixed block over it.">Check block</span>':""}`:""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
@@ -1708,7 +1722,7 @@ function viewYear(){
 function pasteHistCard(){
   if(!rosterHist.length) return "";
   const t=ms=>new Date(ms+IST_OFF).toISOString().slice(0,16).replace("T"," ");
-  const line=h=> h.historical ? `Older roster: planned times restored for ${h.filled||0}${h.fixed?`, fixed block for ${h.fixed}`:""}`
+  const line=h=> h.historical ? `Older roster: ${h.filled||0} planned times${h.fixed?`, ${h.fixed} fixed blocks`:""}${h.offs?`, ${h.offs} days off`:""} restored`
     : [h.added?`${h.added} added`:"", h.updated?`${h.updated} updated`:"", h.removed?`${h.removed} removed`:"", h.changes?`${h.changes} duty change${h.changes===1?"":"s"}`:""].filter(Boolean).join(" · ") || "No changes";
   return `<section class="card">
     <h2>Paste history</h2>
@@ -1782,6 +1796,7 @@ document.addEventListener("click", e=>{
   if(t.dataset.cdel){ profile.compHidden=[...new Set([...(profile.compHidden||[]), t.dataset.cdel])]; queueProfile(); render(); return }
   if(t.id==="restoreComp"){ profile.compHidden=[]; queueProfile(); render(); return }
   if(t.dataset.exdel){ profile.extra=(profile.extra||[]).filter(x=>x.id!==t.dataset.exdel); queueProfile(); render(); return }
+  if(t.dataset.markoff){ const k="off|"+t.dataset.markoff; if(t.dataset.code) actuals[k]={code:t.dataset.code}; else delete actuals[k]; queueSave(); render(); return }
   if(t.dataset.hide){ if(!confirm("Remove this from the Duty tab? It stops counting in the FDTL checks. Your Flight log and pay are not changed, and you can restore it from this day.")) return;
     actuals[t.dataset.hide]={...(actuals[t.dataset.hide]||{}), hide:true, hd:t.dataset.hd, hl:t.dataset.hl}; queueSave(); render(); return }
   if(t.dataset.unhide){ const c2={...(actuals[t.dataset.unhide]||{})}; delete c2.hide; delete c2.hd; delete c2.hl;
@@ -1812,7 +1827,10 @@ document.addEventListener("click", e=>{
     const first = document.querySelector(`tr[data-id="${row.id}"] input:not([type=date])`); if(first) first.focus();
     return;
   }
-  if(t.dataset.del){ const id=t.closest("tr").dataset.id; d[t.dataset.del]=d[t.dataset.del].filter(r=>r.id!==id); queueMonth(cur); render(); return }
+  if(t.dataset.del){ const id=t.closest("tr").dataset.id, gone=d[t.dataset.del].find(r=>r.id===id);
+    if(gone && gone.roster) dismissed=[...dismissed, {key:t.dataset.del, uid:gone.uid||"", date:gone.date, from:gone.from||"", to:gone.to||"", stn:gone.stn||"", type:gone.type||"", label:[gone.date, gone.from&&gone.to?gone.from+"–"+gone.to:(gone.stn||gone.country||gone.type||"")].join(" ")}];
+    d[t.dataset.del]=d[t.dataset.del].filter(r=>r.id!==id); queueMonth(cur); render(); return }
+  if(t.id==="undismiss"){ dismissed=[]; queueSave(); showBanner("Deleted roster rows will come back on your next paste."); render(); return }
   if(t.id==="clearEx"){ d.sectors=d.sectors.filter(s=>!s.example); d.dom=d.dom.filter(s=>!s.example); queueMonth(cur); render(); return }
   if(t.id==="loadEx"){
     const D=n=>cur+"-"+String(n).padStart(2,"0"), b=profile.base||"BOM";
