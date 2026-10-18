@@ -553,13 +553,18 @@ function rosterItems(events){
   }
   // one training day per calendar day; consecutive days of the same course become one entry
   const days=[]; const seenDay=new Set();
-  for(const {e,type} of training){ const date=istParts(e.start).date, key=date+"|"+type; if(seenDay.has(key)) continue; seenDay.add(key); days.push({date,type,uid:e.uid||key,code:dutyCode(e.desc)}) }
+  const dayIds=new Map();   // every calendar event id on that training day
+  for(const {e,type} of training){ const date=istParts(e.start).date, key=date+"|"+type;
+    if(!dayIds.has(key)) dayIds.set(key,[]); if(e.uid) dayIds.get(key).push(e.uid);
+    if(seenDay.has(key)) continue; seenDay.add(key); days.push({date,type,code:dutyCode(e.desc),ids:dayIds.get(key)}) }
   days.sort((a,b)=>a.date<b.date?-1:1);
   const courses=[];
   for(const d of days){ const last=courses[courses.length-1];
     const next=last&&new Date(Date.parse(last.end)+86400000).toISOString().slice(0,10);
-    if(last && last.type===d.type && next===d.date && last.date.slice(0,7)===d.date.slice(0,7)){ last.days++; last.end=d.date }
-    else courses.push({...d, days:1, end:d.date}) }
+    if(last && last.type===d.type && next===d.date && last.date.slice(0,7)===d.date.slice(0,7)){ last.days++; last.end=d.date; last.ids.push(...d.ids) }
+    else courses.push({...d, ids:[...d.ids], days:1, end:d.date}) }
+  // A course is named by its first day and type, which stay put; the order of events in a paste does not
+  for(const c of courses) c.uid="train|"+c.date+"|"+c.type;
   return {sectors, lays, courses, from:events.length?events[0].start:0, to:events.length?events[events.length-1].start:0};
 }
 function importRoster(text){
@@ -572,6 +577,7 @@ function importRoster(text){
   const lo=istParts(from).date, hi=istParts(to).date;
   const HOURS=["fixed","nights","mins","days"];
   const pasted=new Set(evs.map(e=>e.uid).filter(Boolean));
+  for(const c of courses) pasted.add(c.uid);
   const free=r=>!r.uid || !pasted.has(r.uid);   // hand-typed, or synced under an id Crew Access has since replaced
   const stale=r=>!!r.uid && !pasted.has(r.uid);
   const near=(a,b)=>Math.abs(Date.parse(a)-Date.parse(b))<=DAY;
@@ -592,7 +598,7 @@ function importRoster(text){
   for(const c of courses){
     const ym=c.date.slice(0,7);
     if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
-    jobs.push({key:"train", ym, item:{uid:c.uid,date:c.date,type:c.type,days:c.days,code:c.code,roster:true}, same:r=>!r.uid || r.type===c.type});
+    jobs.push({key:"train", ym, item:{uid:c.uid,date:c.date,type:c.type,days:c.days,code:c.code,roster:true}, alias:new Set(c.ids), same:r=>!r.uid || r.type===c.type});
   }
   const others=(j,r,date)=>jobs.filter(o=>o!==j && o.key===j.key && o.item.date===date && o.same(r)).length;
   // Exact date first. A row under a replaced id may carry an older date (rows were once dated in IST), so it can match
@@ -608,13 +614,15 @@ function importRoster(text){
   };
   const put=j=>{ // update by uid, else adopt a matching row of yours, else add
     const {key, ym, item}=j, list=monthData(ym)[key];
+    const mine=r=>r.uid===item.uid || !!(j.alias && j.alias.has(r.uid));   // this duty, under its id or (training) any event id inside it
     let {row, moved}=take(key, ym, r=>r.uid===item.uid);
+    if(!row) ({row, moved}=take(key, ym, mine));
     if(!row){
       for(const f of [r=>fitsExact(j,r)&&r.edited, r=>fitsExact(j,r), r=>fitsNear(j,r)&&r.edited, r=>fitsNear(j,r)]){ ({row, moved}=take(key, ym, f)); if(row) break }
       if(row){ if(!row.uid||row.edited) row.edited=true; row.example=false } }   // your entry keeps your hours
     if(row){ const before=JSON.stringify(row), adopted=row.uid!==item.uid; let dups=0;
       // More copies of the same duty: typed by hand, or left over under a replaced id. Only when the roster has one such duty that day.
-      const extra=r=>r!==row && !jobs.some(o=>o.item.uid===r.uid) && (fitsExact(j,r) ? !others(j,r,item.date) : fitsNear(j,r));
+      const extra=r=>r!==row && (mine(r) || (!jobs.some(o=>o.item.uid===r.uid || (o.alias && o.alias.has(r.uid))) && (fitsExact(j,r) ? !others(j,r,item.date) : fitsNear(j,r))));
       for(let dup; (dup=take(key, ym, extra).row); dups++){
         if((!dup.uid || dup.edited) && !(adopted && row.edited)){ for(const h of [...HOURS,"type"]) if(dup[h]!=null && dup[h]!=="") row[h]=dup[h]; row.edited=true }
         list.splice(list.indexOf(dup),1) }
@@ -623,7 +631,7 @@ function importRoster(text){
       if(moved||dups||JSON.stringify(row)!==before) st.updated++ }
     else { list.push({id:uid(), ...item}); st.added++ }
   };
-  for(const j of jobs){ seen.add(j.item.uid); st.touched.add(j.ym); put(j) }
+  for(const j of jobs){ seen.add(j.item.uid); if(j.alias) for(const a of j.alias) seen.add(a); st.touched.add(j.ym); put(j) }
   // Duties dropped from the roster: remove synced rows in the roster's date range that you have not edited
   for(const ym in months){ const d=months[ym]; if(d.record) continue;
     for(const key of ["sectors","dom","intl","train"]){ if(!d[key]) continue; const n0=d[key].length;
