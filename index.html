@@ -192,7 +192,7 @@ textarea.in{resize:vertical;width:100%}
 .dn-mid b{font-size:19px;font-weight:800}
 .dn-mid span{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
 table.chk .rtime,table.tl .rtime{white-space:normal}
-@media (max-width:380px){table.chk th,table.chk td,table.tl th,table.tl td{padding-left:5px;padding-right:5px}table.chk th{font-size:10px;letter-spacing:.3px}table.chk .rtime{overflow-wrap:anywhere}}
+@media (max-width:380px){input.in.actin{width:60px;padding:5px 4px}table.chk th,table.chk td,table.tl th,table.tl td{padding-left:5px;padding-right:5px}table.chk th{font-size:10px;letter-spacing:.3px}table.chk .rtime{overflow-wrap:anywhere}}
 .linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
 .flags{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
 label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}label.chk input{width:18px;height:18px;accent-color:var(--accent)}
@@ -207,6 +207,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
 .refx{display:none!important}.refx.ref-open{display:block!important}
 .nextp h3{display:flex;align-items:center;gap:4px}
 .tpair{display:flex;gap:6px;margin-top:6px}.tpair .in{color:var(--text);font-weight:400;letter-spacing:0;text-transform:none}.tpair label{display:flex;flex-direction:column;gap:2px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);flex:1 1 0;min-width:0}
+.phist td:first-child{white-space:nowrap;width:1%;color:var(--muted);font-size:13px}.phist td{font-size:13px}
 .wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
 .wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
@@ -452,9 +453,9 @@ const LS_KEY = "crewpaylog.v1";
 function lsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LS_KEY)||"null"); if(j) applyData(j) }catch(e){} }
 function applyData(j){ profile=normProfile(j.profile); months={}; for(const k in (j.months||{})) months[k]=normMonth(j.months[k]);
   rosterEvents=Array.isArray(j.rosterEvents)?j.rosterEvents:[]; actuals=(j.actuals&&typeof j.actuals==="object")?j.actuals:{};
-  rosterChanges=Array.isArray(j.rosterChanges)?j.rosterChanges:[]; lastPaste=+j.lastPaste||0 }
+  rosterChanges=Array.isArray(j.rosterChanges)?j.rosterChanges:[]; lastPaste=+j.lastPaste||0; rosterHist=Array.isArray(j.rosterHist)?j.rosterHist:[] }
 function lsSave(){
-  try{ localStorage.setItem(LS_KEY, JSON.stringify({profile, months, rosterEvents, actuals, rosterChanges, lastPaste})); setSave("Saved on this device") }
+  try{ localStorage.setItem(LS_KEY, JSON.stringify({profile, months, rosterEvents, actuals, rosterChanges, lastPaste, rosterHist})); setSave("Saved on this device") }
   catch(e){ setSave("Could not save. Storage may be full or blocked in private browsing.") }
 }
 function setSave(t){ $("#saveState").textContent=t }
@@ -468,7 +469,7 @@ const queueProfile = ()=>queueSave();
 
 function backupData(){
   const m={}; for(const k in months){ const d=months[k]; if(hasLog(d)||d.record||d.paid) m[k]=d }
-  return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m, rosterEvents, actuals, rosterChanges, lastPaste};
+  return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m, rosterEvents, actuals, rosterChanges, lastPaste, rosterHist};
 }
 function downloadBackup(){
   const d=new Date(), stamp=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
@@ -615,8 +616,19 @@ function rosterItems(events){
 function importRoster(text){
   const evs=parseICS(text);
   if(!evs.length) return {error:"No calendar events found. Copy the whole roster calendar, not a single event."};
-  storeRosterEvents(evs);
+  const info=storeRosterEvents(evs);
   const {sectors,lays,courses,from,to}=rosterItems(evs);
+  const evByUid=new Map(evs.map(e=>[e.uid,e])), now0=Date.now();
+  if(info.historical){   // an older export: restore fixed blocks of flights flown since, nothing else
+    let fixedN=0;
+    for(const sc of sectors){ const ev=evByUid.get(sc.uid); if(!ev || isRewrite(ev,now0)) continue;
+      const L=months[sc.date.slice(0,7)]&&months[sc.date.slice(0,7)].sectors; if(!L) continue;
+      const row=L.find(r=>r.uid===sc.uid) || L.find(r=>r.date===sc.date&&(r.from||"").toUpperCase()===sc.from&&(r.to||"").toUpperCase()===sc.to);
+      if(!row||row.edited||row.sched||row.ownPlan) continue;
+      row.fixed=sc.fixed; row.dep=utcParts(sc.start).time; row.sched=true; delete row.checkFixed; fixedN++ }
+    logPaste({historical:true, filled:info.filled, fixed:fixedN, events:evs.length}); lsSave();
+    return {historical:true, filled:info.filled, fixed:fixedN};
+  }
   if(!sectors.length && !lays.length && !courses.length) return {error:"The calendar had events but no flights, deadheads or hotel layovers the app recognises."};
   const st={added:0, updated:0, removed:0, skipped:new Set(), touched:new Set()};
   const lo=istParts(from).date, hi=istParts(to).date;
@@ -631,7 +643,7 @@ function importRoster(text){
   for(const s of sectors){
     const date=s.date, ym=date.slice(0,7);
     if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
-    jobs.push({key:"sectors", ym, flown:s.start<=Date.now(), item:{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:utcParts(s.start).time,report:s.report||"",roster:true},
+    jobs.push({key:"sectors", ym, flown:(evByUid.get(s.uid)?isRewrite(evByUid.get(s.uid),now0):s.start<=now0), item:{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:utcParts(s.start).time,report:s.report||"",roster:true},
       same:r=>(r.from||"").toUpperCase()===s.from && (r.to||"").toUpperCase()===s.to});
   }
   for(const l of lays){
@@ -664,7 +676,7 @@ function importRoster(text){
     if(!row) ({row, moved}=take(key, ym, mine));
     if(!row){
       for(const f of [r=>fitsExact(j,r)&&r.edited, r=>fitsExact(j,r), r=>fitsNear(j,r)&&r.edited, r=>fitsNear(j,r)]){ ({row, moved}=take(key, ym, f)); if(row) break }
-      if(row){ if(!row.uid||row.edited) row.edited=true; row.example=false } }   // your entry keeps your hours
+      if(row){ if(!row.uid && key==="sectors") row.ownPlan=true; if(!row.uid||row.edited) row.edited=true; row.example=false } }   // your entry keeps your hours and, for a flight you added, your planned times
     if(row){ const before=JSON.stringify(row), adopted=row.uid!==item.uid; let dups=0;
       // More copies of the same duty: typed by hand, or left over under a replaced id. Only when the roster has one such duty that day.
       const extra=r=>r!==row && (mine(r) || (!jobs.some(o=>o.item.uid===r.uid || (o.alias && o.alias.has(r.uid))) && (fitsExact(j,r) ? !others(j,r,item.date) : fitsNear(j,r))));
@@ -674,6 +686,7 @@ function importRoster(text){
       const keep=row.edited?["fixed","nights","mins","days","type"]:[];
       // A flown sector comes back at actual block; keep the fixed block we had from before it flew
       if(key==="sectors" && j.flown && row.sched) keep.push("fixed","dep");
+      if(key==="sectors" && row.ownPlan) keep.push("fixed","dep","report");
       for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
       if(key==="sectors"){ if(!j.flown){ row.sched=true; delete row.checkFixed } else if(!row.sched && !row.edited) row.checkFixed=true; else delete row.checkFixed }
       if(moved||dups||JSON.stringify(row)!==before) st.updated++ }
@@ -684,11 +697,15 @@ function importRoster(text){
   for(const ym in months){ const d=months[ym]; if(d.record) continue;
     for(const key of ["sectors","dom","intl","train"]){ if(!d[key]) continue; const n0=d[key].length;
       d[key]=d[key].filter(r=>!(r.roster && r.uid && !r.edited && !seen.has(r.uid) && r.date>=lo && r.date<=hi)); st.removed+=n0-d[key].length } }
+  logPaste({events:evs.length, added:st.added, updated:st.updated, removed:st.removed, changes:info.changes||0});
   lsSave();
   return st;
 }
+// A short record of every paste, newest first (Setup shows it)
+function logPaste(x){ rosterHist=[{at:Date.now(), ...x}, ...rosterHist].slice(0,60) }
 function rosterMessage(st){
   if(st.error) return st.error;
+  if(st.historical) return st.filled||st.fixed ? `Older roster: planned times restored for ${st.filled} event${st.filled===1?"":"s"} already flown${st.fixed?`, and the fixed block for ${st.fixed} sector${st.fixed===1?"":"s"}`:""}. Nothing newer was changed.` : "This roster is older than the one already saved, and had no missing planned times to restore. Nothing was changed.";
   const parts=[]; if(st.added) parts.push(`${st.added} added`); if(st.updated) parts.push(`${st.updated} updated`); if(st.removed) parts.push(`${st.removed} removed (no longer on your roster)`);
   let m = parts.length?`Roster synced: ${parts.join(", ")}.`:"Roster synced: everything was already up to date.";
   if(st.skipped.size) m+=` ${[...st.skipped].sort().map(ymLabel).join(", ")} kept as recorded totals.`;
@@ -726,7 +743,8 @@ const FDTL_START = Date.UTC(2026,9,1);          // history is kept from 1 Oct 20
 let rosterEvents = [];                           // parsed Crew Access events from FDTL_START, kept for duty times
 let actuals = {};
 let rosterChanges = [];                          // duty changes seen between pastes (Rostering Policy 2.2, 2.3)
-let lastPaste = 0;                               // when the roster was last pasted                                // uid -> {off, on} for sectors, duty uid -> {report}; UTC "HH:MM"
+let lastPaste = 0;
+let rosterHist = [];                             // one line per paste                               // when the roster was last pasted                                // uid -> {off, on} for sectors, duty uid -> {report}; UTC "HH:MM"
 const MIN=60000, HR=3600000, DAY=86400000;
 const IST_OFF = 330*MIN;
 
@@ -779,29 +797,48 @@ function detectChanges(oldEvs, newEvs, lo, hi, now){
   rosterChanges=rosterChanges.filter(c=>(c.newStart||c.oldStart)>=FDTL_START);
 }
 // Called by importRoster: replace stored events inside the pasted range, keep the rest
+// Crew Access rewrites a duty with its actual times once it has operated. The calendar's own "last modified" time tells
+// the two apart: modified before departure = the plan, modified after = the rewrite carrying actuals.
+const isRewrite = (e, now)=> e.lm!=null ? e.lm>e.start : e.start<=now;
+const isPlanVersion = (o, now)=> o.pStart!=null || (o.lm!=null ? o.lm<=o.start : (o.seen!=null ? o.seen<o.start : o.start>now));
+// Store a paste's events. Planned times, once known, never change after the flight; a rewrite only supplies actuals.
+// A paste older than what is stored (an earlier export) only fills in planned times that are missing.
 function storeRosterEvents(evs){
   const keep=evs.filter(e=>e.start>=FDTL_START-DAY).map(slimEvent);
-  if(!keep.length) return;
+  if(!keep.length) return {historical:false, filled:0};
   const lo=Math.min(...evs.map(e=>e.start)), hi=Math.max(...evs.map(e=>e.start));
-  const now=Date.now();
-  detectChanges(rosterEvents, keep, lo, hi, now);
-  // Crew Access rewrites a duty with actual times once it has operated. If we saw it before then, keep that
-  // version as planned and take the rewrite as actual (sectors: off/on blocks, check-in: report).
+  const now=Date.now(), timed=t=>t==="sector"||t==="checkin"||t==="checkout";
+  const lmOf=list=>list.reduce((m,e)=>Math.max(m,e.lm||0),0);
   const byUid=new Map(rosterEvents.map(e=>[e.uid,e])), newUids=new Set(keep.map(e=>e.uid));
   const twin=e=>byUid.get(e.uid) || rosterEvents.find(o=>!newUids.has(o.uid) && o.t===e.t && (e.t!=="sector"||(o.from===e.from&&o.to===e.to)) && Math.abs(o.start-e.start)<=6*HR);
-  for(let i=0;i<keep.length;i++){ const e=keep[i];
-    if(!["sector","checkin","checkout"].includes(e.t)) continue;
+  const historical = rosterEvents.length>0 && lmOf(keep)>0 && lmOf(keep) < lmOf(rosterEvents)-60000;
+  if(historical){
+    let filled=0;
+    for(const e of keep){ if(!timed(e.t) || isRewrite(e,now)) continue;
+      const o=twin(e); if(!o || isPlanVersion(o,now)) continue;
+      const cal={s:o.start, e:o.end};
+      o.start=e.start; o.end=e.end; o.pStart=e.start; o.pEnd=e.end; delete o.noPlan;
+      if(o.t!=="checkout" && (cal.s!==e.start||cal.e!==e.end)){ o.aStart=cal.s; o.aEnd=cal.e } else if(o.t!=="checkout"){ delete o.aStart; delete o.aEnd }
+      filled++ }
+    rosterEvents.sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:1));
+    return {historical:true, filled};
+  }
+  const nChg=rosterChanges.length;
+  detectChanges(rosterEvents, keep, lo, hi, now);
+  for(const e of keep){ if(!timed(e.t)) continue;
     const o=twin(e);
     e.seen = o&&o.seen!=null ? o.seen : now;
-    const plannedKnown = o && o.seen!=null && o.seen < (o.pStart??o.start);
-    if(plannedKnown && e.start<=now){
-      const pS=o.pStart??o.start, pE=o.pEnd??o.end;
-      if(e.t==="sector"||e.t==="checkin"){ if(e.start!==pS||e.end!==pE){ e.aStart=e.start; e.aEnd=e.end } else if(o.aStart!=null){ e.aStart=o.aStart; e.aEnd=o.aEnd } }
-      e.start=pS; e.end=pE; e.pStart=pS; e.pEnd=pE }
+    if(!isRewrite(e,now)){ e.pStart=e.start; e.pEnd=e.end; continue }   // the plan, or a change to it before the flight
+    const plan = o && isPlanVersion(o,now) ? {s:o.pStart??o.start, e:o.pEnd??o.end} : null;
+    if(plan){
+      if(e.t!=="checkout"){ if(e.start!==plan.s||e.end!==plan.e){ e.aStart=e.start; e.aEnd=e.end } else if(o.aStart!=null){ e.aStart=o.aStart; e.aEnd=o.aEnd } }
+      e.start=plan.s; e.end=plan.e; e.pStart=plan.s; e.pEnd=plan.e }
+    else if(e.t!=="checkout"){ e.noPlan=true; e.aStart=e.start; e.aEnd=e.end }   // first seen after it flew: actuals only
   }
   const map=new Map(rosterEvents.filter(e=>e.start<lo||e.start>hi).map(e=>[e.uid,e]));
   for(const e of keep) map.set(e.uid,e);
   rosterEvents=[...map.values()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:1));
+  return {historical:false, filled:0, changes:rosterChanges.length-nChg};
 }
 
 /* Resolve an "HH:MM" UTC entry to the instant nearest the planned time */
@@ -851,7 +888,14 @@ function logEvents(){
 // OM-A 2.4.1.1: report 1:00 before departure, 1:15 for an international departure from a metropolitan station
 const reportLead = e=>(e.kind!=="dh" && METROS.has(e.from) && (!isDomStn(e.from)||!isDomStn(e.to))) ? REPORT_INTL_METRO : REPORT_DOM;
 function buildDuties(){
-  const ev=[...rosterEvents, ...logEvents()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:b.t==="checkin"?1:0)), duties=[], standbys=[];
+  // A flight you added yourself keeps your planned times even once the calendar holds it; the calendar only adds actuals
+  const own=new Map(); for(const ym in months) for(const r of ((months[ym]||{}).sectors||[])) if(r.ownPlan&&r.uid&&r.dep&&+r.fixed>0) own.set(r.uid,r);
+  const mine=e=>{ const r=e.t==="sector"&&own.get(e.uid); if(!r) return e;
+    let st=Date.parse(r.date+"T"+r.dep+":00Z"); if(isNaN(st)) return e;
+    if(r.report){ const rp=Date.parse(r.date+"T"+r.report+":00Z"); if(!isNaN(rp)&&st<rp) st+=DAY }
+    const cal = e.aStart!=null ? {s:e.aStart,e:e.aEnd} : (isRewrite(e,Date.now()) ? {s:e.start,e:e.end} : null);
+    return {...e, start:st, end:st+(+r.fixed)*MIN, noPlan:false, aStart:cal?cal.s:null, aEnd:cal?cal.e:null} };
+  const ev=[...rosterEvents.map(mine), ...logEvents()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:b.t==="checkin"?1:0)), duties=[], standbys=[];
   let cur=null;
   const open=(e,report)=>{ cur={uid:e.uid, report, items:[], checkinStn:e.stn||"", aReport:e.t==="checkin"?e.aStart:null } };
   const close=(endMs, stn)=>{ if(!cur) return; cur.signoutPlanned=endMs; cur.signoutStn=stn||""; duties.push(cur); cur=null };
@@ -907,8 +951,11 @@ function evalDuty(d){
   // Called from an airport standby: the whole standby is FDP and duty (2.11.2.2 a), so the duty starts when the standby did
   const rep={plan:airport?d.sby.start:d.report, act:nearUTC(a.report,d.report) ?? (d.aReport!=null && d.aReport!==d.report ? d.aReport : null)};
   const nofly = !!a.nofly && (d.items.some(x=>x.t==="sector"));
-  const secs=sectors.map(s=>{ const x=actuals[s.uid]||{}; const off=nearUTC(x.off,s.start) ?? (s.aStart??null), on=nearUTC(x.on,s.end) ?? (s.aEnd??null);
-    return {...s, offA:off, onA:on, blockP:(s.end-s.start)/MIN, blockA:(off!=null||on!=null)?((on??s.end)-(off??s.start))/MIN:null} });
+  const secs=sectors.map(s=>{ const x=actuals[s.uid]||{};
+    // first seen after it flew: planned is whatever you type in; until then the calendar's times stand in
+    const pS=s.noPlan?(nearUTC(x.poff,s.start)??s.start):s.start, pE=s.noPlan?(nearUTC(x.pon,s.end)??s.end):s.end;
+    const off=nearUTC(x.off,pS) ?? (s.aStart??null), on=nearUTC(x.on,pE) ?? (s.aEnd??null);
+    return {...s, start:pS, end:pE, offA:off, onA:on, blockP:(pE-pS)/MIN, blockA:(off!=null||on!=null)?((on??pE)-(off??pS))/MIN:null} });
   const one=(which)=>{
     const R = which==="act" ? (airport ? rep.plan : (rep.act??rep.plan)) : rep.plan;
     if(which==="act" && nofly){   // reported, then cancelled: no flying (2.16.1 h)
@@ -1200,10 +1247,10 @@ function dutyCard(d){
     if(it.t==="training"){ rows.push(`<tr class="tl-trn"><td colspan="4"><b>Training</b> ${hhmmZ(it.start)}–${hhmmZ(it.end)}Z<span class="rtime" style="white-space:normal">${esc(it.desc||it.code||"")}</span></td></tr>`); continue }
     const s=d.secs.find(x=>x.uid===it.uid), x=actuals[s.uid]||{};
     const h=haltsBy.get(s.uid); if(h) rows.push(haltRow(h));
-    rows.push(`<tr class="tl-sec"><td><b>${esc(s.flt||(s.kind==="dh"?"Positioning":""))}</b> ${esc(s.from)} → ${esc(s.to)}${s.kind==="dh"?' <span class="chip">Deadhead</span>':""}<span class="rtime">Planned block ${hm(s.blockP)}${s.blockA!=null?` · actual ${hm(s.blockA)}`:""}</span></td>
-      <td class="n">${hhmmZ(s.start)}<br>${hhmmZ(s.end)}</td>
+    rows.push(`<tr class="tl-sec"><td><b>${esc(s.flt||(s.kind==="dh"?"Positioning":""))}</b> ${esc(s.from)} → ${esc(s.to)}${s.kind==="dh"?' <span class="chip">Deadhead</span>':""}<span class="rtime">${s.noPlan&&!x.poff&&!x.pon?"Planned times not in your calendar: add them":`Planned block ${hm(s.blockP)}`}${s.blockA!=null?` · actual ${hm(s.blockA)}`:""}</span></td>
+      <td class="n${s.noPlan?" act2":""}">${s.noPlan?`<div class="stack">${actInput(s.uid,"poff",x.poff,"HH:MM","Planned off-blocks UTC")}${actInput(s.uid,"pon",x.pon,"HH:MM","Planned on-blocks UTC")}</div>`:`${hhmmZ(s.start)}<br>${hhmmZ(s.end)}`}</td>
       <td class="n act2">${d.nofly?'<span class="muted">Not flown</span>':`<div class="stack">${actInput(s.uid,"off",x.off||(s.aStart!=null?hhmmZ(s.aStart):""),hhmmZ(s.start),"Actual off-blocks UTC")}${actInput(s.uid,"on",x.on||(s.aEnd!=null?hhmmZ(s.aEnd):""),hhmmZ(s.end),"Actual on-blocks UTC")}</div>`}</td>
-      <td class="n muted">${s.blockA!=null?diffTxt(s.blockA-s.blockP):""}</td></tr>`);
+      <td class="n muted">${s.blockA!=null&&!(s.noPlan&&!x.poff&&!x.pon)?diffTxt(s.blockA-s.blockP):""}</td></tr>`);
   }
   if(d.nofly) rows.push(`<tr class="tl-rep"><td>Released, no flying<span class="rtime">When you were released</span></td><td class="n muted">–</td><td class="n">${actInput(d.uid,"rel",a.rel,"",'Release time UTC')}</td><td></td></tr>`);
   rows.push(`<tr class="tl-rep"><td>Sign-out${d.signoutStn?` ${esc(d.signoutStn)}`:""}</td><td class="n">${hhmmZ(P.signout)}</td><td class="n">${act?hhmmZ(A.signout):"–"}</td><td class="n muted">${act&&A.signout!==P.signout?diffTxt((A.signout-P.signout)/MIN):""}</td></tr>`);
@@ -1413,7 +1460,7 @@ function viewLog(){
     const lbl = s.kind==="div" ? "Actual block" : "Fixed block";
     return haltTr+`<tr data-id="${s.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="s-${s.id}-date" data-f="date" value="${esc(s.date)}"></td>
-      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${!s.roster?`<span class="tpair"><label>Dep Z<input class="in n" id="s-${s.id}-dep" data-f="dep" data-tm="1" value="${esc(s.dep||"")}" placeholder="HH:MM" inputmode="numeric" aria-label="Departure time UTC"></label><label>Report Z<input class="in n" id="s-${s.id}-report" data-f="report" data-tm="1" value="${esc(s.report||"")}" placeholder="auto" inputmode="numeric" aria-label="Report time UTC, optional"></label></span>${s.dep?"":'<span class="rtime">Add the departure time to include it in the Duty tab</span>'}`:s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
+      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${!s.roster?`<span class="tpair"><label>Planned dep Z<input class="in n" id="s-${s.id}-dep" data-f="dep" data-tm="1" value="${esc(s.dep||"")}" placeholder="HH:MM" inputmode="numeric" aria-label="Planned departure time UTC"></label><label>Report Z<input class="in n" id="s-${s.id}-report" data-f="report" data-tm="1" value="${esc(s.report||"")}" placeholder="auto" inputmode="numeric" aria-label="Report time UTC, optional"></label></span>${s.dep?"":'<span class="rtime">Add the planned departure to include it in the Duty tab</span>'}`:s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
       <td data-l="From"><input class="in caps" id="s-${s.id}-from" data-f="from" value="${esc(s.from)}" placeholder="BOM" maxlength="4" autocomplete="off"></td>
       <td data-l="To"><input class="in caps" id="s-${s.id}-to" data-f="to" value="${esc(s.to)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
       <td data-l="Type" class="w2"><select class="in" id="s-${s.id}-kind" data-f="kind">
@@ -1612,6 +1659,17 @@ function viewYear(){
   </section>`;
 }
 
+function pasteHistCard(){
+  if(!rosterHist.length) return "";
+  const t=ms=>new Date(ms+IST_OFF).toISOString().slice(0,16).replace("T"," ");
+  const line=h=> h.historical ? `Older roster: planned times restored for ${h.filled||0}${h.fixed?`, fixed block for ${h.fixed}`:""}`
+    : [h.added?`${h.added} added`:"", h.updated?`${h.updated} updated`:"", h.removed?`${h.removed} removed`:"", h.changes?`${h.changes} duty change${h.changes===1?"":"s"}`:""].filter(Boolean).join(" · ") || "No changes";
+  return `<section class="card">
+    <h2>Paste history</h2>
+    <p class="sub">Each roster paste, newest first, in IST. Planned times are kept from the first paste that shows a flight before it operates, so pasting whenever your roster changes keeps them safe.</p>
+    <div class="tbl"><table class="phist"><tbody>${rosterHist.slice(0,15).map(h=>`<tr><td class="n">${t(h.at)}</td><td>${esc(line(h))}</td></tr>`).join("")}</tbody></table></div>
+  </section>`;
+}
 function viewSetup(){
   const fxRows = COMP.filter(([k])=>compOn(k)).map(([k,l,cash])=>`<tr class="exrow"><td><div class="exname"><input class="in" id="cn-${k}" data-cn="${k}" data-def="${esc(l)}" value="${esc(compLabel(k,l))}" placeholder="${esc(l)}" aria-label="Name for ${esc(l)}" autocomplete="off">${cash?"":'<span><span class="chip">CTC only</span></span>'}</div></td>
     ${["rev"].map(st=>`<td><div class="examt"><input class="in n" id="fx-${st}-${k}" data-fx="${st}" data-k="${k}" value="${profile.fixed[st][k]?Number(profile.fixed[st][k]).toLocaleString("en-IN"):""}" placeholder="0" inputmode="numeric"><button class="del" data-cdel="${k}" aria-label="Remove ${esc(compLabel(k,l))}">×<span class="dl"> Remove</span></button></div></td>`).join("")}</tr>`).join("");
@@ -1646,6 +1704,7 @@ function viewSetup(){
       <label class="f">Domestic layover allowance<select id="p-layoverExempt" data-p="layoverExempt"><option value="0"${!profile.layoverExempt?" selected":""}>Taxed with salary</option><option value="1"${profile.layoverExempt?" selected":""}>Tax-exempt</option></select></label>
     </div>
   </section>
+  ${pasteHistCard()}
   <section class="card">
     <h2>Backup</h2>
     <p class="sub">Everything is saved in this browser on this device and nowhere else. Phone browsers can clear saved data, so download a backup now and then and keep it in Files or iCloud Drive.${(()=>{try{const l=localStorage.getItem(LS_KEY+".lastBackup");return l?` Last backup: ${esc(l)}.`:" No backup downloaded yet."}catch(e){return ""}})()}</p>
