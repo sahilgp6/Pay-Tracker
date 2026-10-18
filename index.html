@@ -120,6 +120,9 @@ input[type=date].in::-webkit-datetime-edit{padding:0}
   table.stack tfoot{display:block}
   table.stack tfoot tr{grid-template-columns:1fr auto}
   table.stack tfoot td:last-child{display:none}
+  table.stack td.act{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px;white-space:normal}
+  table.stack td.act .chip{margin-right:0}
+  table.stack .rtime,table.stack td.pay{white-space:normal;overflow-wrap:anywhere}
 }
 
 /* Payslip */
@@ -154,8 +157,9 @@ input[type=date].in::-webkit-datetime-edit{padding:0}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 label.f .in,label.f select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:14px;font-weight:400;letter-spacing:0;text-transform:none}
 .fx th:not(:first-child),.fx td:not(:first-child){text-align:right}
-.fx td:first-child{white-space:nowrap;font-size:14px}
-.fx .in{max-width:150px;margin-left:auto;display:block}
+.fx td:first-child{font-size:14px}
+.fx td:last-child{width:1%}
+.fx .in{width:122px;max-width:122px;margin-left:auto;display:block}
 
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-size:10px;font-weight:600;fill:var(--muted);font-family:var(--f-body)}
@@ -191,6 +195,7 @@ table.chk .rtime,table.tl .rtime{white-space:normal}
 .linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
 .flags{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
 label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}label.chk input{width:18px;height:18px;accent-color:var(--accent)}
+.exname{display:flex;flex-direction:column;gap:6px}.exname .in{width:100%;max-width:none;margin:0}.examt{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
 .wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
@@ -363,7 +368,9 @@ function summary(ym){
     return {rec:true, opMin:(+r.block||0)*60, dhMin:(+r.dh||0)*60, domNights:+r.dom||0, intlMin:(+r.intlHrs||0)*60, intlUSD:+r.usd||0, gross:+r.gross||0, tds:null, net:+r.net||0} }
   return calc(ym);
 }
-function normProfile(p){ const d=DEFAULT_PROFILE(); p=p||{}; return {...d,...p, fixed:{cur:{...(p.fixed&&p.fixed.cur||{})},rev:{...(p.fixed&&p.fixed.rev||{})}}} }
+function normProfile(p){ const d=DEFAULT_PROFILE(); p=p||{};
+  const extra=Array.isArray(p.extra)?p.extra.filter(x=>x&&typeof x==="object").map(x=>({id:String(x.id||uid()), name:String(x.name||""), amt:+x.amt||0, cash:x.cash!==false})):[];
+  return {...d,...p, extra, fixed:{cur:{...(p.fixed&&p.fixed.cur||{})},rev:{...(p.fixed&&p.fixed.rev||{})}}} }
 
 /* ---------- Pay engine ---------- */
 function taxNew(t){
@@ -385,7 +392,9 @@ function calc(ym, st){
   const d = monthData(ym), rank = profile.rank in RANKS ? profile.rank : "fo";
   const r = RATES[st][rank], fx = profile.fixed[st] || {};
   const mon = k=>(+fx[k]||0)/12;
-  const fixedLines = COMP.filter(c=>c[2]).map(([k,l])=>[l,mon(k)]).filter(x=>x[1]>0);
+  // Components you added yourself: paid in salary (in gross, taxed) or CTC only
+  const extra = (profile.extra||[]).filter(x=>+x.amt>0);
+  const fixedLines = [...COMP.filter(c=>c[2]).map(([k,l])=>[l,mon(k)]), ...extra.filter(x=>x.cash).map(x=>[x.name||"Other component", x.amt/12])].filter(x=>x[1]>0);
   const fixedCash = fixedLines.reduce((a,x)=>a+x[1],0);
   let opMin=0, dhMin=0;
   for(const s of d.sectors){
@@ -420,7 +429,7 @@ function calc(ym, st){
   const net = gross - tds - pfEe - pt;
   return {st, rank, r, fixedLines, fixedCash, opMin, dhMin, H, addLines, addFly, sodRate, sod, domRate, domNights, dom,
     intlRows, intlUSD, trainDays, trainPerDay, trainHrs, trainPay, fleetAvg, totMin, gross, annual, taxN, taxO, tds, pfEe, pt, net, p1,
-    hasFixed: fixedCash>0, ctc: COMP.reduce((a,[k])=>a+(+fx[k]||0),0)};
+    hasFixed: fixedCash>0, ctc: COMP.reduce((a,[k])=>a+(+fx[k]||0),0) + extra.reduce((a,x)=>a+(+x.amt||0),0)};
 }
 
 /* ---------- Storage (this device only) ---------- */
@@ -1512,7 +1521,10 @@ function viewYear(){
 function viewSetup(){
   const fxRows = COMP.map(([k,l,cash])=>`<tr><td>${esc(l)}${cash?"":' <span class="chip">CTC only</span>'}</td>
     ${["rev"].map(st=>`<td><input class="in n" id="fx-${st}-${k}" data-fx="${st}" data-k="${k}" value="${profile.fixed[st][k]?Number(profile.fixed[st][k]).toLocaleString("en-IN"):""}" placeholder="0" inputmode="numeric"></td>`).join("")}</tr>`).join("");
-  const tot = st=>COMP.reduce((a,[k])=>a+(+profile.fixed[st][k]||0),0);
+  const tot = st=>COMP.reduce((a,[k])=>a+(+profile.fixed[st][k]||0),0) + (profile.extra||[]).reduce((a,x)=>a+(+x.amt||0),0);
+  const exRows = (profile.extra||[]).map(x=>`<tr class="exrow"><td><div class="exname"><input class="in" id="ex-${x.id}-name" data-ex="${x.id}" data-ef="name" value="${esc(x.name)}" placeholder="Component name" autocomplete="off">
+      <select class="in" id="ex-${x.id}-cash" data-ex="${x.id}" data-ef="cash"><option value="1"${x.cash?" selected":""}>Paid in salary (taxed)</option><option value="0"${x.cash?"":" selected"}>CTC only</option></select></div></td>
+    <td><div class="examt"><input class="in n" id="ex-${x.id}-amt" data-ex="${x.id}" data-ef="amt" value="${x.amt?Number(x.amt).toLocaleString("en-IN"):""}" placeholder="0" inputmode="numeric"><button class="del" data-exdel="${x.id}" aria-label="Remove component">×<span class="dl"> Remove</span></button></div></td></tr>`).join("");
   return `<section class="card">
     <h2>Pilot</h2>
     <div class="grid2">
@@ -1525,8 +1537,10 @@ function viewSetup(){
   <section class="card">
     <h2>Fixed pay</h2>
     <p class="sub">Annual figures in rupees, exactly as printed in Annexure A of your compensation revision letter.</p>
-    <div class="tbl"><table class="fx"><thead><tr><th>Component</th><th>Per year</th></tr></thead><tbody>${fxRows}</tbody>
+    <div class="tbl"><table class="fx"><thead><tr><th>Component</th><th>Per year</th></tr></thead><tbody>${fxRows}${exRows}</tbody>
     <tfoot><tr><td>Total fixed pay</td><td class="n">${inr(tot("rev"))}</td></tr></tfoot></table></div>
+    <div class="btns"><button class="btn quiet" id="addExtra">+ Add a component</button></div>
+    <p class="note">Add anything your letter lists that is not above, as a yearly figure. "Paid in salary" adds a twelfth of it to each month's gross and tax; "CTC only" counts towards your CTC but not your pay.</p>
   </section>
   <section class="card">
     <h2>Tax</h2>
@@ -1562,6 +1576,9 @@ function render(){
 /* ---------- Events ---------- */
 document.addEventListener("click", e=>{
   const t=e.target.closest("button"); if(!t) return;
+  if(t.id==="addExtra"){ profile.extra=[...(profile.extra||[]), {id:uid(), name:"", amt:0, cash:true}]; queueProfile(); render();
+    const l=profile.extra[profile.extra.length-1], el=document.getElementById(`ex-${l.id}-name`); if(el) el.focus(); return }
+  if(t.dataset.exdel){ profile.extra=(profile.extra||[]).filter(x=>x.id!==t.dataset.exdel); queueProfile(); render(); return }
   if(t.dataset.tb){ const k=t.dataset.tb; if(t.dataset.undo) delete actuals[k]; else actuals[k]={tb:true}; queueSave(); render(); return }
   if(t.dataset.dday!=null && t.dataset.dday!==""){ dutyDay=t.dataset.dday; if(t.dataset.go){ tab="duty"; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){} } render(); if(t.dataset.go) window.scrollTo(0,0); return }
   if(t.dataset.tab){ bannerMsg=""; tab=t.dataset.tab; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){}; render(); return }
@@ -1631,6 +1648,9 @@ document.addEventListener("change", e=>{
     queueSave(); render(); return }
   if(el.dataset.paid){ const d=monthData(cur); const v=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0;
     d.paid={...(d.paid||{}),[el.dataset.paid]:v}; if(!d.paid.gross&&!d.paid.net) delete d.paid; queueMonth(cur); render(); return }
+  if(el.dataset.ex){ const x=(profile.extra||[]).find(y=>y.id===el.dataset.ex); if(!x) return;
+    const f=el.dataset.ef; if(f==="name") x.name=el.value.trim(); else if(f==="cash") x.cash=el.value==="1"; else x.amt=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0;
+    queueProfile(); render(); return }
   if(el.dataset.fx){ profile.fixed[el.dataset.fx][el.dataset.k]=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0; queueProfile(); render(); return }
   const tr=el.closest("tr"); if(!tr||!el.dataset.f) return;
   const list = el.id[0]==="s"?"sectors":el.id[0]==="d"?"dom":el.id[0]==="t"?"train":"intl";
