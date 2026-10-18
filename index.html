@@ -197,6 +197,11 @@ table.chk .rtime,table.tl .rtime{white-space:normal}
 label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}label.chk input{width:18px;height:18px;accent-color:var(--accent)}
 .exrow td{vertical-align:top}
 .exname{display:flex;flex-direction:column;gap:6px}.exname .in{width:100%;max-width:none;margin:0}.examt{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.nextp{border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.nextp h3{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0}
+.nextp .sub{margin:0;font-size:12.5px}
+.nextg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.nextg>div{display:flex;flex-direction:column;gap:1px}.nextg span{font-size:11px;color:var(--muted);font-weight:600}.nextg b{font-size:22px;font-weight:800;line-height:1.15}.nextg small{font-size:12px;color:var(--muted)}.nextg em{font-style:normal;font-size:12px;color:var(--text)}
 .wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
 .wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
@@ -886,7 +891,9 @@ function evalDuty(d){
     const T = s=>({off: which==="act"&&s.offA!=null?s.offA:s.start, on: which==="act"&&s.onA!=null?s.onA:s.end});
     const lastItemEnd = Math.max(...d.items.map(x=> x.t==="sector"?T(secs.find(y=>y.uid===x.uid)).on : x.end));
     const plannedTail = d.signoutPlanned - Math.max(...d.items.map(x=>x.end));
-    const signout = lastItemEnd + Math.max(0,plannedTail);
+    let signout = lastItemEnd + Math.max(0,plannedTail);
+    const lastIt=d.items[d.items.length-1];
+    if(lastIt && lastIt.t==="sector" && lastIt.kind==="op" && !isDomStn(lastIt.from) && isDomStn(lastIt.to)) signout=Math.max(signout, lastItemEnd+30*MIN);
     const opT = secs.filter(s=>s.kind==="op").map(T);
     const fdpEnd = opT.length ? Math.max(...opT.map(t=>t.on)) : null;
     const ft = secs.filter(s=>s.kind==="op").reduce((x,s)=>{const t=T(s);return x+(t.on-t.off)/MIN},0);
@@ -923,25 +930,49 @@ function fdtlAll(){
       if(!prev){ x.rest=null; continue }
       const p=prev[k], avail=(x.report-p.signout)/MIN;
       const flying = d.type==="flight" || d.type==="positioning";   // the next duty includes flying or positioning
-      let req, why=[];
-      if(!flying){ req=600; why.push("10 h before duties other than flying (2.10.2)") }
-      else if(prev.type==="asby"){ req=Math.max(720,p.duty); why.push("12 h after standby before a flight (2.10.3.1)") }
-      else { req=Math.max(p.duty,720); why.push(p.duty>720?"as long as the previous duty (2.10.1)":"12 h minimum (2.10.1)") }
-      if(flying && IN_AIRPORTS.has(prev.restStn)){ req+=30; why.push("+30 min resting at a domestic station (2.10.5)") }
-      if(p.note3>0){ req+=2*p.note3; why.push(`+${hm(2*p.note3)} after flying in 00:00-01:59 or 05:01-06:00 IST (2.6.1 Note 3)`) }
-      if(p.ext && (p.ext.ft>0||p.ext.fdp>0)){ const add=(p.ext.fdp<=60&&p.ext.ft<=30)?120:240; req+=add; why.push(`+${hm(add)} after an extension of ${hm(p.ext.fdp)} FDP / ${hm(p.ext.ft)} flight time (2.16.1 e, f)`) }
-      if(p.nofly){ const r2=Math.max(720,2*p.duty); if(r2>req){ req=r2; why.length=0; why.push(`twice the ${hm(p.duty)} you spent after reporting, at least 12 h (2.16.1 h)`) } }
+      const {req, why}=restNeed(prev, p, flying);
       const sb=flying ? standbys.filter(s=>!s.called && s.end<=x.report && s.end>p.signout && !(x.report>=s.start && x.report<=s.end)).pop() : null;
       const needNight = p.duty>18*60;
-      if(sb && sb.end+12*HR>p.signout+req*MIN){   // the standby is the binding rest: measure from its end
-        x.rest={avail:(x.report-sb.end)/MIN, req:720, why:["12 h from the end of your standby before a flight (2.10.3.1)"], needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:sb.end, stn:prev.restStn};
+      const sbReq=720+30+transportFor(prev.restStn);   // home standby: 12 h + 0:30 domestic + transport to the airport
+      if(sb && sb.end+sbReq*MIN>p.signout+req*MIN){   // the standby is the binding rest: measure from its end
+        x.rest={avail:(x.report-sb.end)/MIN, req:sbReq, why:["12 h from the end of your standby before a flight (2.10.3.1)", "+0:30 at a domestic station (2.10.5)", `+${hm(transportFor(prev.restStn))} transport to the airport`], needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:sb.end, stn:prev.restStn};
         continue }
       x.rest={avail, req, why, needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:p.signout, stn:prev.restStn};
     }
   }
+  // The earliest flight you could take after each duty (for the panel at the foot of its card)
+  for(const d of duties) for(const k of ["P","A"]){ const x=d[k], n=restNeed(d, x, true);
+    let rep=x.signout+n.req*MIN, why=[...n.why];
+    const stn=d.restStn||"", T=transportFor(stn), intlStn=!isDomStn(stn);
+    if(x.duty>18*60){ // the rest must include a local night (2.10.4): 00:00-08:00 IST between getting there and leaving again
+      const home=x.signout+T*MIN; let ns=Math.floor((home+IST_OFF)/DAY)*DAY-IST_OFF; if(ns<home) ns+=DAY;
+      const r2=ns+8*HR+T*MIN; if(r2>rep){ rep=r2; why.push("must include a local night, 00:00-08:00 IST (2.10.4)") } }
+    x.next={report:rep, dom:intlStn?null:rep+REPORT_DOM*MIN, intl:rep+intlLead(stn)*MIN, train:x.signout+(600+2*T)*MIN, why, stn, intlStn, T} }
   const all={duties, standbys};
   for(const k of ["P","A"]) all["wk"+k]=cycleRules(all, k);
   return all;
+}
+// OM-A 2.10.5: transport to and from the airport is neither duty nor rest (45 min at domestic stations, 30 min at
+// international ones), and a domestic station adds 30 min of rest before a flight duty. OM-A 2.4.1.1: report 1:00
+// before a domestic departure, 1:15 before an international one from a metropolitan station, 1:00 otherwise.
+const REPORT_DOM=60, REPORT_INTL_METRO=75;
+const METROS=new Set(["BOM","DEL","MAA","HYD","BLR","CCU","NMI"]);
+const isDomStn = stn=>!stn || IN_AIRPORTS.has(stn);
+const transportFor = stn=>isDomStn(stn)?45:30;
+const intlLead = stn=>METROS.has(stn)?REPORT_INTL_METRO:REPORT_DOM;
+// Rest needed between a duty (x is its planned or actual figures) and the next one
+function restNeed(prev, p, flying){
+  const stn=prev.restStn||"", T=transportFor(stn), dom=isDomStn(stn);
+  let req, why=[];
+  if(!flying){ req=600; why.push("10 h before duties other than flying (2.10.2)") }
+  else if(prev.type==="asby"){ req=Math.max(720,p.duty); why.push("12 h after standby before a flight (2.10.3.1)") }
+  else { req=Math.max(p.duty,720); why.push(p.duty>720?"as long as the previous duty (2.10.1)":"12 h minimum (2.10.1)") }
+  if(p.note3>0){ req+=2*p.note3; why.push(`+${hm(2*p.note3)} after flying in 00:00-01:59 or 05:01-06:00 IST (2.6.1 Note 3)`) }
+  if(p.ext && (p.ext.ft>0||p.ext.fdp>0)){ const add=(p.ext.fdp<=60&&p.ext.ft<=30)?120:240; req+=add; why.push(`+${hm(add)} after an extension of ${hm(p.ext.fdp)} FDP / ${hm(p.ext.ft)} flight time (2.16.1 e, f)`) }
+  if(p.nofly){ const r2=Math.max(720,2*p.duty); if(r2>req){ req=r2; why.length=0; why.push(`twice the ${hm(p.duty)} you spent after reporting, at least 12 h (2.16.1 h)`) } }
+  if(flying && dom){ req+=30; why.push("+0:30 at a domestic station (2.10.5)") }
+  req+=2*T; why.push(`+${hm(2*T)} transport, ${T} min each way at ${dom?"a domestic":"an international"} station (neither duty nor rest, 2.10.5)`);
+  return {req, why};
 }
 
 /* Weekly rest, consecutive nights, Note 3 frequency and early-morning reports, per mode (P planned, A actual) */
@@ -1202,7 +1233,8 @@ function dutyCard(d){
   const rp=P.rest, ra=A.rest;
   if(rp){
     const restCell=r=> r ? `<td class="n"><span class="fv ${r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok"}">${hm(r.avail)}</span></td>` : '<td class="n muted">–</td>';
-    chk.push(`<tr><td>Rest before this duty<span class="rtime" style="white-space:normal">${esc(rp.why.join("; "))}${rp.needNight?"; must include a local night (2.10.4)":""}</span></td><td class="n">${hm(rp.req)}</td>${restCell(rp)}${act?restCell(ra):'<td class="n muted">–</td>'}</tr>`);
+    const er=rp.from+rp.req*MIN;
+    chk.push(`<tr><td>Rest before this duty<span class="rtime" style="white-space:normal">${esc(rp.why.join("; "))}${rp.needNight?"; must include a local night (2.10.4)":""}</span><span class="rtime" style="white-space:normal">${d.type==="flight"||d.type==="positioning"?`<b>This duty could depart from ${isDomStn(rp.stn)?`${hhmmZ(er+REPORT_DOM*MIN)}Z if domestic, `:""}${hhmmZ(er+intlLead(rp.stn)*MIN)}Z if international</b> (report from ${hhmmZ(er)}Z ${esc(DOW(utcDate(er)))})`:`<b>Earliest report ${hhmmZ(er)}Z ${esc(DOW(utcDate(er)))}</b>`}</span></td><td class="n">${hm(rp.req)}</td>${restCell(rp)}${act?restCell(ra):'<td class="n muted">–</td>'}</tr>`);
   } else chk.push(`<tr><td>Rest before this duty<span class="rtime">No earlier duty on record (history starts 1 Oct)</span></td><td class="n muted">–</td><td class="n" colspan="2"><span class="fv na">Not checked</span></td></tr>`);
 
   const worst=[...[P,act?A:null].filter(Boolean).flatMap(x=> d.type==="flight"?[x.landings>x.lim.land?"bad":"ok",fdtlStatus(x.ft,x.lim.ft),fdtlStatus(x.fdp,x.lim.fdp),fdtlStatus(x.duty,x.lim.fdp+60)]:d.type==="asby"?[fdtlStatus(x.duty,480)]:[]),
@@ -1227,6 +1259,7 @@ function dutyCard(d){
     <p class="note">${d.secs.some(s=>s.aStart!=null)?"Actual times came from your calendar, which Crew Access updates after each flight. ":""}Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
     <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">Limit</th><th class="n">Planned</th><th class="n">Actual</th></tr></thead><tbody>${chk.join("")}</tbody></table></div>
     ${notes.length?`<ul class="fnotes">${notes.map(n=>`<li>${n}</li>`).join("")}</ul>`:""}
+    ${nextPanel(d)}
     ${d.type==="asby"?sbyPick(d.uid,"airport")+callPick(d.uid):""}
     ${d.secs.length?`<div class="flags">
       <label class="chk"><input type="checkbox" data-flag="nofly" data-uid="${esc(d.uid)}"${d.nofly?" checked":""}> Cancelled after I reported (no flying)</label>
@@ -1238,6 +1271,17 @@ function dutyCard(d){
 function sbyPick(uid, val){
   return `<div class="btns sbypick"><span class="muted">Your calendar shows this as a check-in and check-out only.</span>
     <label class="f">Standby type<select class="in" data-sby="${esc(uid)}"><option value="home"${val==="home"?" selected":""}>Home standby (25% counts)</option><option value="airport"${val==="airport"?" selected":""}>Airport standby (100% counts)</option></select></label></div>`;
+}
+function nextPanel(d){
+  const X=d.hasActual?d.A:d.P, n=X.next; if(!n) return "";
+  const t=ms=>`<b>${hhmmZ(ms)}Z</b><small>${esc(DOW(utcDate(ms)))}</small>`;
+  const dep=(lbl,ms,lead)=>`<div class="dep"><span>${lbl}</span>${t(ms)}<em>Report ${hhmmZ(ms-lead*MIN)}Z, ${hm(lead)} before</em></div>`;
+  return `<div class="nextp"><h3>Earliest acceptable departure</h3>
+    <div class="nextg">
+      ${n.dom!=null?dep("Domestic from "+esc(n.stn||""), n.dom, REPORT_DOM):""}
+      ${dep("International from "+esc(n.stn||""), n.intl, intlLead(n.stn))}
+    </div>
+    <p class="sub">From ${d.hasActual?"your actual":"the planned"} sign-out at ${hhmmZ(X.signout)}Z: ${esc(n.why.join("; "))}. Earliest report ${hhmmZ(n.report)}Z. Training or office duty from ${hhmmZ(n.train)}Z (10 h rest + transport).</p></div>`;
 }
 function callPick(uid){
   const v=(actuals[uid]||{}).called, val=v===true?"yes":v===false?"no":"auto";
