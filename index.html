@@ -94,6 +94,7 @@ td .del:hover{color:var(--red)}
 .btn.ghost{background:rgba(26,58,107,.08);border-color:var(--accent);color:var(--accent)}
 .btn.quiet{border-color:var(--border);background:var(--surface2);color:var(--text)}
 .btns{display:flex;gap:8px;flex-wrap:wrap}
+.sbypick{margin-top:12px;align-items:flex-end;justify-content:space-between}.sbypick .muted{flex:1 1 200px;font-size:13px}.sbypick .f{flex:0 1 260px}
 .empty{border:1px dashed var(--border);background:var(--surface2);border-radius:var(--radius);padding:20px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center;font-size:13px}
 .empty b{color:var(--text)}
 
@@ -570,6 +571,8 @@ function importRoster(text){
   const st={added:0, updated:0, removed:0, skipped:new Set(), touched:new Set()};
   const lo=istParts(from).date, hi=istParts(to).date;
   const HOURS=["fixed","nights","mins","days"];
+  const pasted=new Set(evs.map(e=>e.uid).filter(Boolean));
+  const free=r=>!r.uid || !pasted.has(r.uid);   // hand-typed, or synced under an id Crew Access has since replaced
   const put=(key, ym, item, match)=>{ // update by uid, else adopt a matching manual row, else add
     const list=monthData(ym)[key];
     let row=list.find(r=>r.uid===item.uid), moved=false;
@@ -577,10 +580,12 @@ function importRoster(text){
       for(const m in months){ if(m===ym||!months[m][key]) continue; const i=months[m][key].findIndex(r=>r.uid===item.uid);
         if(i>=0){ row=months[m][key].splice(i,1)[0]; list.push(row); moved=true; break } } }
     let dup=null;
-    if(row){ dup=list.find(r=>r!==row && !r.uid && match(r)) }        // you also typed this one in by hand
-    else { row=list.find(r=>!r.uid && match(r)); if(row){ row.edited=true; row.example=false } }   // your own entry: keep your hours
+    if(row){ dup=list.find(r=>r!==row && free(r) && match(r)) }        // a second copy: typed by hand, or left over under an old id
+    else { row=list.find(r=>free(r) && r.edited && match(r)) || list.find(r=>free(r) && match(r));
+      if(row){ if(!row.uid||row.edited) row.edited=true; row.example=false } }   // your entry keeps your hours
     if(row){ const before=JSON.stringify(row);
-      if(dup){ for(const h of HOURS) if(dup[h]!=null && dup[h]!=="") row[h]=dup[h]; row.edited=true; list.splice(list.indexOf(dup),1) }
+      if(dup){ if(!dup.uid || dup.edited){ for(const h of [...HOURS,"type"]) if(dup[h]!=null && dup[h]!=="") row[h]=dup[h]; row.edited=true }
+        list.splice(list.indexOf(dup),1) }
       const keep=row.edited?["fixed","nights","mins","days","type"]:[];
       for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
       if(moved||dup||JSON.stringify(row)!==before) st.updated++ }
@@ -728,9 +733,16 @@ function buildDuties(){
     if(e.t==="standby") standbys.push(e);
   }
   if(cur) close(cur.items.length?cur.items[cur.items.length-1].end+15*MIN:cur.report+HR);
-  // A check-in/check-out pair with nothing between is an airport standby: 100% counts as duty (2.11.2.2 b).
-  // Dropped if a home standby event already covers it.
-  const kept=duties.filter(d=>d.items.length || !standbys.some(s=>s.start<=d.signoutPlanned && s.end>=d.report));
+  // A check-in/check-out pair with nothing between is a standby that Crew Access exported without an SBY event.
+  // Home standby by default (25% counts, 2.11.2.4); you can mark it as an airport standby (100%, 2.11.2.2 b).
+  const kept=[];
+  for(const d of duties){
+    if(d.items.length){ kept.push(d); continue }
+    if(standbys.some(s=>s.start<=d.signoutPlanned && s.end>=d.report)) continue;
+    if(((actuals[d.uid]||{}).sby)==="airport") kept.push(d);
+    else standbys.push({uid:d.uid, t:"standby", start:d.report, end:d.signoutPlanned, stn:d.checkinStn, bare:true});
+  }
+  standbys.sort((a,b)=>a.start-b.start);
   return {duties:kept.map(d=>evalDuty(d)), standbys};
 }
 
@@ -786,9 +798,11 @@ function fdtlAll(){
       if(flying && IN_AIRPORTS.has(prev.restStn)){ req+=30; why.push("+30 min resting at a domestic station (2.10.5)") }
       if(p.note3>0){ req+=2*p.note3; why.push(`+${hm(2*p.note3)} after flying in 00:00-01:59 or 05:01-06:00 IST (2.6.1 Note 3)`) }
       const sb=flying ? standbys.filter(s=>s.end<=x.report && s.end>p.signout && !(x.report>=s.start && x.report<=s.end)).pop() : null;
-      let reqEnd=p.signout+req*MIN; if(sb && sb.end+12*HR>reqEnd){ reqEnd=sb.end+12*HR; why.push("12 h after standby (2.10.3.1)") }
       const needNight = p.duty>18*60;
-      x.rest={avail, req:(reqEnd-p.signout)/MIN, why, needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:p.signout, stn:prev.restStn};
+      if(sb && sb.end+12*HR>p.signout+req*MIN){   // the standby is the binding rest: measure from its end
+        x.rest={avail:(x.report-sb.end)/MIN, req:720, why:["12 h from the end of your standby before a flight (2.10.3.1)"], needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:sb.end, stn:prev.restStn};
+        continue }
+      x.rest={avail, req, why, needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:p.signout, stn:prev.restStn};
     }
   }
   return {duties, standbys};
@@ -845,7 +859,7 @@ function viewDuty(){
   const nav=`<section class="card daynav">
     <div class="dn-row">
       <button class="iconbtn" data-dday="${prevD||""}" ${prevD?"":"disabled"} aria-label="Previous duty day">‹</button>
-      <div class="dn-mid"><b>${esc(DOW(day))}</b><span>UTC date · ${list.length?list.length===1?"1 duty":list.length+" duties":"no duty"}</span></div>
+      <div class="dn-mid"><b>${esc(DOW(day))}</b><span>UTC date · ${list.length?list.length===1?"1 duty":list.length+" duties":sbs.length?"standby":"no duty"}</span></div>
       <button class="iconbtn" data-dday="${nextD||""}" ${nextD?"":"disabled"} aria-label="Next duty day">›</button>
     </div>
     <div class="dn-tools"><label class="f" for="dutyJump">Go to date<input class="in" type="date" id="dutyJump" value="${day}"></label>
@@ -853,8 +867,11 @@ function viewDuty(){
   </section>`;
 
   const cards=list.map(d=>dutyCard(d)).join("") ||
-    `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b>${sbs.length?`<span>Standby ${sbs.map(s=>hhmmZ(s.start)+"–"+hhmmZ(s.end)+"Z").join(", ")}. Not called out, so 25% counts as duty (2.11.2.4).</span>`:"<span>Use the arrows to move between duty days.</span>"}</div></section>`;
-  const sbCard = list.length && sbs.length ? `<section class="card"><h2>Standby</h2><p class="sub">${sbs.map(s=>`${hhmmZ(s.start)}–${hhmmZ(s.end)}Z`).join(", ")}</p></section>` : "";
+    (sbs.length ? "" : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Use the arrows to move between duty days.</span></div></section>`);
+  const sbCard = sbs.map(s=>{ const m=(s.end-s.start)/MIN;
+    return `<section class="card duty"><div class="dhead"><div><h2>Home standby</h2><p class="sub">${hhmmZ(s.start)}–${hhmmZ(s.end)}Z · ${hm(m)}</p></div>${chipFor(m>720?"bad":"ok", m>720?"Over 12 h":"Legal")}</div>
+      <p class="note">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty (2.11.2.4). A flight after it needs 12 h rest from the end of the standby (2.10.3.1).</p>
+      ${s.bare?sbyPick(s.uid,"home"):""}</section>` }).join("");
 
   const meters=`<section class="card">
     <h2>Cumulative to end of ${esc(DOW(day))}</h2>
@@ -923,7 +940,13 @@ function dutyCard(d){
     <p class="note">Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
     <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">Limit</th><th class="n">Planned</th><th class="n">Actual</th></tr></thead><tbody>${chk.join("")}</tbody></table></div>
     ${notes.length?`<ul class="fnotes">${notes.map(n=>`<li>${n}</li>`).join("")}</ul>`:""}
+    ${d.type==="asby"?sbyPick(d.uid,"airport"):""}
   </section>`;
+}
+// Crew Access sometimes exports a standby as a bare check-in/check-out; let the pilot say which kind it was
+function sbyPick(uid, val){
+  return `<div class="btns sbypick"><span class="muted">Your calendar shows this as a check-in and check-out only.</span>
+    <label class="f">Standby type<select class="in" data-sby="${esc(uid)}"><option value="home"${val==="home"?" selected":""}>Home standby (25% counts)</option><option value="airport"${val==="airport"?" selected":""}>Airport standby (100% counts)</option></select></label></div>`;
 }
 function haltRow(h){
   const tag = h.mins>360?"hotel may be provided (over 6 h)":h.mins>150?"lounge with meals (over 2.5 h)":"";
@@ -1280,6 +1303,10 @@ document.addEventListener("change", e=>{
     if(el.dataset.fleet){ if(!(v>0)) v=40; profile.fleetAvgSet = true }
     profile[el.dataset.p]=v; queueProfile(); render(); return }
   if(el.id==="dutyJump"){ if(el.value){ dutyDay=el.value; render() } return }
+  if(el.dataset.sby!=null){ const k=el.dataset.sby, c2={...(actuals[k]||{})};
+    if(el.value==="airport") c2.sby="airport"; else delete c2.sby;
+    if(Object.keys(c2).length) actuals[k]=c2; else delete actuals[k];
+    queueSave(); render(); return }
   if(el.dataset.act!=null){ const v=normHHMM(el.value);
     if(v===null){ showBanner("Enter times in UTC as 14:35 or 1435."); el.value=""; return }
     const key=el.dataset.act, f=el.dataset.af; const cur2={...(actuals[key]||{})};
