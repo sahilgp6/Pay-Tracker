@@ -288,7 +288,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 28</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 29</span></span></footer>
 </div>
 
 <script>
@@ -739,7 +739,7 @@ function rosterCard(){
   let last=""; try{ const l=localStorage.getItem(LS_KEY+".lastSync"); if(l){ const d=new Date(l); last=` Last synced ${d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}, ${d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}.` } }catch(e){}
   return `<section class="card">
     <h2>Roster</h2>
-    <p class="sub">Run the Copy Roster shortcut, then tap Paste roster. Flights, deadheads, hotel layovers and training come in from your Crew Access calendar; standby and days off are skipped.${last}</p>
+    <p class="sub">Copy Roster shortcut, then Paste roster.${last} <button class="refbtn" type="button" data-ref="help|roster" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|roster">Run the Copy Roster shortcut, then tap Paste roster. Flights, deadheads, standbys, days off, hotel layovers and training come in from your Crew Access calendar.</p>
     <div class="btns">
       <button class="btn" id="pasteRoster">Paste roster</button>
       <label class="btn quiet" for="rosterFile" style="display:inline-flex;align-items:center">Choose .ics file</label>
@@ -1249,18 +1249,18 @@ function viewDuty(){
     (sbs.length || msb ? "" : off ? offCard(all, day, off) : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Nothing on your roster for this day. If it was a day off, mark it:</span><div class="btns" style="justify-content:center">${["W-OFF","ROFF","LEAVE"].map(c=>`<button class="btn quiet" data-markoff="${day}" data-code="${c}">${c==="LEAVE"?"Leave":c}</button>`).join("")}<button class="btn quiet" data-addsby="${day}">STBY</button></div></div></section>`);
   const sbCard = sbs.map(s=>{ const m=(s.end-s.start)/MIN;
     return `<section class="card duty"><div class="dhead"><div><h2>Home standby</h2><p class="sub">${hhmmZ(s.start)}–${hhmmZ(s.end)}Z · ${hm(m)}</p></div>${chipFor(m>720?"bad":"ok", m>720?"Over 12 h":"Legal")}</div>
-      ${s.called?"":`<p class="note">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty (2.11.2.4). A flight after it needs 12 h rest from the end of the standby (2.10.3.1).</p>`}
+      ${s.called?"":`<p class="note">25% (${hm(m*0.25)}) counts as duty. <button class="refbtn" type="button" data-ref="help|sbynote" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|sbynote">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty (2.11.2.4). A flight after it needs 12 h rest from the end of the standby (2.10.3.1).</p>`}
       ${s.called?`<p class="note"><b>Called out.</b> The duty that followed is checked under 2.11.2.3 on its own card.</p>`:""}
       ${s.bare&&!String(s.uid).startsWith("msby|")?sbyPick(s.uid,"home"):""}${callPick(s.uid)}${String(s.uid).startsWith("msby|")?"":rmBtn(s.uid, utcDate(s.start), "Home standby "+hhmmZ(s.start)+"Z")}</section>` }).join("");
 
   const meters=`<section class="card">
     <h2>Cumulative to end of ${esc(DOW(day))}</h2>
-    <p class="sub">Flight time and duty in the rolling windows of OM-A 2.8, using your actual times where entered. History starts on 1 October 2026, so longer windows show what has built up since then.</p>
+    <p class="sub">Rolling limits, OM-A 2.8. <button class="refbtn" type="button" data-ref="help|meters" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|meters">Flight time and duty in the rolling windows of OM-A 2.8, using your actual times where entered. History starts on 1 October 2026, so longer windows show what has built up since then.</p>
     ${weeklyLine(all, dayEnd)}
     <div class="meters">${cum.map(c=>meterRow(c)).join("")}</div>
   </section>`;
   const wkCards=all.wkA.rests.filter(r=>utcDate(r.a)===day).map(weeklyCard).join("");
-  const sbyEdit = msb ? `<section class="card duty"><div class="dhead"><div><h2>Standby you added</h2><p class="sub">Times in UTC. If it crosses midnight UTC, it is placed so most of it falls on this day.</p></div>${mySbyTimes(day)?chipFor("ok","Saved"):chipFor("warn","Add times")}</div>
+  const sbyEdit = msb ? `<section class="card duty"><div class="dhead"><div><h2>Standby you added</h2><p class="sub">Times in UTC. <button class="refbtn" type="button" data-ref="help|msby" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|msby">If it crosses midnight UTC, it is placed so most of it falls on this day.</p></div>${mySbyTimes(day)?chipFor("ok","Saved"):chipFor("warn","Add times")}</div>
     <div class="grid2">
       <label class="f">Start (UTC)${actInput("msby|"+day,"s",msb.s,"HH:MM","Standby start UTC").replace('class="in n actin"','class="in n"')}</label>
       <label class="f">End (UTC)${actInput("msby|"+day,"e",msb.e,"HH:MM","Standby end UTC").replace('class="in n actin"','class="in n"')}</label>
@@ -1521,7 +1521,7 @@ function recordCard(){
   const L=(a,b)=>`<div class="line"><span>${a}</span><span class="v">${b}</span></div>`;
   return `<section class="card">
     <h2>${esc(ymLabel(cur))} · recorded totals</h2>
-    <p class="sub">Imported from your Numbers Annual Dashboard. These are the figures you recorded for this month; nothing here is recalculated.</p>
+    <p class="sub">Recorded figures, not recalculated. <button class="refbtn" type="button" data-ref="help|recorded" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|recorded">Imported from your Numbers Annual Dashboard. These are the figures you recorded for this month; nothing here is recalculated.</p>
     <div class="slip" style="grid-template-columns:1fr 1fr"><div><h3>Flying</h3>
       ${L("Block hours",hm(k.opMin))}${L("Deadhead (SOD) hours",hm(k.dhMin))}${L("Domestic layover nights",k.domNights)}${L("International layover time",k.intlMin?hm(k.intlMin):"None")}
     </div><div><h3>Pay</h3>
@@ -1578,7 +1578,7 @@ function viewLog(){
   </section>
   <section class="card">
     <h2>Domestic layovers</h2>
-    <p class="sub">${esc(inr(k.domRate))} per night for ${esc(RANKS[k.rank].label)} (AIEXPRESS/HR/6631). International layovers go in the next tab.</p>
+    <p class="sub">${esc(inr(k.domRate))} per night. <button class="refbtn" type="button" data-ref="help|domlay" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|domlay">${esc(inr(k.domRate))} per night for ${esc(RANKS[k.rank].label)} (AIEXPRESS/HR/6631). International layovers go in the next tab.</p>
     ${d.dom.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station</th><th class="n">Nights</th><th class="n">Amount</th><th></th></tr></thead><tbody>${domRows}</tbody>
       <tfoot><tr><td colspan="2">${k.domNights} night${k.domNights===1?"":"s"}</td><td></td><td class="pay">${inr(k.dom)}</td><td></td></tr></tfoot></table></div>`:""}
     <div class="btns"><button class="btn ${d.dom.length?"":"ghost"}" data-add="dom">Add domestic layover</button></div>
@@ -1590,7 +1590,7 @@ function viewLog(){
       <div class="fleet-out"><b>${hm(k.trainPerDay*60)}</b><span>per training day</span></div>
       ${profile.fleetAvgSet?"":`<span class="chip ex">Placeholder</span>`}
     </div>
-    <p class="sub">${profile.fleetAvgSet?"":"40 hours is a conservative placeholder. Enter the published 737 fleet average once you have it; every month's training updates straight away. "}Each training day adds the fleet average ÷ 22 to your hours for the month (PAC/SOP/27). It only adds pay once flying plus training passes the guaranteed 40 hours. Training on your roster comes in when you paste it; remove any day that is not paid training.</p>
+    <p class="sub">Each day adds fleet average ÷ 22 hours.${profile.fleetAvgSet?"":" Fleet average is a placeholder."} <button class="refbtn" type="button" data-ref="help|training" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|training">${profile.fleetAvgSet?"":"40 hours is a conservative placeholder. Enter the published 737 fleet average once you have it; every month's training updates straight away. "}Each training day adds the fleet average ÷ 22 to your hours for the month (PAC/SOP/27). It only adds pay once flying plus training passes the guaranteed 40 hours. Training on your roster comes in when you paste it; remove any day that is not paid training.</p>
     ${d.train.length?`<div class="tbl"><table class="stack"><thead><tr><th>Start date</th><th>Training</th><th class="n">Days</th><th class="n">Hours</th><th></th></tr></thead><tbody>${d.train.map(x=>`<tr data-id="${x.id}">
       <td data-l="Start date" class="w2"><input class="in" type="date" id="t-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
       <td data-l="Training" class="w2"><select class="in" id="t-${x.id}-type" data-f="type">${TRAIN_TYPES.map(t=>`<option${x.type===t?" selected":""}>${esc(t)}</option>`).join("")}</select></td>
@@ -1615,7 +1615,7 @@ function viewIntl(){
     <td><button class="del" data-del="intl" aria-label="Delete layover">×<span class="dl"> Remove</span></button></td></tr>`).join("");
   return `<section class="card">
     <h2>International layovers</h2>
-    <p class="sub">Per diem in USD from AIXL/HR/2022/3918, at the ${k.p1?"P1 (Commander)":"P2 (First Officer)"} rate for your rank. It is tax-exempt and sits outside CTC, so it never enters gross, tax or take-home. Each full 24 hours counts as a day; the part left over pays 30% up to 6 hours, 70% up to 12 hours and a full day beyond that.</p>
+    <p class="sub">Per diem in USD, tax-free. <button class="refbtn" type="button" data-ref="help|intlay" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|intlay">Per diem in USD from AIXL/HR/2022/3918, at the ${k.p1?"P1 (Commander)":"P2 (First Officer)"} rate for your rank. It is tax-exempt and sits outside CTC, so it never enters gross, tax or take-home. Each full 24 hours counts as a day; the part left over pays 30% up to 6 hours, 70% up to 12 hours and a full day beyond that.</p>
     ${d.intl.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station / country</th><th class="n">Hours</th><th class="n">Rate/day</th><th class="n">Full + part</th><th class="n">Days</th><th class="n">USD</th><th></th></tr></thead><tbody>${rows}</tbody>
       <tfoot><tr><td colspan="6">Tax-exempt, paid separately from salary</td><td class="pay">${usd(k.intlUSD)}</td><td></td></tr></tfoot></table></div>`
      :`<div class="empty"><b>No international layovers in ${esc(ymLabel(cur))}</b><span>Type the station or country as it appears on your roster. "Muscat, Oman" or just "Oman" both find the rate.</span></div>`}
@@ -1670,7 +1670,7 @@ function payslipCard(k){
   }
   return `<section class="card">
     <h2>Payslip check</h2>
-    <p class="sub">Enter what your payslip for ${esc(ymLabel(cur))} shows. Flying allowance for a month is normally paid with the next month's salary, so this is usually the ${esc(paidIn)} payslip.</p>
+    <p class="sub">Usually on the ${esc(paidIn)} payslip. <button class="refbtn" type="button" data-ref="help|payslip" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|payslip">Enter what your payslip for ${esc(ymLabel(cur))} shows. Flying allowance for a month is normally paid with the next month's salary, so this is usually the ${esc(paidIn)} payslip.</p>
     <div class="grid2">
       <label class="f">Gross on payslip (₹)<input class="in n" id="paid-gross" data-paid="gross" value="${fmt(g)}" placeholder="0" inputmode="numeric"></label>
       <label class="f">Net paid (₹)<input class="in n" id="paid-net" data-paid="net" value="${fmt(n)}" placeholder="0" inputmode="numeric"></label>
@@ -1680,7 +1680,7 @@ function payslipCard(k){
       <div>Gross</div><div class="v">${inr(k.gross)}</div><div class="v">${g?inr(g):"–"}</div>${diffCell(k.gross,g)}
       <div>Net</div><div class="v">${inr(k.net)}</div><div class="v">${n?inr(n):"–"}</div>${diffCell(k.net,n)}
     </div>${verdict}
-    <p class="note">A gross difference points to pay: hours, sectors or allowances. A net difference with gross matching points to deductions, usually tax.</p>`:""}
+    <p class="note">Gross off: pay. Net off: tax. <button class="refbtn" type="button" data-ref="help|diff" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|diff">A gross difference points to pay: hours, sectors or allowances. A net difference with gross matching points to deductions, usually tax.</p>`:""}
   </section>`;
 }
 
@@ -1701,7 +1701,7 @@ function viewPay(){
         <div>New regime${profile.regime==="new"?" (selected)":""}</div><div class="v">${inr(k.taxN)}</div><div class="v">${inr(k.taxN/12)}</div>
         <div>Old regime${profile.regime==="old"?" (selected)":""}</div><div class="v">${inr(k.taxO)}</div><div class="v">${inr(k.taxO/12)}</div>
       </div>
-      <p class="note">The old-regime figure uses the ${inr(profile.oldDeductions)} of deductions entered in Setup (HRA exemption, 80C, 80D, home-loan interest and so on). The revised HRA of 75% of ${esc(compLabel("basic","Basic"))} only lowers tax under the old regime. Confirm the final choice with your CA.</p>
+      <p class="note">Old regime uses your Setup deductions. <button class="refbtn" type="button" data-ref="help|oldreg" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|oldreg">The old-regime figure uses the ${inr(profile.oldDeductions)} of deductions entered in Setup (HRA exemption, 80C, 80D, home-loan interest and so on). The revised HRA of 75% of ${esc(compLabel("basic","Basic"))} only lowers tax under the old regime. Confirm the final choice with your CA.</p>
     </section>`;
 }
 
@@ -1743,7 +1743,7 @@ function viewYear(){
     <div class="tbl yr"><table><thead><tr><th>Month</th><th class="n">Block</th><th class="n">SOD</th><th class="n">Dom nts</th><th class="n">Intl USD</th><th class="n">Gross</th><th class="n">TDS</th><th class="n">Take-home</th><th class="n">Paid</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td>Total</td><td class="n">${hm(sum(k=>k.opMin))}</td><td class="n">${hm(sum(k=>k.dhMin))}</td><td class="n">${sum(k=>k.domNights)}</td><td class="n">${usd(sum(k=>k.intlUSD))}</td><td class="n">${inr(sum(k=>k.gross))}</td><td class="n">${anyRec?"–":inr(sum(k=>k.tds||0))}</td><td class="n">${inr(sum(k=>k.net))}</td><td class="n">${paidTotal?inr(paidTotal):"–"}</td></tr></tfoot></table></div>
-    <p class="note">${anyRec?"Recorded months show the gross and net you entered in Numbers, so TDS is not shown for them. ":""}For logged months, TDS is that month's pay annualised, so it will not match payroll exactly when pay swings between months.</p>
+    <p class="note">TDS is an estimate. <button class="refbtn" type="button" data-ref="help|tds" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|tds">${anyRec?"Recorded months show the gross and net you entered in Numbers, so TDS is not shown for them. ":""}For logged months, TDS is that month's pay annualised, so it will not match payroll exactly when pay swings between months.</p>
   </section>`;
 }
 
@@ -1754,7 +1754,7 @@ function pasteHistCard(){
     : [h.added?`${h.added} added`:"", h.updated?`${h.updated} updated`:"", h.removed?`${h.removed} removed`:"", h.changes?`${h.changes} duty change${h.changes===1?"":"s"}`:""].filter(Boolean).join(" · ") || "No changes";
   return `<section class="card">
     <h2>Paste history</h2>
-    <p class="sub">Each roster paste, newest first, in IST. Planned times are kept from the first paste that shows a flight before it operates, so pasting whenever your roster changes keeps them safe.</p>
+    <p class="sub">Newest first, in IST. <button class="refbtn" type="button" data-ref="help|pastes" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|pastes">Each roster paste, newest first, in IST. Planned times are kept from the first paste that shows a flight before it operates, so pasting whenever your roster changes keeps them safe.</p>
     <div class="tbl"><table class="phist"><tbody>${rosterHist.slice(0,15).map(h=>`<tr><td class="n">${t(h.at)}</td><td>${esc(line(h))}</td></tr>`).join("")}</tbody></table></div>
   </section>`;
 }
@@ -1781,7 +1781,7 @@ function viewSetup(){
     <div class="tbl"><table class="fx"><thead><tr><th>Component</th><th>Per year</th></tr></thead><tbody>${fxRows}${exRows}</tbody>
     <tfoot><tr><td>Total fixed pay</td><td class="n">${inr(tot("rev"))}</td></tr></tfoot></table></div>
     <div class="btns"><button class="btn quiet" id="addExtra">+ Add a component</button>${hiddenN?`<button class="btn quiet" id="restoreComp">Restore removed components (${hiddenN})</button>`:""}</div>
-    <p class="note">Tap a name to rename it; clear it to go back to the original. Remove takes a component out of every total; Restore brings it back with its amount. Add anything your letter lists that is not above, as a yearly figure. "Paid in salary" adds a twelfth of it to each month's gross and tax; "CTC only" counts towards your CTC but not your pay.</p>
+    <p class="note">Tap a name to rename. <button class="refbtn" type="button" data-ref="help|comps" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|comps">Tap a name to rename it; clear it to go back to the original. Remove takes a component out of every total; Restore brings it back with its amount. Add anything your letter lists that is not above, as a yearly figure. "Paid in salary" adds a twelfth of it to each month's gross and tax; "CTC only" counts towards your CTC but not your pay.</p>
   </section>
   <section class="card">
     <h2>Tax</h2>
@@ -1795,7 +1795,7 @@ function viewSetup(){
   ${pasteHistCard()}
   <section class="card">
     <h2>Backup</h2>
-    <p class="sub">Everything is saved in this browser on this device and nowhere else. Phone browsers can clear saved data, so download a backup now and then and keep it in Files or iCloud Drive.${(()=>{try{const l=localStorage.getItem(LS_KEY+".lastBackup");return l?` Last backup: ${esc(l)}.`:" No backup downloaded yet."}catch(e){return ""}})()}</p>
+    <p class="sub">Saved on this device only.${(()=>{try{const l=localStorage.getItem(LS_KEY+".lastBackup");return l?` Last backup: ${esc(l)}.`:" No backup yet."}catch(e){return ""}})()} <button class="refbtn" type="button" data-ref="help|backup" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|backup">Everything is saved in this browser on this device and nowhere else. Phone browsers can clear saved data, so download a backup now and then and keep it in Files or iCloud Drive.</p>
     <div class="btns">
       <button class="btn" id="backupBtn">Download backup</button>
       <label class="btn quiet" for="restoreFile" style="display:inline-flex;align-items:center">Restore from file</label>
