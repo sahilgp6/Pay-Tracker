@@ -288,7 +288,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 27</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 28</span></span></footer>
 </div>
 
 <script>
@@ -1478,7 +1478,7 @@ function haltRow(h){
 const diffTxt=m=>{ m=Math.round(m); return m===0?"0:00":(m>0?"+":"−")+hm(Math.abs(m)) };
 function normHHMM(v){ v=String(v||"").trim(); if(!v) return ""; const m=v.match(/^(\d{1,2}):?(\d{2})$/); if(!m||+m[1]>23||+m[2]>59) return null; return String(+m[1]).padStart(2,"0")+":"+m[2] }
 
-/* ---------- Explanations behind a toggle: 🔽 shows, ⬆️ hides ---------- */
+/* ---------- Explanations behind a toggle: 🔽 shows, 🔼 hides ---------- */
 const openRefs=new Set();
 function decorateRefs(){
   // Check tables: the grey explanation lines under each check go behind a toggle beside its name
@@ -1492,7 +1492,7 @@ function decorateRefs(){
   document.querySelectorAll("#view .refbtn").forEach(b=>setRef(b.dataset.ref, openRefs.has(b.dataset.ref)));
 }
 function setRef(key, open){
-  document.querySelectorAll(".refbtn").forEach(b=>{ if(b.dataset.ref!==key) return; b.textContent=open?"⬆️":"🔽"; b.setAttribute("aria-expanded",String(open)); b.setAttribute("aria-label", open?"Hide explanation":"Show explanation") });
+  document.querySelectorAll(".refbtn").forEach(b=>{ if(b.dataset.ref!==key) return; b.textContent=open?"🔼":"🔽"; b.setAttribute("aria-expanded",String(open)); b.setAttribute("aria-label", open?"Hide explanation":"Show explanation") });
   document.querySelectorAll(".refx").forEach(el=>{ if(el.dataset.refof===key) el.classList.toggle("ref-open", open) });
 }
 
