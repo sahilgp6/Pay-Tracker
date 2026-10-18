@@ -203,6 +203,9 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
 .nextp .sub{margin:0;font-size:12.5px}
 .nextg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
 .nextg>div{display:flex;flex-direction:column;gap:1px}.nextg span{font-size:11px;color:var(--muted);font-weight:600}.nextg b{font-size:22px;font-weight:800;line-height:1.15}.nextg small{font-size:12px;color:var(--muted)}.nextg em{font-style:normal;font-size:12px;color:var(--text)}
+.refbtn{background:none;border:0;padding:0 2px;margin-left:4px;font-size:13px;line-height:1;cursor:pointer;vertical-align:middle}
+.refx{display:none!important}.refx.ref-open{display:block!important}
+.nextp h3{display:flex;align-items:center;gap:4px}
 .wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
 .wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
@@ -1235,7 +1238,7 @@ function dutyCard(d){
   if(rp){
     const restCell=r=> r ? `<td class="n"><span class="fv ${r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok"}">${hm(r.avail)}</span></td>` : '<td class="n muted">–</td>';
     const er=rp.from+rp.req*MIN;
-    chk.push(`<tr><td>Rest before this duty<span class="rtime" style="white-space:normal">${esc(rp.why.join("; "))}${rp.needNight?"; must include a local night (2.10.4)":""}</span><span class="rtime" style="white-space:normal">${d.type==="flight"||d.type==="positioning"?`<b>This duty could depart from ${isDomStn(rp.stn)?`${hhmmZ(er+REPORT_DOM*MIN)}Z if domestic, `:""}${hhmmZ(er+intlLead(rp.stn)*MIN)}Z if international</b> (report from ${hhmmZ(er)}Z ${esc(DOW(utcDate(er)))})`:`<b>Earliest report ${hhmmZ(er)}Z ${esc(DOW(utcDate(er)))}</b>`}</span></td><td class="n">${hm(rp.req)}</td>${restCell(rp)}${act?restCell(ra):'<td class="n muted">–</td>'}</tr>`);
+    chk.push(`<tr><td>Rest before this duty<span class="rtime" style="white-space:normal">${esc(rp.why.join("; "))}${rp.needNight?"; must include a local night (2.10.4)":""}</span><span class="rtime" style="white-space:normal">${d.type==="flight"||d.type==="positioning"?`<b>This duty could depart from ${isDomStn(rp.stn)&&intlLead(rp.stn)!==REPORT_DOM?`${hhmmZ(er+REPORT_DOM*MIN)}Z if domestic, ${hhmmZ(er+intlLead(rp.stn)*MIN)}Z if international`:`${hhmmZ(er+(isDomStn(rp.stn)?REPORT_DOM:intlLead(rp.stn))*MIN)}Z`}</b> (report from ${hhmmZ(er)}Z ${esc(DOW(utcDate(er)))})`:`<b>Earliest report ${hhmmZ(er)}Z ${esc(DOW(utcDate(er)))}</b>`}</span></td><td class="n">${hm(rp.req)}</td>${restCell(rp)}${act?restCell(ra):'<td class="n muted">–</td>'}</tr>`);
   } else chk.push(`<tr><td>Rest before this duty<span class="rtime">No earlier duty on record (history starts 1 Oct)</span></td><td class="n muted">–</td><td class="n" colspan="2"><span class="fv na">Not checked</span></td></tr>`);
 
   const worst=[...[P,act?A:null].filter(Boolean).flatMap(x=> d.type==="flight"?[x.landings>x.lim.land?"bad":"ok",fdtlStatus(x.ft,x.lim.ft),fdtlStatus(x.fdp,x.lim.fdp),fdtlStatus(x.duty,x.lim.fdp+60)]:d.type==="asby"?[fdtlStatus(x.duty,480)]:[]),
@@ -1256,8 +1259,8 @@ function dutyCard(d){
   for(const c of chgFor(d)) notes.push(chgText(c, d.P.report));
   return `<section class="card duty">
     <div class="dhead"><div><h2>${esc(typeName)}</h2><p class="sub">${esc(route||d.trn.map(t=>t.code).join(", ")||(d.type==="asby"?`${d.checkinStn||""} ${hhmmZ(P.report)}–${hhmmZ(P.signout)}Z`.trim():""))}</p></div>${chipFor(overall, overall==="ok"?"Legal":overall==="warn"?"Close to a limit":"Limit exceeded")}</div>
-    <div class="tbl"><table class="tl"><thead><tr><th>UTC</th><th class="n">Planned</th><th class="n">Actual</th><th class="n">Diff</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
-    <p class="note">${d.secs.some(s=>s.aStart!=null)?"Actual times came from your calendar, which Crew Access updates after each flight. ":""}Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
+    <div class="tbl"><table class="tl"><thead><tr><th>UTC <button class="refbtn" type="button" data-ref="tl|${esc(d.uid)}" aria-label="Show how to enter times">🔽</button></th><th class="n">Planned</th><th class="n">Actual</th><th class="n">Diff</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
+    <p class="note refx" data-refof="tl|${esc(d.uid)}">${d.secs.some(s=>s.aStart!=null)?"Actual times came from your calendar, which Crew Access updates after each flight. ":""}Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
     <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">Limit</th><th class="n">Planned</th><th class="n">Actual</th></tr></thead><tbody>${chk.join("")}</tbody></table></div>
     ${notes.length?`<ul class="fnotes">${notes.map(n=>`<li>${n}</li>`).join("")}</ul>`:""}
     ${nextPanel(d)}
@@ -1277,12 +1280,13 @@ function nextPanel(d){
   const X=d.hasActual?d.A:d.P, n=X.next; if(!n) return "";
   const t=ms=>`<b>${hhmmZ(ms)}Z</b><small>${esc(DOW(utcDate(ms)))}</small>`;
   const dep=(lbl,ms,lead)=>`<div class="dep"><span>${lbl}</span>${t(ms)}<em>Report ${hhmmZ(ms-lead*MIN)}Z, ${hm(lead)} before</em></div>`;
-  return `<div class="nextp"><h3>Earliest acceptable departure</h3>
+  const same = n.dom!=null && n.dom===n.intl, k="next|"+d.uid;
+  return `<div class="nextp"><h3>Earliest acceptable departure <button class="refbtn" type="button" data-ref="${esc(k)}" aria-label="Show how this is worked out">🔽</button></h3>
     <div class="nextg">
-      ${n.dom!=null?dep("Domestic from "+esc(n.stn||""), n.dom, REPORT_DOM):""}
-      ${dep("International from "+esc(n.stn||""), n.intl, intlLead(n.stn))}
+      ${same ? dep("Domestic or international from "+esc(n.stn||""), n.dom, REPORT_DOM)
+        : (n.dom!=null?dep("Domestic from "+esc(n.stn||""), n.dom, REPORT_DOM):"") + dep("International from "+esc(n.stn||""), n.intl, intlLead(n.stn))}
     </div>
-    <p class="sub">From ${d.hasActual?"your actual":"the planned"} sign-out at ${hhmmZ(X.signout)}Z: ${esc(n.why.join("; "))}. Earliest report ${hhmmZ(n.report)}Z. Training or office duty from ${hhmmZ(n.train)}Z (10 h rest + transport).</p></div>`;
+    <p class="sub refx" data-refof="${esc(k)}">From ${d.hasActual?"your actual":"the planned"} sign-out at ${hhmmZ(X.signout)}Z: ${esc(n.why.join("; "))}. Earliest report ${hhmmZ(n.report)}Z. Training or office duty from ${hhmmZ(n.train)}Z (10 h rest + transport).</p></div>`;
 }
 function callPick(uid){
   const v=(actuals[uid]||{}).called, val=v===true?"yes":v===false?"no":"auto";
@@ -1318,6 +1322,24 @@ function haltRow(h){
 }
 const diffTxt=m=>{ m=Math.round(m); return m===0?"0:00":(m>0?"+":"−")+hm(Math.abs(m)) };
 function normHHMM(v){ v=String(v||"").trim(); if(!v) return ""; const m=v.match(/^(\d{1,2}):?(\d{2})$/); if(!m||+m[1]>23||+m[2]>59) return null; return String(+m[1]).padStart(2,"0")+":"+m[2] }
+
+/* ---------- Explanations behind a toggle: 🔽 shows, ⬆️ hides ---------- */
+const openRefs=new Set();
+function decorateRefs(){
+  // Check tables: the grey explanation lines under each check go behind a toggle beside its name
+  document.querySelectorAll("#view table.chk tbody tr").forEach(tr=>{
+    const td=tr.cells[0]; if(!td) return; const rs=[...td.querySelectorAll(".rtime")]; if(!rs.length) return;
+    const card=tr.closest(".card"), head=card?((card.querySelector(".dhead h2")||{}).textContent||"")+" "+((card.querySelector(".dhead .sub")||{}).textContent||""):"";
+    const key="chk|"+head.trim()+"|"+(td.firstChild&&td.firstChild.textContent||"").trim();
+    rs.forEach(r=>{ r.classList.add("refx"); r.dataset.refof=key });
+    const b=document.createElement("button"); b.type="button"; b.className="refbtn"; b.dataset.ref=key; td.insertBefore(b, rs[0]);
+  });
+  document.querySelectorAll("#view .refbtn").forEach(b=>setRef(b.dataset.ref, openRefs.has(b.dataset.ref)));
+}
+function setRef(key, open){
+  document.querySelectorAll(".refbtn").forEach(b=>{ if(b.dataset.ref!==key) return; b.textContent=open?"⬆️":"🔽"; b.setAttribute("aria-expanded",String(open)); b.setAttribute("aria-label", open?"Hide explanation":"Show explanation") });
+  document.querySelectorAll(".refx").forEach(el=>{ if(el.dataset.refof===key) el.classList.toggle("ref-open", open) });
+}
 
 /* ---------- Rendering ---------- */
 let bannerMsg="";
@@ -1619,6 +1641,7 @@ function render(){
   fdtlCache=fdtlAll();
   const v = {log:viewLog,duty:viewDuty,intl:viewIntl,pay:viewPay,year:viewYear,setup:viewSetup}[tab]();
   $("#view").innerHTML = v;
+  decorateRefs();
   const ds=document.getElementById("dstrip"), on=ds&&ds.querySelector(".ds.on");
   if(on){ const r=on.getBoundingClientRect(), q=ds.getBoundingClientRect(); ds.scrollLeft += (r.left+r.width/2)-(q.left+q.width/2) }
   if(aid){ const el=document.getElementById(aid); if(el && el!==document.activeElement){ el.focus(); try{ if(sel!=null) el.setSelectionRange(sel,sel) }catch(e){} } }
@@ -1632,6 +1655,7 @@ document.addEventListener("click", e=>{
   if(t.dataset.cdel){ profile.compHidden=[...new Set([...(profile.compHidden||[]), t.dataset.cdel])]; queueProfile(); render(); return }
   if(t.id==="restoreComp"){ profile.compHidden=[]; queueProfile(); render(); return }
   if(t.dataset.exdel){ profile.extra=(profile.extra||[]).filter(x=>x.id!==t.dataset.exdel); queueProfile(); render(); return }
+  if(t.dataset.ref){ const k=t.dataset.ref, o=!openRefs.has(k); if(o) openRefs.add(k); else openRefs.delete(k); setRef(k,o); return }
   if(t.dataset.tb){ const k=t.dataset.tb; if(t.dataset.undo) delete actuals[k]; else actuals[k]={tb:true}; queueSave(); render(); return }
   if(t.dataset.dday!=null && t.dataset.dday!==""){ dutyDay=t.dataset.dday; if(t.dataset.go){ tab="duty"; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){} } render(); if(t.dataset.go) window.scrollTo(0,0); return }
   if(t.dataset.tab){ bannerMsg=""; tab=t.dataset.tab; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){}; render(); return }
