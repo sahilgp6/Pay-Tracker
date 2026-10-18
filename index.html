@@ -199,7 +199,9 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
 .ds-t{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap}
 .ds.on{background:var(--accent);border-color:var(--accent);color:var(--onfill)}.ds.on .ds-w,.ds.on .ds-t{color:var(--onfill);opacity:.85}
 .ds-m{flex:0 0 auto;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted);align-self:center}
-button,a,input,select,label{touch-action:manipulation}
+html,body,*{touch-action:manipulation}
+/* iPhone zooms into any text box under 16px when tapped, so phones get 16px boxes */
+@media (pointer:coarse){input.in,select.in,textarea.in,label.f .in,label.f select,.actin{font-size:16px}}
 .iconbtn:disabled{opacity:.35;cursor:default}
 .dn-tools{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 .dn-tools label.f{flex:0 0 170px}
@@ -214,7 +216,7 @@ table.tl td,table.chk td{font-size:13.5px;padding:8px 6px;vertical-align:top}
 table.tl td.n,table.chk td.n{white-space:nowrap}
 .actin::placeholder{color:var(--muted);opacity:.45;font-style:italic}
 .actin{width:74px;display:inline-block;padding:5px 6px;font-size:13.5px}
-.act2{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.act2 .stack{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
 tr.tl-halt td{background:rgba(160,88,40,.08);color:var(--orange);font-size:12.5px;font-weight:600;border-left:3px solid var(--orange)}
 tr.tl-trn td{background:var(--surface2)}
 tr.tl-rep td{font-weight:700}
@@ -264,7 +266,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta · rates from PAC/SOP/27, AIEXPRESS/HR/6631 and AIXL/HR/2022/3918</span><span id="saveState">Saved on this device</span></footer>
+  <footer><span>Made by Sahil Gupta</span><span id="saveState">Saved on this device</span></footer>
 </div>
 
 <script>
@@ -1110,7 +1112,7 @@ function dutyCard(d){
     const h=haltsBy.get(s.uid); if(h) rows.push(haltRow(h));
     rows.push(`<tr class="tl-sec"><td><b>${esc(s.flt||(s.kind==="dh"?"Positioning":""))}</b> ${esc(s.from)} → ${esc(s.to)}${s.kind==="dh"?' <span class="chip">Deadhead</span>':""}<span class="rtime">Planned block ${hm(s.blockP)}${s.blockA!=null?` · actual ${hm(s.blockA)}`:""}</span></td>
       <td class="n">${hhmmZ(s.start)}<br>${hhmmZ(s.end)}</td>
-      <td class="n act2">${d.nofly?'<span class="muted">Not flown</span>':actInput(s.uid,"off",x.off,hhmmZ(s.start),"Actual off-blocks UTC")+actInput(s.uid,"on",x.on,hhmmZ(s.end),"Actual on-blocks UTC")}</td>
+      <td class="n act2">${d.nofly?'<span class="muted">Not flown</span>':`<div class="stack">${actInput(s.uid,"off",x.off,hhmmZ(s.start),"Actual off-blocks UTC")}${actInput(s.uid,"on",x.on,hhmmZ(s.end),"Actual on-blocks UTC")}</div>`}</td>
       <td class="n muted">${s.blockA!=null?diffTxt(s.blockA-s.blockP):""}</td></tr>`);
   }
   if(d.nofly) rows.push(`<tr class="tl-rep"><td>Released, no flying<span class="rtime">When you were released</span></td><td class="n muted">–</td><td class="n">${actInput(d.uid,"rel",a.rel,"",'Release time UTC')}</td><td></td></tr>`);
