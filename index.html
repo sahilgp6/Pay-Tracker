@@ -728,8 +728,8 @@ function buildDuties(){
     if(e.t==="standby") standbys.push(e);
   }
   if(cur) close(cur.items.length?cur.items[cur.items.length-1].end+15*MIN:cur.report+HR);
-  // A check-in/check-out pair with nothing between: standby or ground duty whose details are not in the calendar.
-  // Kept and counted in full as duty (conservative) unless a standby event already covers it.
+  // A check-in/check-out pair with nothing between is an airport standby: 100% counts as duty (2.11.2.2 b).
+  // Dropped if a home standby event already covers it.
   const kept=duties.filter(d=>d.items.length || !standbys.some(s=>s.start<=d.signoutPlanned && s.end>=d.report));
   return {duties:kept.map(d=>evalDuty(d)), standbys};
 }
@@ -738,7 +738,8 @@ function evalDuty(d){
   if(!d.items.length){
     const a=actuals[d.uid]||{}, rp=d.report, ra=nearUTC(a.report,d.report);
     const mk=R=>({report:R, signout:d.signoutPlanned, fdpEnd:null, fdp:null, duty:(d.signoutPlanned-R)/MIN, ft:0, landings:0, night:false, lim:fdpLimits(0,false), note3:0, halts:[]});
-    return {...d, type:"other", secs:[], trn:[], rep:{plan:rp, act:ra}, P:mk(rp), A:mk(ra??rp), hasActual:ra!=null, restStn:d.checkinStn||d.signoutStn, date:utcDate(rp)};
+    // Crew Access shows an airport standby as a bare check-in/check-out at the airport (no SBY event)
+    return {...d, type:"asby", secs:[], trn:[], rep:{plan:rp, act:ra}, P:mk(rp), A:mk(ra??rp), hasActual:ra!=null, restStn:d.checkinStn||d.signoutStn, date:utcDate(rp)};
   }
   const sectors=d.items.filter(x=>x.t==="sector"), ops=sectors.filter(x=>x.kind==="op"), trn=d.items.filter(x=>x.t==="training");
   const type = ops.length?"flight":sectors.length?"positioning":"training";
@@ -777,9 +778,10 @@ function fdtlAll(){
       const x=d[k];
       if(!prev){ x.rest=null; continue }
       const p=prev[k], avail=(x.report-p.signout)/MIN;
-      const flying = d.type!=="training" && d.type!=="other";   // the next duty includes flying or positioning
+      const flying = d.type==="flight" || d.type==="positioning";   // the next duty includes flying or positioning
       let req, why=[];
-      if(!flying){ req=600; why.push("10 h before sim, training or office duty (2.10.2)") }
+      if(!flying){ req=600; why.push("10 h before duties other than flying (2.10.2)") }
+      else if(prev.type==="asby"){ req=Math.max(720,p.duty); why.push("12 h after standby before a flight (2.10.3.1)") }
       else { req=Math.max(p.duty,720); why.push(p.duty>720?"as long as the previous duty (2.10.1)":"12 h minimum (2.10.1)") }
       if(flying && IN_AIRPORTS.has(prev.restStn)){ req+=30; why.push("+30 min resting at a domestic station (2.10.5)") }
       if(p.note3>0){ req+=2*p.note3; why.push(`+${hm(2*p.note3)} after flying in 00:00-01:59 or 05:01-06:00 IST (2.6.1 Note 3)`) }
@@ -830,8 +832,9 @@ function actInput(uid, field, value, planned, label){
 
 function viewDuty(){
   const all=fdtlCache||fdtlAll();
+  const hadRows=Object.values(months).some(m=>(m.sectors||[]).some(r=>r.roster));
   if(!rosterEvents.length) return `<section class="card"><h2>Duty</h2>
-    <div class="empty"><b>No roster yet</b><span>Paste your roster on the Flight log tab. Duty times from 1 October 2026 onwards are checked here against OM-A Chapter 2 (FDTL).</span><button class="btn" data-go="log">Open Flight log</button></div></section>`;
+    <div class="empty"><b>${hadRows?"Paste your roster once more":"No roster yet"}</b><span>${hadRows?"Your sectors came in before the Duty tab existed, so their report and sign-out times were never saved. Paste the roster again on the Flight log tab and every duty from 1 October 2026 is checked here against OM-A Chapter 2 (FDTL). Your log and pay stay as they are.":"Paste your roster on the Flight log tab. Duty times from 1 October 2026 onwards are checked here against OM-A Chapter 2 (FDTL)."}</span><button class="btn" data-go="log">Open Flight log</button></div></section>`;
   const days=dutyDays(all), day=pickDutyDay(all); dutyDay=day;
   const i=days.indexOf(day), prevD=i>0?days[i-1]:days.filter(x=>x<day).pop(), nextD=i>=0?days[i+1]:days.find(x=>x>day);
   const list=all.duties.filter(d=>d.date===day);
@@ -868,7 +871,7 @@ function meterRow(c){
 }
 function dutyCard(d){
   const P=d.P, A=d.A, act=d.hasActual, X=act?A:P;
-  const typeName={flight:"Flight duty",positioning:"Positioning",training:"Training",other:"Duty (no details in roster)"}[d.type];
+  const typeName={flight:"Flight duty",positioning:"Positioning",training:"Training",asby:"Airport standby"}[d.type];
   const route=d.secs.map(s=>s.from).concat(d.secs.length?[d.secs[d.secs.length-1].to]:[]).join(" → ");
   // timeline
   const rows=[];
@@ -894,6 +897,8 @@ function dutyCard(d){
     chk.push(`<tr><td>Flight time</td><td class="n">${hm(X.lim.ft)}</td>${cell(P.ft,L.ft,hm)}${act?cell(A.ft,LA.ft,hm):'<td class="n muted">–</td>'}</tr>`);
     chk.push(`<tr><td>Flight duty period<span class="rtime">Report to last on-blocks</span></td><td class="n">${hm(X.lim.fdp)}</td>${cell(P.fdp,L.fdp,hm)}${act?cell(A.fdp,LA.fdp,hm):'<td class="n muted">–</td>'}</tr>`);
     chk.push(`<tr><td>Duty period<span class="rtime">Max FDP + 1 h (2.6.2)</span></td><td class="n">${hm(X.lim.fdp+60)}</td>${cell(P.duty,L.fdp+60,hm)}${act?cell(A.duty,LA.fdp+60,hm):'<td class="n muted">–</td>'}</tr>`);
+  } else if(d.type==="asby"){
+    chk.push(`<tr><td>Standby period<span class="rtime">Airport standby, max 8 h (2.11.2.1). Not called out, so all of it counts as duty (2.11.2.2 b)</span></td><td class="n">8:00</td>${cell(P.duty,480,hm)}${act?cell(A.duty,480,hm):'<td class="n muted">–</td>'}</tr>`);
   } else {
     chk.push(`<tr><td>Duty period<span class="rtime">Counts towards cumulative duty</span></td><td class="n muted">–</td><td class="n">${hm(P.duty)}</td><td class="n">${act?hm(A.duty):"–"}</td></tr>`);
   }
@@ -903,7 +908,7 @@ function dutyCard(d){
     chk.push(`<tr><td>Rest before this duty<span class="rtime" style="white-space:normal">${esc(rp.why.join("; "))}${rp.needNight?"; must include a local night (2.10.4)":""}</span></td><td class="n">${hm(rp.req)}</td>${restCell(rp)}${act?restCell(ra):'<td class="n muted">–</td>'}</tr>`);
   } else chk.push(`<tr><td>Rest before this duty<span class="rtime">No earlier duty on record (history starts 1 Oct)</span></td><td class="n muted">–</td><td class="n" colspan="2"><span class="fv na">Not checked</span></td></tr>`);
 
-  const worst=[...[P,act?A:null].filter(Boolean).flatMap(x=> d.type==="flight"?[x.landings>x.lim.land?"bad":"ok",fdtlStatus(x.ft,x.lim.ft),fdtlStatus(x.fdp,x.lim.fdp),fdtlStatus(x.duty,x.lim.fdp+60)]:[]),
+  const worst=[...[P,act?A:null].filter(Boolean).flatMap(x=> d.type==="flight"?[x.landings>x.lim.land?"bad":"ok",fdtlStatus(x.ft,x.lim.ft),fdtlStatus(x.fdp,x.lim.fdp),fdtlStatus(x.duty,x.lim.fdp+60)]:d.type==="asby"?[fdtlStatus(x.duty,480)]:[]),
     ...[rp,act?ra:null].filter(Boolean).map(r=>r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok")];
   const overall=worst.includes("bad")?"bad":worst.includes("warn")?"warn":"ok";
   const planOnlyBad = act && ["bad"].includes(overall) && ![fdtlStatus(P.fdp,P.lim.fdp),fdtlStatus(P.ft,P.lim.ft),fdtlStatus(P.duty,P.lim.fdp+60)].includes("bad");
@@ -913,7 +918,7 @@ function dutyCard(d){
   for(const h of X.halts) if(h.mins>=180) notes.push(`The ${hm(h.mins)} halt at ${esc(h.stn)} is long enough for split duty (2.9), which can extend the FDP only with company accommodation. Not applied here.`);
   if(planOnlyBad) notes.push(`Legal as rostered, exceeded on the actual times you entered.`);
   return `<section class="card duty">
-    <div class="dhead"><div><h2>${esc(typeName)}</h2><p class="sub">${esc(route||d.trn.map(t=>t.code).join(", "))}</p></div>${chipFor(overall, overall==="ok"?"Legal":overall==="warn"?"Close to a limit":"Limit exceeded")}</div>
+    <div class="dhead"><div><h2>${esc(typeName)}</h2><p class="sub">${esc(route||d.trn.map(t=>t.code).join(", ")||(d.type==="asby"?`${d.checkinStn||""} ${hhmmZ(P.report)}–${hhmmZ(P.signout)}Z`.trim():""))}</p></div>${chipFor(overall, overall==="ok"?"Legal":overall==="warn"?"Close to a limit":"Limit exceeded")}</div>
     <div class="tbl"><table class="tl"><thead><tr><th>UTC</th><th class="n">Planned</th><th class="n">Actual</th><th class="n">Diff</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
     <p class="note">Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
     <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">Limit</th><th class="n">Planned</th><th class="n">Actual</th></tr></thead><tbody>${chk.join("")}</tbody></table></div>
