@@ -288,7 +288,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 26</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 27</span></span></footer>
 </div>
 
 <script>
@@ -1568,7 +1568,8 @@ function viewLog(){
   ${hasEx?`<div class="banner"><span>Rows marked Example are sample data to show how the log works. Replace them with your own sectors.</span><button class="btn ghost" id="clearEx">Remove examples</button></div>`:""}
   <section class="card">
     <h2>Sectors</h2>
-    <p class="sub">Flying pay uses the fixed block hours published for each sector (PAC/SOP/27). Dates and times are UTC; each sector takes the date of its duty's check-in. Synced sectors come in at their rostered block time, and keep it after Crew Access rewrites the flight with actual times; those actual times go to the Duty tab. A sector first synced after it flew is tagged Check block, because only its actual time was available. If the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
+    <p class="sub">Pay uses the fixed block for each sector. Dates and times in UTC. <button class="refbtn" type="button" data-ref="help|sectors" aria-label="Show more">🔽</button></p>
+    <p class="sub refx" data-refof="help|sectors">Flying pay uses the fixed block hours published for each sector (PAC/SOP/27). Dates and times are UTC; each sector takes the date of its duty's check-in. Synced sectors come in at their rostered block time, and keep it after Crew Access rewrites the flight with actual times; those actual times go to the Duty tab. A sector first synced after it flew is tagged Check block, because only its actual time was available. If the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
     ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Block</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="pay">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
