@@ -187,6 +187,7 @@ textarea.in{resize:vertical;width:100%}
 .dn-mid b{font-size:19px;font-weight:800}
 .dn-mid span{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
 table.chk .rtime{white-space:normal}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
 .wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
 .wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
@@ -429,6 +430,9 @@ function lsSave(){
 function setSave(t){ $("#saveState").textContent=t }
 let saveTimer=null;
 function queueSave(){ setSave("Saving…"); clearTimeout(saveTimer); saveTimer=setTimeout(lsSave,400) }
+// Write at once when the app is hidden or closed, so a change made just before is never lost
+function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; lsSave() } }
+addEventListener("pagehide", flushSave); document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") flushSave() });
 const queueMonth = ()=>queueSave();
 const queueProfile = ()=>queueSave();
 
@@ -867,7 +871,8 @@ function cycleRules(all, k){
         const req=n3>3?60*60:48*60;
         const stn=(lastBusy&&lastBusy.d&&lastBusy.d.restStn)||"";
         const ok=hrs>=req && counted.length>=2;
-        rests.push({a,b,hrs,nights:nights.length,counted:counted.length,req,n3,stn,away:!!stn&&stn!==base,ok,
+        const tbKey="tb|"+stn+"|"+istDate(a), temp=!!(actuals[tbKey]&&actuals[tbKey].tb);
+        rests.push({a,b,hrs,nights:nights.length,counted:counted.length,req,n3,stn,away:!!stn&&stn!==base&&!temp,temp,tbKey,ok,
           lateSignout: nights.length>counted.length});
       }
     }
@@ -1011,7 +1016,8 @@ function weeklyCard(r){
       ${L("Sign-out before it", `<span class="fv ${r.lateSignout?"warn":"ok"}">${soTxt}</span>`, r.lateSignout?"After 23:14 local, so the night that follows does not count (Rostering Policy 2.6.2)":"By 23:14 local, or early enough for the next night to count (Rostering Policy 2.6.2)")}
     </tbody></table></div>
     ${reasons.length?`<p class="note">${esc(reasons.join("; "))}.</p>`:""}
-    ${r.away?`<p class="note">Taken at ${esc(r.stn)}, not your home base. It counts only if ${esc(r.stn)} is a temporary base for this period (2.10.6 Note 1).</p>`:""}
+    ${r.away?`<p class="note">Taken at ${esc(r.stn)}, not your home base. It counts only if ${esc(r.stn)} is a temporary base for this period (2.10.6 Note 1).</p><div class="btns"><button class="btn quiet" data-tb="${esc(r.tbKey)}">${esc(r.stn)} is my temporary base</button></div>`:""}
+    ${r.temp?`<p class="note">At ${esc(r.stn)}, your temporary base for this period (2.10.6 Note 1). <button class="linkbtn" data-tb="${esc(r.tbKey)}" data-undo="1">Undo</button></p>`:""}
   </section>`;
 }
 function meterRow(c){
@@ -1417,6 +1423,7 @@ function render(){
 /* ---------- Events ---------- */
 document.addEventListener("click", e=>{
   const t=e.target.closest("button"); if(!t) return;
+  if(t.dataset.tb){ const k=t.dataset.tb; if(t.dataset.undo) delete actuals[k]; else actuals[k]={tb:true}; queueSave(); render(); return }
   if(t.dataset.dday!=null && t.dataset.dday!==""){ dutyDay=t.dataset.dday; if(t.dataset.go){ tab="duty"; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){} } render(); if(t.dataset.go) window.scrollTo(0,0); return }
   if(t.dataset.tab){ bannerMsg=""; tab=t.dataset.tab; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){}; render(); return }
   if(t.dataset.go){ tab=t.dataset.go; render(); return }
