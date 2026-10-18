@@ -288,7 +288,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 25</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 26</span></span></footer>
 </div>
 
 <script>
@@ -892,13 +892,13 @@ function fdpLimits(landings, night){
 }
 
 /* Build duties from the stored roster events */
-// Sectors you typed into the Flight log that the calendar does not hold. Roster rows never count here: the calendar
-// is their source, and a roster row whose id has since changed would otherwise duplicate the duty.
+// Sectors in the Flight log that the calendar does not hold: ones you typed in, and roster ones that a later calendar
+// dropped. A flight the calendar still has on the same route within 12 h is never added twice.
 function logEvents(){
   const cal=rosterEvents.filter(e=>e.t==="sector"), have=new Set(cal.map(e=>e.uid)), out=[];
   for(const ym in months){ if(ym<"2026-10") continue; const d=months[ym]; if(!d||!d.sectors) continue;
     for(const r of d.sectors){
-      if(r.roster || !r.dep || !r.date || !(+r.fixed>0) || (r.uid && have.has(r.uid))) continue;
+      if(!r.dep || !r.date || !(+r.fixed>0) || (r.uid && have.has(r.uid))) continue;
       const from=(r.from||"").toUpperCase(), to=(r.to||"").toUpperCase(); if(!from||!to) continue;
       let start=Date.parse(r.date+"T"+r.dep+":00Z"); if(isNaN(start)) continue;
       if(cal.some(e=>e.from===from && e.to===to && Math.abs((e.pStart??e.start)-start)<=12*HR)) continue;   // already in the calendar
@@ -933,7 +933,7 @@ function buildDuties(){
     if(r.report){ const rp=Date.parse(r.date+"T"+r.report+":00Z"); if(!isNaN(rp)&&st<rp) st+=DAY }
     const cal = e.aStart!=null ? {s:e.aStart,e:e.aEnd} : (isRewrite(e,Date.now()) ? {s:e.start,e:e.end} : null);
     return {...e, start:st, end:st+(+r.fixed)*MIN, noPlan:false, aStart:cal?cal.s:null, aEnd:cal?cal.e:null} };
-  const ev=[...rosterEvents.map(mine), ...logEvents(), ...mySbyEvents()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:b.t==="checkin"?1:0)), duties=[], standbys=[];
+  const ev=[...rosterEvents.map(mine), ...logEvents(), ...mySbyEvents()].sort((a,b)=>a.start-b.start || ((a.t==="checkin"?0:1)-(b.t==="checkin"?0:1)) || ((a.manual?1:0)-(b.manual?1:0))), duties=[], standbys=[];
   let cur=null;
   const open=(e,report)=>{ cur={uid:e.uid, report, items:[], checkinStn:e.stn||"", aReport:e.t==="checkin"?e.aStart:null } };
   const close=(endMs, stn)=>{ if(!cur) return; cur.signoutPlanned=endMs; cur.signoutStn=stn||""; duties.push(cur); cur=null };
