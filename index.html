@@ -186,6 +186,14 @@ textarea.in{resize:vertical;width:100%}
 .dn-mid{display:flex;flex-direction:column;align-items:center}
 .dn-mid b{font-size:19px;font-weight:800}
 .dn-mid span{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
+.ds{flex:0 0 58px;scroll-snap-align:center;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;cursor:pointer;font:inherit;color:var(--ink)}
+.ds b{font-size:18px;font-weight:800;line-height:1.1}
+.ds-w{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.ds-t{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap}
+.ds.on{background:var(--accent);border-color:var(--accent);color:var(--onfill)}.ds.on .ds-w,.ds.on .ds-t{color:var(--onfill);opacity:.85}
+.ds-m{flex:0 0 auto;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted);align-self:center}
+button,a,input,select,label{touch-action:manipulation}
 .iconbtn:disabled{opacity:.35;cursor:default}
 .dn-tools{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 .dn-tools label.f{flex:0 0 170px}
@@ -850,6 +858,24 @@ function dutyDays(all){
   const s=new Set(all.duties.map(d=>d.date)); for(const b of all.standbys) s.add(utcDate(b.start));
   return [...s].sort();
 }
+// One chip per duty day, scrolled sideways: weekday, date and what the day holds
+function dayStrip(all, days, day){
+  const tag=d=>{ const L=all.duties.filter(x=>x.date===d);
+    if(!L.length) return "SBY";
+    const x=L[0];
+    if(x.type==="flight"){ const ops=x.secs.filter(s=>s.kind==="op"); const far=ops.flatMap(s=>[s.from,s.to]).filter(t=>t!==x.secs[0].from); return far[0]||ops[0].to }
+    if(x.type==="positioning") return "DH "+x.secs[x.secs.length-1].to;
+    if(x.type==="training") return "TRG";
+    return "SBY"; };
+  let lastM="";
+  return (days.includes(day)?days:[...days,day].sort()).map(d=>{
+    const dt=new Date(d+"T00:00:00Z"), m=dt.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"});
+    const mark=m!==lastM?`<span class="ds-m">${m}</span>`:""; lastM=m;
+    const has=days.includes(d);
+    return `${mark}<button class="ds${d===day?" on":""}" data-dday="${d}" role="option" aria-selected="${d===day}">
+      <span class="ds-w">${dt.toLocaleDateString("en-GB",{weekday:"short",timeZone:"UTC"})}</span><b>${dt.getUTCDate()}</b><span class="ds-t">${has?esc(tag(d)):"–"}</span></button>`;
+  }).join("");
+}
 function pickDutyDay(all){
   const days=dutyDays(all); if(!days.length) return utcDate(Date.now());
   if(dutyDay) return dutyDay;
@@ -870,24 +896,20 @@ function viewDuty(){
   if(!rosterEvents.length) return `<section class="card"><h2>Duty</h2>
     <div class="empty"><b>${hadRows?"Paste your roster once more":"No roster yet"}</b><span>${hadRows?"Your sectors came in before the Duty tab existed, so their report and sign-out times were never saved. Paste the roster again on the Flight log tab and every duty from 1 October 2026 is checked here against OM-A Chapter 2 (FDTL). Your log and pay stay as they are.":"Paste your roster on the Flight log tab. Duty times from 1 October 2026 onwards are checked here against OM-A Chapter 2 (FDTL)."}</span><button class="btn" data-go="log">Open Flight log</button></div></section>`;
   const days=dutyDays(all), day=pickDutyDay(all); dutyDay=day;
-  const i=days.indexOf(day), prevD=i>0?days[i-1]:days.filter(x=>x<day).pop(), nextD=i>=0?days[i+1]:days.find(x=>x>day);
   const list=all.duties.filter(d=>d.date===day);
   const sbs=all.standbys.filter(s=>utcDate(s.start)===day);
   const dayEnd=Date.parse(day+"T00:00:00Z")+DAY;
   const cum=cumulative(all, dayEnd, "A");
 
   const nav=`<section class="card daynav">
-    <div class="dn-row">
-      <button class="iconbtn" data-dday="${prevD||""}" ${prevD?"":"disabled"} aria-label="Previous duty day">‹</button>
-      <div class="dn-mid"><b>${esc(DOW(day))}</b><span>UTC date · ${list.length?list.length===1?"1 duty":list.length+" duties":sbs.length?"standby":"no duty"}</span></div>
-      <button class="iconbtn" data-dday="${nextD||""}" ${nextD?"":"disabled"} aria-label="Next duty day">›</button>
-    </div>
+    <div class="dn-mid"><b>${esc(DOW(day))}</b><span>UTC date · ${list.length?list.length===1?"1 duty":list.length+" duties":sbs.length?"standby":"no duty"}</span></div>
+    <div class="dstrip" id="dstrip" role="listbox" aria-label="Duty days">${dayStrip(all, days, day)}</div>
     <div class="dn-tools"><label class="f" for="dutyJump">Go to date<input class="in" type="date" id="dutyJump" value="${day}"></label>
       <button class="btn quiet" data-dday="${esc(days.find(d=>d>=utcDate(Date.now()))||days[days.length-1]||"")}">Next duty from today</button></div>
   </section>`;
 
   const cards=list.map(d=>dutyCard(d)).join("") ||
-    (sbs.length ? "" : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Use the arrows to move between duty days.</span></div></section>`);
+    (sbs.length ? "" : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Scroll the strip above to move between duty days.</span></div></section>`);
   const sbCard = sbs.map(s=>{ const m=(s.end-s.start)/MIN;
     return `<section class="card duty"><div class="dhead"><div><h2>Home standby</h2><p class="sub">${hhmmZ(s.start)}–${hhmmZ(s.end)}Z · ${hm(m)}</p></div>${chipFor(m>720?"bad":"ok", m>720?"Over 12 h":"Legal")}</div>
       <p class="note">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty (2.11.2.4). A flight after it needs 12 h rest from the end of the standby (2.10.3.1).</p>
@@ -1269,13 +1291,15 @@ function render(){
   fdtlCache=fdtlAll();
   const v = {log:viewLog,duty:viewDuty,intl:viewIntl,pay:viewPay,year:viewYear,setup:viewSetup}[tab]();
   $("#view").innerHTML = v;
+  const ds=document.getElementById("dstrip"), on=ds&&ds.querySelector(".ds.on");
+  if(on){ const r=on.getBoundingClientRect(), q=ds.getBoundingClientRect(); ds.scrollLeft += (r.left+r.width/2)-(q.left+q.width/2) }
   if(aid){ const el=document.getElementById(aid); if(el && el!==document.activeElement){ el.focus(); try{ if(sel!=null) el.setSelectionRange(sel,sel) }catch(e){} } }
 }
 
 /* ---------- Events ---------- */
 document.addEventListener("click", e=>{
   const t=e.target.closest("button"); if(!t) return;
-  if(t.dataset.dday!=null && t.dataset.dday!==""){ dutyDay=t.dataset.dday; if(t.dataset.go){ tab="duty"; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){} } render(); window.scrollTo(0,0); return }
+  if(t.dataset.dday!=null && t.dataset.dday!==""){ dutyDay=t.dataset.dday; if(t.dataset.go){ tab="duty"; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){} } render(); if(t.dataset.go) window.scrollTo(0,0); return }
   if(t.dataset.tab){ bannerMsg=""; tab=t.dataset.tab; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){}; render(); return }
   if(t.dataset.go){ tab=t.dataset.go; render(); return }
   if(t.dataset.month){ cur=t.dataset.month; tab="log"; render(); return }
