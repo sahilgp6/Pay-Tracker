@@ -206,6 +206,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
 .refbtn{background:none;border:0;padding:0 2px;margin-left:4px;font-size:13px;line-height:1;cursor:pointer;vertical-align:middle}
 .refx{display:none!important}.refx.ref-open{display:block!important}
 .nextp h3{display:flex;align-items:center;gap:4px}
+.tpair{display:flex;gap:6px;margin-top:6px}.tpair .in{color:var(--text);font-weight:400;letter-spacing:0;text-transform:none}.tpair label{display:flex;flex-direction:column;gap:2px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);flex:1 1 0;min-width:0}
 .wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
 .wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
@@ -832,8 +833,25 @@ function fdpLimits(landings, night){
 }
 
 /* Build duties from the stored roster events */
+// Sectors in the Flight log that the calendar does not hold (typed by hand, or synced before duty times were kept)
+function logEvents(){
+  const have=new Set(rosterEvents.filter(e=>e.t==="sector").map(e=>e.uid)), out=[];
+  for(const ym in months){ if(ym<"2026-10") continue; const d=months[ym]; if(!d||!d.sectors) continue;
+    for(const r of d.sectors){
+      if(!r.dep || !r.date || !(+r.fixed>0) || (r.uid && have.has(r.uid))) continue;
+      const from=(r.from||"").toUpperCase(), to=(r.to||"").toUpperCase(); if(!from||!to) continue;
+      let start=Date.parse(r.date+"T"+r.dep+":00Z"); if(isNaN(start)) continue;
+      const id=r.uid||("m|"+r.id);
+      if(r.report){ let rep=Date.parse(r.date+"T"+r.report+":00Z"); if(!isNaN(rep)){ if(start<rep) start+=DAY;
+        out.push({uid:"mr|"+id, t:"checkin", start:rep, end:rep, stn:from, manual:true}) } }
+      out.push({uid:id, t:"sector", start, end:start+(+r.fixed)*MIN, from, to, kind:r.kind==="dh"?"dh":"op", flt:(r.flt||"").toUpperCase(), manual:true});
+    } }
+  return out;
+}
+// OM-A 2.4.1.1: report 1:00 before departure, 1:15 for an international departure from a metropolitan station
+const reportLead = e=>(e.kind!=="dh" && METROS.has(e.from) && (!isDomStn(e.from)||!isDomStn(e.to))) ? REPORT_INTL_METRO : REPORT_DOM;
 function buildDuties(){
-  const ev=rosterEvents, duties=[], standbys=[];
+  const ev=[...rosterEvents, ...logEvents()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:b.t==="checkin"?1:0)), duties=[], standbys=[];
   let cur=null;
   const open=(e,report)=>{ cur={uid:e.uid, report, items:[], checkinStn:e.stn||"", aReport:e.t==="checkin"?e.aStart:null } };
   const close=(endMs, stn)=>{ if(!cur) return; cur.signoutPlanned=endMs; cur.signoutStn=stn||""; duties.push(cur); cur=null };
@@ -846,7 +864,11 @@ function buildDuties(){
       if(more && cur.items.length) continue;
       close(e.end>e.start?e.end:e.start+(cur.items.some(x=>x.t==="sector")?15*MIN:0), e.stn); continue }
     if(e.t==="sector"||e.t==="training"){
-      if(!cur || e.start-cur.report>20*HR){ if(cur) close(cur.items[cur.items.length-1].end+15*MIN); open(e, e.t==="sector"?e.start-60*MIN:e.start) }
+      // A hand-added sector leaving within 4 h of the last duty's final on-blocks belongs to that duty
+      if(!cur && e.manual && e.t==="sector"){ const last=duties[duties.length-1];
+        if(last && last.items.length && e.start-last.items[last.items.length-1].end<=4*HR && e.start>=last.items[last.items.length-1].end){ cur=duties.pop(); cur.items.push(e); continue } }
+      const gapTooLong = e.manual && cur && cur.items.length && e.start-cur.items[cur.items.length-1].end>4*HR;
+      if(!cur || e.start-cur.report>20*HR || gapTooLong){ if(cur) close(cur.items.length?cur.items[cur.items.length-1].end+15*MIN:cur.report+HR); open(e, e.t==="sector"?e.start-reportLead(e)*MIN:e.start) }
       cur.items.push(e); continue }
     if(e.t==="standby") standbys.push(e);
   }
@@ -1386,12 +1408,12 @@ function viewLog(){
   const haltBefore=new Map(); for(const du of (fdtlCache||fdtlAll()).duties){ const X=du.hasActual?du.A:du.P; for(const h of X.halts) haltBefore.set(h.before,{h,date:du.date}) }
   const rows = d.sectors.map(s=>{
     const b=(+s.fixed||0)||(+s.actual||0);
-    const hb=s.uid&&haltBefore.get(s.uid);
+    const hb=haltBefore.get(s.uid||("m|"+s.id));
     const haltTr = hb ? `<tr class="halt-row"><td colspan="7"><button class="mlink" data-dday="${hb.date}" data-go="duty">Transit halt ${esc(hb.h.stn)} · ${hm(hb.h.mins)}</button> · unpaid, counts as duty${hb.h.mins>150?" · lounge":""}</td></tr>` : "";
     const lbl = s.kind==="div" ? "Actual block" : "Fixed block";
     return haltTr+`<tr data-id="${s.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="s-${s.id}-date" data-f="date" value="${esc(s.date)}"></td>
-      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
+      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${!s.roster?`<span class="tpair"><label>Dep Z<input class="in n" id="s-${s.id}-dep" data-f="dep" data-tm="1" value="${esc(s.dep||"")}" placeholder="HH:MM" inputmode="numeric" aria-label="Departure time UTC"></label><label>Report Z<input class="in n" id="s-${s.id}-report" data-f="report" data-tm="1" value="${esc(s.report||"")}" placeholder="auto" inputmode="numeric" aria-label="Report time UTC, optional"></label></span>${s.dep?"":'<span class="rtime">Add the departure time to include it in the Duty tab</span>'}`:s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
       <td data-l="From"><input class="in caps" id="s-${s.id}-from" data-f="from" value="${esc(s.from)}" placeholder="BOM" maxlength="4" autocomplete="off"></td>
       <td data-l="To"><input class="in caps" id="s-${s.id}-to" data-f="to" value="${esc(s.to)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
       <td data-l="Type" class="w2"><select class="in" id="s-${s.id}-kind" data-f="kind">
@@ -1734,7 +1756,8 @@ document.addEventListener("change", e=>{
   const list = el.id[0]==="s"?"sectors":el.id[0]==="d"?"dom":el.id[0]==="t"?"train":"intl";
   const row = monthData(cur)[list].find(r=>r.id===tr.dataset.id); if(!row) return;
   let v=el.value;
-  if(el.dataset.hm) v=parseHM(v); else if(el.dataset.num) v=parseFloat(v)||0; else if(el.classList.contains("caps")) v=v.toUpperCase().trim();
+  if(el.dataset.tm){ const t=normHHMM(v); if(t===null){ showBanner("Enter times in UTC as 14:35 or 1435."); el.value=row[el.dataset.f]||""; return } v=t }
+  else if(el.dataset.hm) v=parseHM(v); else if(el.dataset.num) v=parseFloat(v)||0; else if(el.classList.contains("caps")) v=v.toUpperCase().trim();
   row[el.dataset.f]=v; if(row.example) row.example=false; if(row.roster) row.edited=true;
   // a sector dated in another month moves there
   if(el.dataset.f==="date" && v && v.slice(0,7)!==cur){ const tgt=v.slice(0,7); monthData(cur)[list]=monthData(cur)[list].filter(r=>r!==row); monthData(tgt)[list].push(row); queueMonth(tgt) }
