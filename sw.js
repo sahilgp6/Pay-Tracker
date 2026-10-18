@@ -4,7 +4,7 @@
 // unavailable. Your data is never cached here: it lives in the browser's
 // local storage on your device.
 
-const CACHE_VERSION = 'v20';
+const CACHE_VERSION = 'v21';
 const CACHE_NAME = 'pay-tracker-' + CACHE_VERSION;
 
 const APP_URL = self.registration.scope; // e.g. https://user.github.io/Pay-Tracker/
