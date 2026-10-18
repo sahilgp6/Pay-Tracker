@@ -186,8 +186,10 @@ textarea.in{resize:vertical;width:100%}
 .dn-mid{display:flex;flex-direction:column;align-items:center}
 .dn-mid b{font-size:19px;font-weight:800}
 .dn-mid span{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
-table.chk .rtime{white-space:normal}
+table.chk .rtime,table.tl .rtime{white-space:normal}
 .linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
+.flags{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
+label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}label.chk input{width:18px;height:18px;accent-color:var(--accent)}
 .wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
 .wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
@@ -422,9 +424,10 @@ function calc(ym, st){
 const LS_KEY = "crewpaylog.v1";
 function lsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LS_KEY)||"null"); if(j) applyData(j) }catch(e){} }
 function applyData(j){ profile=normProfile(j.profile); months={}; for(const k in (j.months||{})) months[k]=normMonth(j.months[k]);
-  rosterEvents=Array.isArray(j.rosterEvents)?j.rosterEvents:[]; actuals=(j.actuals&&typeof j.actuals==="object")?j.actuals:{} }
+  rosterEvents=Array.isArray(j.rosterEvents)?j.rosterEvents:[]; actuals=(j.actuals&&typeof j.actuals==="object")?j.actuals:{};
+  rosterChanges=Array.isArray(j.rosterChanges)?j.rosterChanges:[]; lastPaste=+j.lastPaste||0 }
 function lsSave(){
-  try{ localStorage.setItem(LS_KEY, JSON.stringify({profile, months, rosterEvents, actuals})); setSave("Saved on this device") }
+  try{ localStorage.setItem(LS_KEY, JSON.stringify({profile, months, rosterEvents, actuals, rosterChanges, lastPaste})); setSave("Saved on this device") }
   catch(e){ setSave("Could not save. Storage may be full or blocked in private browsing.") }
 }
 function setSave(t){ $("#saveState").textContent=t }
@@ -438,7 +441,7 @@ const queueProfile = ()=>queueSave();
 
 function backupData(){
   const m={}; for(const k in months){ const d=months[k]; if(hasLog(d)||d.record||d.paid) m[k]=d }
-  return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m, rosterEvents, actuals};
+  return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m, rosterEvents, actuals, rosterChanges, lastPaste};
 }
 function downloadBackup(){
   const d=new Date(), stamp=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
@@ -530,7 +533,7 @@ function parseICS(text){
   const un=s=>String(s||"").replace(/\\n/gi,"\n").replace(/\\([,;\\])/g,"$1");
   return evs.map(e=>({uid:e.UID&&e.UID.value, summary:un(e.SUMMARY&&e.SUMMARY.value), desc:un(e.DESCRIPTION&&e.DESCRIPTION.value),
     location:un(e.LOCATION&&e.LOCATION.value), status:(e.STATUS&&e.STATUS.value||"").toUpperCase(),
-    start:e.DTSTART?icsTime(e.DTSTART):null, end:e.DTEND?icsTime(e.DTEND):null})).filter(e=>e.start!=null && e.status!=="CANCELLED");
+    start:e.DTSTART?icsTime(e.DTSTART):null, end:e.DTEND?icsTime(e.DTEND):null, lm:e["LAST-MODIFIED"]?icsTime(e["LAST-MODIFIED"]):null})).filter(e=>e.start!=null && e.status!=="CANCELLED");
 }
 // Turn calendar events into sectors and layovers
 function rosterItems(events){
@@ -691,7 +694,9 @@ function rosterCard(){
 /* ---------- FDTL (OM-A Chapter 2, Issue 7 Rev 03 incl. TR-03; Rostering Practices Policy OPS-02) ---------- */
 const FDTL_START = Date.UTC(2026,9,1);          // history is kept from 1 Oct 2026 (UTC)
 let rosterEvents = [];                           // parsed Crew Access events from FDTL_START, kept for duty times
-let actuals = {};                                // uid -> {off, on} for sectors, duty uid -> {report}; UTC "HH:MM"
+let actuals = {};
+let rosterChanges = [];                          // duty changes seen between pastes (Rostering Policy 2.2, 2.3)
+let lastPaste = 0;                               // when the roster was last pasted                                // uid -> {off, on} for sectors, duty uid -> {report}; UTC "HH:MM"
 const MIN=60000, HR=3600000, DAY=86400000;
 const IST_OFF = 330*MIN;
 
@@ -708,6 +713,7 @@ function evType(e){
 }
 function slimEvent(e){
   const t=evType(e), o={uid:e.uid||(e.start+"|"+e.summary), t, start:e.start, end:e.end||e.start, s:e.summary};
+  if(e.lm) o.lm=e.lm;
   if(t==="sector"){ const m=e.summary.match(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/); o.from=m[1]; o.to=m[2];
     o.kind=/deadhead|\bOAT\b|positioning|\bDHD?\b/i.test(e.summary)?"dh":"op";
     const fm=(e.desc||"").match(/Flight Number:\s*([A-Z0-9]+)/i); o.flt=fm?fm[1].toUpperCase():"" }
@@ -715,11 +721,39 @@ function slimEvent(e){
   if(t==="training"){ o.code=dutyCode(e.desc||""); o.desc=((e.desc||"").match(/Training Description:\s*([^\n]+)/gi)||[]).map(x=>x.replace(/Training Description:\s*/i,"")).join(", ") }
   return o;
 }
+// Compare a new paste with what was stored, for duties still ahead: what moved, appeared or went away.
+// Crew Access rewrites past events with actual times, so only future events are compared.
+function detectChanges(oldEvs, newEvs, lo, hi, now){
+  const prevPaste=lastPaste; lastPaste=now;
+  if(!oldEvs.length) return;
+  const rel=e=>["checkin","sector","training","standby","off"].includes(e.t);
+  const oldHi=Math.max(...oldEvs.map(e=>e.start));
+  const O=oldEvs.filter(e=>rel(e) && e.start>now && e.start>=lo && e.start<=hi);
+  const N=newEvs.filter(e=>rel(e) && e.start>now && e.start<=oldHi);
+  const sig=e=>e.t+"|"+e.start+"|"+e.end+"|"+(e.s||"");
+  const oSig=new Set(O.map(sig)), nSig=new Set(N.map(sig)), nUid=new Set(N.map(e=>e.uid)), oByUid=new Map(O.map(e=>[e.uid,e]));
+  const offs=O.filter(e=>e.t==="off");
+  // When did it change? The calendar's own modified time if it falls since the last paste, else now (an upper bound)
+  const when=e=> e&&e.lm && e.lm<=now && e.lm>(prevPaste||0) ? e.lm : now;
+  const add=c=>{ c.id=c.t+"|"+(c.newStart||c.oldStart)+"|"+(c.oldStart||"")+"|"+c.kind;
+    if(!rosterChanges.some(x=>x.id===c.id)) rosterChanges.push(c) };
+  for(const n of N){ if(oSig.has(sig(n))) continue;
+    const o=oByUid.get(n.uid);
+    if(o && o.start===n.start && o.end===n.end) continue;   // same times, wording only
+    if(!o && n.t==="off") continue;                          // a day off appearing is not a duty change
+    const onOff = n.t!=="off" && offs.some(f=>n.start<f.end && n.end>f.start);
+    add({kind:o?"moved":"added", t:n.t, s:n.s, newStart:n.start, newEnd:n.end, oldStart:o?o.start:null, oldEnd:o?o.end:null, at:when(n), seen:now, dayOff:onOff}) }
+  for(const o of O){ if(nSig.has(sig(o)) || nUid.has(o.uid)) continue;
+    if(N.some(n=>n.t===o.t && n.start===o.start && n.end===o.end)) continue;   // same duty under a new id
+    add({kind:"removed", t:o.t, s:o.s, oldStart:o.start, oldEnd:o.end, newStart:null, at:now, seen:now, dayOff:o.t==="off"}) }
+  rosterChanges=rosterChanges.filter(c=>(c.newStart||c.oldStart)>=FDTL_START);
+}
 // Called by importRoster: replace stored events inside the pasted range, keep the rest
 function storeRosterEvents(evs){
   const keep=evs.filter(e=>e.start>=FDTL_START-DAY).map(slimEvent);
   if(!keep.length) return;
   const lo=Math.min(...evs.map(e=>e.start)), hi=Math.max(...evs.map(e=>e.start));
+  detectChanges(rosterEvents, keep, lo, hi, Date.now());
   const map=new Map(rosterEvents.filter(e=>e.start<lo||e.start>hi).map(e=>[e.uid,e]));
   for(const e of keep) map.set(e.uid,e);
   rosterEvents=[...map.values()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:1));
@@ -759,9 +793,14 @@ function buildDuties(){
   let cur=null;
   const open=(e,report)=>{ cur={uid:e.uid, report, items:[], checkinStn:e.stn||"" } };
   const close=(endMs, stn)=>{ if(!cur) return; cur.signoutPlanned=endMs; cur.signoutStn=stn||""; duties.push(cur); cur=null };
-  for(const e of ev){
-    if(e.t==="checkin"){ if(cur) close(cur.items.length?cur.items[cur.items.length-1].end+15*MIN:cur.report+HR); open(e,e.start); continue }
-    if(e.t==="checkout"){ if(cur) close(e.end>e.start?e.end:e.start+(cur.items.some(x=>x.t==="sector")?15*MIN:0), e.stn); continue }
+  for(let i=0;i<ev.length;i++){ const e=ev[i];
+    // A check-in while a bare check-in (standby) is open: called out, so the standby ends here
+    if(e.t==="checkin"){ if(cur) close(cur.items.length?cur.items[cur.items.length-1].end+15*MIN:Math.min(e.start,cur.report+12*HR)); open(e,e.start); continue }
+    if(e.t==="checkout"){ if(!cur) continue;
+      // A standby's check-out can land inside the duty it was called out for: skip it if this duty's flying carries on
+      let more=false; for(let j=i+1;j<ev.length && ev[j].t!=="checkin";j++){ if((ev[j].t==="sector"||ev[j].t==="training") && ev[j].start-e.start<20*HR){ more=true; break } }
+      if(more && cur.items.length) continue;
+      close(e.end>e.start?e.end:e.start+(cur.items.some(x=>x.t==="sector")?15*MIN:0), e.stn); continue }
     if(e.t==="sector"||e.t==="training"){
       if(!cur || e.start-cur.report>20*HR){ if(cur) close(cur.items[cur.items.length-1].end+15*MIN); open(e, e.t==="sector"?e.start-60*MIN:e.start) }
       cur.items.push(e); continue }
@@ -778,7 +817,14 @@ function buildDuties(){
     else standbys.push({uid:d.uid, t:"standby", start:d.report, end:d.signoutPlanned, stn:d.checkinStn, bare:true});
   }
   standbys.sort((a,b)=>a.start-b.start);
-  return {duties:kept.map(d=>evalDuty(d)), standbys};
+  // Standby call-outs (OM-A 2.11.2): a duty reporting inside a standby came from it, unless you say otherwise.
+  // With "called out" set and no report inside, the first duty within 12 h of the standby ending is taken.
+  const pick=(st,en,uid)=>{ const ov=(actuals[uid]||{}).called; if(ov===false) return null;
+    return kept.filter(d=>d.items.length && d.report>=st && d.report<=(ov===true?en+12*HR:en)).sort((p,q)=>p.report-q.report)[0]||null };
+  for(const sb of standbys){ const d=pick(sb.start,sb.end,sb.uid); sb.called=!!d; if(d) d.sby={kind:"home", uid:sb.uid, start:sb.start, end:sb.end, bare:!!sb.bare} }
+  for(const a of kept.filter(d=>!d.items.length)){ const d=pick(a.report,a.signoutPlanned,a.uid);
+    if(d){ d.sby={kind:"airport", uid:a.uid, start:a.report, end:a.signoutPlanned, stn:a.checkinStn}; a.merged=true } }
+  return {duties:kept.filter(d=>!d.merged).map(d=>evalDuty(d)), standbys};
 }
 
 function evalDuty(d){
@@ -791,11 +837,17 @@ function evalDuty(d){
   const sectors=d.items.filter(x=>x.t==="sector"), ops=sectors.filter(x=>x.kind==="op"), trn=d.items.filter(x=>x.t==="training");
   const type = ops.length?"flight":sectors.length?"positioning":"training";
   const a=actuals[d.uid]||{};
-  const rep={plan:d.report, act:nearUTC(a.report,d.report)};
+  const airport = d.sby && d.sby.kind==="airport";
+  // Called from an airport standby: the whole standby is FDP and duty (2.11.2.2 a), so the duty starts when the standby did
+  const rep={plan:airport?d.sby.start:d.report, act:nearUTC(a.report,d.report)};
+  const nofly = !!a.nofly && (d.items.some(x=>x.t==="sector"));
   const secs=sectors.map(s=>{ const x=actuals[s.uid]||{}; const off=nearUTC(x.off,s.start), on=nearUTC(x.on,s.end);
     return {...s, offA:off, onA:on, blockP:(s.end-s.start)/MIN, blockA:(off!=null||on!=null)?((on??s.end)-(off??s.start))/MIN:null} });
   const one=(which)=>{
-    const R = which==="act" ? (rep.act??rep.plan) : rep.plan;
+    const R = which==="act" ? (airport ? rep.plan : (rep.act??rep.plan)) : rep.plan;
+    if(which==="act" && nofly){   // reported, then cancelled: no flying (2.16.1 h)
+      const rel=nearUTC(a.rel, R+HR) ?? d.signoutPlanned;
+      return {report:R, signout:rel, fdpEnd:null, fdp:null, duty:Math.max(0,(rel-R)/MIN), ft:0, landings:0, night:false, lim:fdpLimits(0,false), note3:0, halts:[], nofly:true} }
     const T = s=>({off: which==="act"&&s.offA!=null?s.offA:s.start, on: which==="act"&&s.onA!=null?s.onA:s.end});
     const lastItemEnd = Math.max(...d.items.map(x=> x.t==="sector"?T(secs.find(y=>y.uid===x.uid)).on : x.end));
     const plannedTail = d.signoutPlanned - Math.max(...d.items.map(x=>x.end));
@@ -807,11 +859,21 @@ function evalDuty(d){
     const lim = fdpLimits(opT.length, night);
     const note3 = fdpEnd!=null ? istOverlap(R,fdpEnd,0,120)+istOverlap(R,fdpEnd,301,360) : 0;   // 00:00-01:59, 05:01-06:00
     const halts=[]; for(let i=1;i<secs.length;i++){ const g=(T(secs[i]).off-T(secs[i-1]).on)/MIN; if(g>60) halts.push({stn:secs[i-1].to, mins:g, before:secs[i].uid}) }
-    return {report:R, signout, fdpEnd, fdp:fdpEnd!=null?(fdpEnd-R)/MIN:null, duty:(signout-R)/MIN, ft, landings:opT.length, night, lim, note3, halts};
+    const x={report:R, signout, fdpEnd, fdp:fdpEnd!=null?(fdpEnd-R)/MIN:null, duty:(signout-R)/MIN, ft, landings:opT.length, night, lim, note3, halts};
+    // Called from home standby at 6 h or later: the FDP limit drops by half the standby time (2.11.2.3 b)
+    if(d.sby && d.sby.kind==="home"){ const rr = which==="act" ? (rep.act??rep.plan) : rep.plan;
+      x.sbyMins=Math.max(0,(rr-d.sby.start)/MIN);
+      if(x.sbyMins>=360){ x.sbyCut=Math.round(x.sbyMins/2); x.lim={...x.lim, fdp:x.lim.fdp-x.sbyCut} } }
+    if(airport) x.sbyMins=(d.report-d.sby.start)/MIN;
+    // Extension under 2.16 (unforeseen operational circumstances), marked by you
+    if(a.ext && x.fdp!=null){ const b=x.lim;
+      x.ext={ft:Math.max(0,x.ft-b.ft), fdp:Math.max(0,x.fdp-b.fdp), land:Math.max(0,x.landings-b.land)};
+      x.limBase=b; x.lim={...b, ft:b.ft+90, fdp:b.fdp+180, land:b.land+1, ref:b.ref+" + 2.16"} }
+    return x;
   };
   const lastSec=secs[secs.length-1];
   return {...d, type, secs, trn, rep, P:one("plan"), A:one("act"),
-    hasActual: rep.act!=null || secs.some(s=>s.offA!=null||s.onA!=null),
+    hasActual: rep.act!=null || nofly || secs.some(s=>s.offA!=null||s.onA!=null), nofly, ext:!!a.ext,
     restStn: d.signoutStn || (lastSec?lastSec.to:"") || d.checkinStn,
     date: utcDate(d.report)};
 }
@@ -832,7 +894,9 @@ function fdtlAll(){
       else { req=Math.max(p.duty,720); why.push(p.duty>720?"as long as the previous duty (2.10.1)":"12 h minimum (2.10.1)") }
       if(flying && IN_AIRPORTS.has(prev.restStn)){ req+=30; why.push("+30 min resting at a domestic station (2.10.5)") }
       if(p.note3>0){ req+=2*p.note3; why.push(`+${hm(2*p.note3)} after flying in 00:00-01:59 or 05:01-06:00 IST (2.6.1 Note 3)`) }
-      const sb=flying ? standbys.filter(s=>s.end<=x.report && s.end>p.signout && !(x.report>=s.start && x.report<=s.end)).pop() : null;
+      if(p.ext && (p.ext.ft>0||p.ext.fdp>0)){ const add=(p.ext.fdp<=60&&p.ext.ft<=30)?120:240; req+=add; why.push(`+${hm(add)} after an extension of ${hm(p.ext.fdp)} FDP / ${hm(p.ext.ft)} flight time (2.16.1 e, f)`) }
+      if(p.nofly){ const r2=Math.max(720,2*p.duty); if(r2>req){ req=r2; why.length=0; why.push(`twice the ${hm(p.duty)} you spent after reporting, at least 12 h (2.16.1 h)`) } }
+      const sb=flying ? standbys.filter(s=>!s.called && s.end<=x.report && s.end>p.signout && !(x.report>=s.start && x.report<=s.end)).pop() : null;
       const needNight = p.duty>18*60;
       if(sb && sb.end+12*HR>p.signout+req*MIN){   // the standby is the binding rest: measure from its end
         x.rest={avail:(x.report-sb.end)/MIN, req:720, why:["12 h from the end of your standby before a flight (2.10.3.1)"], needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:sb.end, stn:prev.restStn};
@@ -902,7 +966,9 @@ function cycleRules(all, k){
       const threes=runs.filter(t=>t<=day && (day-t)*DAY<168*HR);   // runs of 3 that reached 3 in the last 168 h, this one included
       const n={len:r.len, threes:threes.length}; if(!nights || n.len>nights.len || n.threes>nights.threes) nights=n }
     const n3=x.note3>0 ? D.filter(q=>q.x.note3>0 && q.x.report<=x.report && q.x.report>x.report-168*HR).length : 0;
-    per.set(o.d.uid,{since, prevRest, early: isEarly?early:0, nights, n3});
+    let ext28=null;
+    if(x.ext){ ext28={ft:0,fdp:0}; for(const q of D) if(q.x.ext && q.x.report<=x.report && q.x.report>x.report-28*DAY){ ext28.ft+=q.x.ext.ft; ext28.fdp+=q.x.ext.fdp } }
+    per.set(o.d.uid,{since, prevRest, early: isEarly?early:0, nights, n3, ext28});
   }
   return {rests, per};
 }
@@ -914,7 +980,7 @@ function cumulative(all, dayEndMs, mode){
     for(const d of all.duties){ const x=d[mode];
       if(x.report>=from && x.report<dayEndMs){ ft+=x.ft; duty+=x.duty } }
     for(const s of all.standbys){ // home standby not called out: 25% counts as duty (2.11.2.4)
-      if(s.start>=from && s.start<dayEndMs && !all.duties.some(d=>d.P.report>=s.start&&d.P.report<=s.end)) duty+=0.25*(s.end-s.start)/MIN }
+      if(s.start>=from && s.start<dayEndMs && !s.called) duty+=0.25*(s.end-s.start)/MIN }
     out.push({days, ft, duty, ftL:ftL*60, dutyL:dutyL*60, partial});
   }
   return out;
@@ -927,6 +993,7 @@ let fdtlCache = null;          // recomputed on every render
 const DOW = d=>new Date(d+"T00:00:00Z").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
 function dutyDays(all){
   const s=new Set(all.duties.map(d=>d.date)); for(const b of all.standbys) s.add(utcDate(b.start));
+  for(const c of rosterChanges) if(c.kind==="removed") s.add(utcDate(c.oldStart));
   return [...s].sort();
 }
 // One chip per duty day, scrolled sideways: weekday, date and what the day holds
@@ -983,8 +1050,9 @@ function viewDuty(){
     (sbs.length ? "" : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Scroll the strip above to move between duty days.</span></div></section>`);
   const sbCard = sbs.map(s=>{ const m=(s.end-s.start)/MIN;
     return `<section class="card duty"><div class="dhead"><div><h2>Home standby</h2><p class="sub">${hhmmZ(s.start)}–${hhmmZ(s.end)}Z · ${hm(m)}</p></div>${chipFor(m>720?"bad":"ok", m>720?"Over 12 h":"Legal")}</div>
-      <p class="note">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty (2.11.2.4). A flight after it needs 12 h rest from the end of the standby (2.10.3.1).</p>
-      ${s.bare?sbyPick(s.uid,"home"):""}</section>` }).join("");
+      ${s.called?"":`<p class="note">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty (2.11.2.4). A flight after it needs 12 h rest from the end of the standby (2.10.3.1).</p>`}
+      ${s.called?`<p class="note"><b>Called out.</b> The duty that followed is checked under 2.11.2.3 on its own card.</p>`:""}
+      ${s.bare?sbyPick(s.uid,"home"):""}${callPick(s.uid)}</section>` }).join("");
 
   const meters=`<section class="card">
     <h2>Cumulative to end of ${esc(DOW(day))}</h2>
@@ -993,7 +1061,7 @@ function viewDuty(){
     <div class="meters">${cum.map(c=>meterRow(c)).join("")}</div>
   </section>`;
   const wkCards=all.wkA.rests.filter(r=>utcDate(r.a)===day).map(weeklyCard).join("");
-  return nav+cards+sbCard+wkCards+meters;
+  return nav+cards+sbCard+changesCard(day,list)+wkCards+meters;
 }
 function weeklyLine(all, dayEnd){
   const last=all.wkA.rests.filter(r=>r.ok && r.b<=dayEnd).pop();
@@ -1033,7 +1101,8 @@ function dutyCard(d){
   // timeline
   const rows=[];
   const a=actuals[d.uid]||{};
-  rows.push(`<tr class="tl-rep"><td>Report${d.checkinStn?` ${esc(d.checkinStn)}`:""}</td><td class="n">${hhmmZ(P.report)}</td><td class="n">${actInput(d.uid,"report",a.report,hhmmZ(P.report),"Actual report time UTC")}</td><td class="n muted">${A.report!==P.report?diffTxt((A.report-P.report)/MIN):""}</td></tr>`);
+  if(d.sby&&d.sby.kind==="airport") rows.push(`<tr class="tl-rep"><td>Airport standby${d.sby.stn?` ${esc(d.sby.stn)}`:""}<span class="rtime">Counts as FDP from here (2.11.2.2 a)</span></td><td class="n">${hhmmZ(d.sby.start)}</td><td class="n muted">–</td><td></td></tr>`);
+  rows.push(`<tr class="tl-rep"><td>Report${d.checkinStn?` ${esc(d.checkinStn)}`:""}</td><td class="n">${hhmmZ(d.report)}</td><td class="n">${d.sby&&d.sby.kind==="airport"?'<span class="muted">–</span>':actInput(d.uid,"report",a.report,hhmmZ(P.report),"Actual report time UTC")}</td><td class="n muted">${A.report!==P.report&&!(d.sby&&d.sby.kind==="airport")?diffTxt((A.report-P.report)/MIN):""}</td></tr>`);
   const haltsBy=new Map(X.halts.map(h=>[h.before,h]));
   for(const it of d.items){
     if(it.t==="training"){ rows.push(`<tr class="tl-trn"><td colspan="4"><b>Training</b> ${hhmmZ(it.start)}–${hhmmZ(it.end)}Z<span class="rtime" style="white-space:normal">${esc(it.desc||it.code||"")}</span></td></tr>`); continue }
@@ -1041,9 +1110,10 @@ function dutyCard(d){
     const h=haltsBy.get(s.uid); if(h) rows.push(haltRow(h));
     rows.push(`<tr class="tl-sec"><td><b>${esc(s.flt||(s.kind==="dh"?"Positioning":""))}</b> ${esc(s.from)} → ${esc(s.to)}${s.kind==="dh"?' <span class="chip">Deadhead</span>':""}<span class="rtime">Planned block ${hm(s.blockP)}${s.blockA!=null?` · actual ${hm(s.blockA)}`:""}</span></td>
       <td class="n">${hhmmZ(s.start)}<br>${hhmmZ(s.end)}</td>
-      <td class="n act2">${actInput(s.uid,"off",x.off,hhmmZ(s.start),"Actual off-blocks UTC")}${actInput(s.uid,"on",x.on,hhmmZ(s.end),"Actual on-blocks UTC")}</td>
+      <td class="n act2">${d.nofly?'<span class="muted">Not flown</span>':actInput(s.uid,"off",x.off,hhmmZ(s.start),"Actual off-blocks UTC")+actInput(s.uid,"on",x.on,hhmmZ(s.end),"Actual on-blocks UTC")}</td>
       <td class="n muted">${s.blockA!=null?diffTxt(s.blockA-s.blockP):""}</td></tr>`);
   }
+  if(d.nofly) rows.push(`<tr class="tl-rep"><td>Released, no flying<span class="rtime">When you were released</span></td><td class="n muted">–</td><td class="n">${actInput(d.uid,"rel",a.rel,"",'Release time UTC')}</td><td></td></tr>`);
   rows.push(`<tr class="tl-rep"><td>Sign-out${d.signoutStn?` ${esc(d.signoutStn)}`:""}</td><td class="n">${hhmmZ(P.signout)}</td><td class="n">${act?hhmmZ(A.signout):"–"}</td><td class="n muted">${act&&A.signout!==P.signout?diffTxt((A.signout-P.signout)/MIN):""}</td></tr>`);
 
   // checks
@@ -1059,6 +1129,15 @@ function dutyCard(d){
   } else {
     chk.push(`<tr><td>Duty period<span class="rtime">Counts towards cumulative duty</span></td><td class="n muted">–</td><td class="n">${hm(P.duty)}</td><td class="n">${act?hm(A.duty):"–"}</td></tr>`);
   }
+  // Extension under 2.16
+  const extSt=[];
+  if(d.ext){
+    const e=(act?A:P).ext;
+    if(e){ const st1=e.ft>90||e.fdp>180||e.land>1?"bad":"ok";
+      chk.push(`<tr><td>Extension used<span class="rtime">Up to 1:30 flight time, 3:00 FDP and one extra landing for a diversion (2.16.1 a to c)</span></td><td class="n">3:00</td><td class="n" colspan="2"><span class="fv ${st1}">${hm(e.fdp)} FDP · ${hm(e.ft)} FT${e.land?` · +${e.land} landing`:""}</span></td></tr>`); extSt.push(st1) }
+    const w=fdtlCache&&fdtlCache["wk"+(act?"A":"P")].per.get(d.uid), x28=w&&w.ext28;
+    if(x28){ const st2=x28.ft>240||x28.fdp>480?"bad":(x28.ft>=216||x28.fdp>=432)?"warn":"ok";
+      chk.push(`<tr><td>Extensions in 28 days<span class="rtime">At most 4:00 flight time and 8:00 FDP (2.16.1 d)</span></td><td class="n">8:00</td><td class="n" colspan="2"><span class="fv ${st2}">${hm(x28.fdp)} FDP · ${hm(x28.ft)} FT</span></td></tr>`); extSt.push(st2) } }
   // Step 2: weekly-rest cycle, consecutive nights, Note 3 frequency, early mornings
   const all2=fdtlCache, wP=all2&&all2.wkP.per.get(d.uid), wA=all2&&all2.wkA.per.get(d.uid);
   const cyc=[];   // statuses for the overall chip
@@ -1092,27 +1171,66 @@ function dutyCard(d){
   } else chk.push(`<tr><td>Rest before this duty<span class="rtime">No earlier duty on record (history starts 1 Oct)</span></td><td class="n muted">–</td><td class="n" colspan="2"><span class="fv na">Not checked</span></td></tr>`);
 
   const worst=[...[P,act?A:null].filter(Boolean).flatMap(x=> d.type==="flight"?[x.landings>x.lim.land?"bad":"ok",fdtlStatus(x.ft,x.lim.ft),fdtlStatus(x.fdp,x.lim.fdp),fdtlStatus(x.duty,x.lim.fdp+60)]:d.type==="asby"?[fdtlStatus(x.duty,480)]:[]),
-    ...[rp,act?ra:null].filter(Boolean).map(r=>r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok"), ...cyc.filter(x=>x!=="na")];
+    ...[rp,act?ra:null].filter(Boolean).map(r=>r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok"), ...cyc.filter(x=>x!=="na"), ...extSt, ...(d.sby&&d.report>d.sby.end+60000?["bad"]:[]), ...chgStatus(d)];
   const overall=worst.includes("bad")?"bad":worst.includes("warn")?"warn":"ok";
   const planOnlyBad = act && ["bad"].includes(overall) && ![fdtlStatus(P.fdp,P.lim.fdp),fdtlStatus(P.ft,P.lim.ft),fdtlStatus(P.duty,P.lim.fdp+60)].includes("bad");
   const notes=[];
   if(X.night) notes.push(`Night duty: the FDP touches 00:00–06:00 IST, so the limits are 8 h flight time, 10:00 FDP and 2 landings (2.6.1.4).`);
   if(X.note3>0) notes.push(`${hm(X.note3)} of this FDP falls in 00:00–01:59 or 05:01–06:00 IST, so the next rest is ${hm(2*X.note3)} longer (2.6.1 Note 3).`);
   for(const h of X.halts) if(h.mins>=180) notes.push(`The ${hm(h.mins)} halt at ${esc(h.stn)} is long enough for split duty (2.9), which can extend the FDP only with company accommodation. Not applied here.`);
-  if(planOnlyBad) notes.push(`Legal as rostered, exceeded on the actual times you entered.`);
+  if(planOnlyBad && !d.ext) notes.push(`Legal as rostered, exceeded on the actual times you entered. If this was due to unforeseen operational circumstances, mark it as an extension below.`);
+  if(d.sby){ const m=X.sbyMins||0;
+    if(d.sby.kind==="airport") notes.push(`Called out from airport standby: its ${hm(m)} counts in full towards FDP and duty, so the FDP starts at the standby (2.11.2.2 a).`);
+    else if(X.sbyCut) notes.push(`Called out from home standby after ${hm(m)}: the FDP limit drops by half the standby time, ${hm(X.sbyCut)} (2.11.2.3 b).`);
+    else notes.push(`Called out from home standby after ${hm(m)}, within the first 6 h: no standby counts towards FDP or duty (2.11.2.3 a).`);
+    if(d.report>d.sby.end+60000) notes.push(`The report is after the standby ended. A call-out's report must fall within the standby period (Rostering Policy 2.4.2).`); }
+  if(d.nofly) notes.push(`Cancelled after you reported. The next duty needs rest of twice the time from report to release, at least 12 h (2.16.1 h). Pay still follows your Flight log.`);
+  for(const c of chgFor(d)) notes.push(chgText(c, d.P.report));
   return `<section class="card duty">
     <div class="dhead"><div><h2>${esc(typeName)}</h2><p class="sub">${esc(route||d.trn.map(t=>t.code).join(", ")||(d.type==="asby"?`${d.checkinStn||""} ${hhmmZ(P.report)}–${hhmmZ(P.signout)}Z`.trim():""))}</p></div>${chipFor(overall, overall==="ok"?"Legal":overall==="warn"?"Close to a limit":"Limit exceeded")}</div>
     <div class="tbl"><table class="tl"><thead><tr><th>UTC</th><th class="n">Planned</th><th class="n">Actual</th><th class="n">Diff</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
     <p class="note">Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
     <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">Limit</th><th class="n">Planned</th><th class="n">Actual</th></tr></thead><tbody>${chk.join("")}</tbody></table></div>
     ${notes.length?`<ul class="fnotes">${notes.map(n=>`<li>${n}</li>`).join("")}</ul>`:""}
-    ${d.type==="asby"?sbyPick(d.uid,"airport"):""}
+    ${d.type==="asby"?sbyPick(d.uid,"airport")+callPick(d.uid):""}
+    ${d.secs.length?`<div class="flags">
+      <label class="chk"><input type="checkbox" data-flag="nofly" data-uid="${esc(d.uid)}"${d.nofly?" checked":""}> Cancelled after I reported (no flying)</label>
+      ${d.type==="flight"&&(d.ext||overall==="bad")?`<label class="chk"><input type="checkbox" data-flag="ext" data-uid="${esc(d.uid)}"${d.ext?" checked":""}> Extended under 2.16 (unforeseen operational circumstances)</label>`:""}
+    </div>`:""}
   </section>`;
 }
 // Crew Access sometimes exports a standby as a bare check-in/check-out; let the pilot say which kind it was
 function sbyPick(uid, val){
   return `<div class="btns sbypick"><span class="muted">Your calendar shows this as a check-in and check-out only.</span>
     <label class="f">Standby type<select class="in" data-sby="${esc(uid)}"><option value="home"${val==="home"?" selected":""}>Home standby (25% counts)</option><option value="airport"${val==="airport"?" selected":""}>Airport standby (100% counts)</option></select></label></div>`;
+}
+function callPick(uid){
+  const v=(actuals[uid]||{}).called, val=v===true?"yes":v===false?"no":"auto";
+  return `<div class="btns sbypick"><span class="muted">A duty that reports inside the standby is taken as a call-out.</span>
+    <label class="f">Called out<select class="in" data-call="${esc(uid)}"><option value="auto"${val==="auto"?" selected":""}>Automatic</option><option value="yes"${val==="yes"?" selected":""}>Yes, called out</option><option value="no"${val==="no"?" selected":""}>No, not called out</option></select></label></div>`;
+}
+// Roster changes that touch a duty, and how much notice there was
+function chgFor(d){ const a=d.P.report-HR, b=d.P.signout;
+  return rosterChanges.filter(c=>{ const t=c.newStart??c.oldStart; return t>=a && t<=b }) }
+function chgStatus(d){ return chgFor(d).map(c=>chgLevel(c, d.P.report)).filter(x=>x!=="ok") }
+function chgLevel(c, report){ return c.dayOff || (report-c.at)<12*HR ? "warn" : "ok" }
+const WHAT={checkin:"Report",sector:"Sector",training:"Training",standby:"Standby",off:"Day off"};
+function chgText(c, report){
+  const what=WHAT[c.t]||"Duty", tz=t=>`${hhmmZ(t)}Z ${DOW(utcDate(t))}`;
+  const name=c.t==="sector"?(c.s||"").replace(/^[^A-Za-z]*/,""):what;
+  const body = c.kind==="moved" ? `${name} moved from ${tz(c.oldStart)} to ${tz(c.newStart)}`
+    : c.kind==="added" ? `${name} added at ${tz(c.newStart)}` : `${name} removed (was ${tz(c.oldStart)})`;
+  const notice=report!=null?(report-c.at)/MIN:null;
+  const n = notice==null||c.kind==="removed" ? "" : notice<12*60 ? ` Notice ${hm(Math.max(0,notice))}, under 12 h before report, so it needed your consent (Rostering Policy 2.3 b).` : ` Notice ${hm(notice)} before report.`;
+  const off = c.dayOff ? ` This touched a published day off, which needs your consent (Rostering Policy 2.2 b).` : "";
+  return `Roster change, in your calendar by ${tz(c.at)}: ${esc(body)}.${n}${off}`;
+}
+function changesCard(day, list){
+  const cs=rosterChanges.filter(c=>utcDate(c.newStart??c.oldStart)===day && !list.some(d=>chgFor(d).includes(c)));
+  if(!cs.length) return "";
+  const lvl=cs.some(c=>c.dayOff)?"warn":"ok";
+  return `<section class="card duty"><div class="dhead"><div><h2>Roster changes</h2><p class="sub">Seen between your pastes</p></div>${chipFor(lvl, lvl==="ok"?"Noted":"Check consent")}</div>
+    <ul class="fnotes">${cs.map(c=>`<li>${chgText(c, c.newStart)}</li>`).join("")}</ul></section>`;
 }
 function haltRow(h){
   const tag = h.mins>360?"hotel may be provided (over 6 h)":h.mins>150?"lounge with meals (over 2.5 h)":"";
@@ -1472,6 +1590,14 @@ document.addEventListener("change", e=>{
     if(el.dataset.fleet){ if(!(v>0)) v=40; profile.fleetAvgSet = true }
     profile[el.dataset.p]=v; queueProfile(); render(); return }
   if(el.id==="dutyJump"){ if(el.value){ dutyDay=el.value; render() } return }
+  if(el.dataset.call!=null){ const k=el.dataset.call, c2={...(actuals[k]||{})};
+    if(el.value==="yes") c2.called=true; else if(el.value==="no") c2.called=false; else delete c2.called;
+    if(Object.keys(c2).length) actuals[k]=c2; else delete actuals[k];
+    queueSave(); render(); return }
+  if(el.dataset.flag!=null){ const k=el.dataset.uid, c2={...(actuals[k]||{})};
+    if(el.checked) c2[el.dataset.flag]=true; else delete c2[el.dataset.flag];
+    if(Object.keys(c2).length) actuals[k]=c2; else delete actuals[k];
+    queueSave(); render(); return }
   if(el.dataset.sby!=null){ const k=el.dataset.sby, c2={...(actuals[k]||{})};
     if(el.value==="airport") c2.sby="airport"; else delete c2.sby;
     if(Object.keys(c2).length) actuals[k]=c2; else delete actuals[k];
