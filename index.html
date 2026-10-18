@@ -623,7 +623,8 @@ function importRoster(text){
     let fixedN=0;
     for(const sc of sectors){ const ev=evByUid.get(sc.uid); if(!ev || isRewrite(ev,now0)) continue;
       const L=months[sc.date.slice(0,7)]&&months[sc.date.slice(0,7)].sectors; if(!L) continue;
-      const row=L.find(r=>r.uid===sc.uid) || L.find(r=>r.date===sc.date&&(r.from||"").toUpperCase()===sc.from&&(r.to||"").toUpperCase()===sc.to);
+      const sameRoute=r=>(r.from||"").toUpperCase()===sc.from&&(r.to||"").toUpperCase()===sc.to;
+      const row=L.find(r=>r.uid===sc.uid&&sameRoute(r)) || L.find(r=>r.date===sc.date&&sameRoute(r));
       if(!row||row.edited||row.sched||row.ownPlan) continue;
       row.fixed=sc.fixed; row.dep=utcParts(sc.start).time; row.sched=true; delete row.checkFixed; fixedN++ }
     logPaste({historical:true, filled:info.filled, fixed:fixedN, events:evs.length}); lsSave();
@@ -643,7 +644,7 @@ function importRoster(text){
   for(const s of sectors){
     const date=s.date, ym=date.slice(0,7);
     if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
-    jobs.push({key:"sectors", ym, flown:(evByUid.get(s.uid)?isRewrite(evByUid.get(s.uid),now0):s.start<=now0), item:{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:utcParts(s.start).time,report:s.report||"",roster:true},
+    jobs.push({key:"sectors", ym, noPlan:!!(rosterEvents.find(e=>e.uid===s.uid)||{}).noPlan, flown:(evByUid.get(s.uid)?isRewrite(evByUid.get(s.uid),now0):s.start<=now0), item:{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:utcParts(s.start).time,report:s.report||"",roster:true},
       same:r=>(r.from||"").toUpperCase()===s.from && (r.to||"").toUpperCase()===s.to});
   }
   for(const l of lays){
@@ -683,6 +684,7 @@ function importRoster(text){
       for(let dup; (dup=take(key, ym, extra).row); dups++){
         if((!dup.uid || dup.edited) && !(adopted && row.edited)){ for(const h of [...HOURS,"type"]) if(dup[h]!=null && dup[h]!=="") row[h]=dup[h]; row.edited=true }
         list.splice(list.indexOf(dup),1) }
+      if(key==="sectors" && j.noPlan && !row.edited && !row.ownPlan) delete row.sched;   // no valid plan on record: the block is the calendar's
       const keep=row.edited?["fixed","nights","mins","days","type"]:[];
       // A flown sector comes back at actual block; keep the fixed block we had from before it flew
       if(key==="sectors" && j.flown && row.sched) keep.push("fixed","dep");
@@ -810,7 +812,11 @@ function storeRosterEvents(evs){
   const now=Date.now(), timed=t=>t==="sector"||t==="checkin"||t==="checkout";
   const lmOf=list=>list.reduce((m,e)=>Math.max(m,e.lm||0),0);
   const byUid=new Map(rosterEvents.map(e=>[e.uid,e])), newUids=new Set(keep.map(e=>e.uid));
-  const twin=e=>byUid.get(e.uid) || rosterEvents.find(o=>!newUids.has(o.uid) && o.t===e.t && (e.t!=="sector"||(o.from===e.from&&o.to===e.to)) && Math.abs(o.start-e.start)<=6*HR);
+  // Two versions are the same duty only on the same route (or check-in/out station) at a nearby time; Crew Access
+  // sometimes keeps an event's id when it swaps the duty itself, and that is a roster change, not a rewrite.
+  const same=(o,e)=> o.t===e.t && (e.t==="sector" ? (o.from===e.from&&o.to===e.to) : (o.stn||"")===(e.stn||"")) && Math.abs((o.pStart??o.start)-e.start)<=3*HR;   // a wrong match does more harm than a lost plan
+  const twin=e=>{ const u=byUid.get(e.uid); if(u) return same(u,e)?u:null;
+    return rosterEvents.find(o=>!newUids.has(o.uid) && same(o,e) && Math.abs(o.start-e.start)<=6*HR) || null };
   const historical = rosterEvents.length>0 && lmOf(keep)>0 && lmOf(keep) < lmOf(rosterEvents)-60000;
   if(historical){
     let filled=0;
