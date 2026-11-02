@@ -288,7 +288,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 30</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 31</span></span></footer>
 </div>
 
 <script>
@@ -574,11 +574,13 @@ function rosterItems(events){
   const sectors=[], hotels=[], reports=[];
   const route=s=>{ const m=s.match(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/); return m?[m[1],m[2]]:null };
   const training=[]; let duty=null;   // a duty runs from check-in to check-out; its sectors share the check-in date
+  const stops=[];   // check-ins and check-outs with their station, to find nights away that have no hotel event
+  const stnOf=s=>(s.match(/\bat\s+([A-Z]{3})\b/)||[])[1]||"";
   for(const e of events){
     const s=e.summary, end=e.end||e.start;
     const tt=trainingType(s, e.desc); if(tt){ training.push({e, type:tt}); continue }
-    if(/check\s*in/i.test(s)){ reports.push(e); duty={start:e.start, date:utcParts(e.start).date}; continue }
-    if(/check\s*out/i.test(s)){ duty=null; continue }
+    if(/check\s*in/i.test(s)){ reports.push(e); stops.push({t:"in", e, stn:stnOf(s)}); duty={start:e.start, date:utcParts(e.start).date}; continue }
+    if(/check\s*out/i.test(s)){ stops.push({t:"out", e, stn:stnOf(s)}); duty=null; continue }
     if(/layover in hotel|hotel/i.test(s)){ hotels.push(e); continue }
     const r=route(s); if(!r) continue;
     let kind=null;
@@ -601,6 +603,24 @@ function rosterItems(events){
     else { const a=istParts(h.start).date, b=istParts(h.end||h.start).date;
       const nights=Math.max(1,Math.round((Date.parse(b)-Date.parse(a))/86400000));
       lays.push({type:"dom", uid:h.uid, start:h.start, stn, nights}) }
+  }
+  // Crew Access often leaves out the hotel event. A check-out away from base followed by the next check-in at the
+  // same station is a night stop all the same. Stays for training (a temporary base) are left out.
+  const base=(profile.base||"BOM").toUpperCase(), seenOut=new Set();
+  const trainNear=(a,b)=>training.some(({e})=>e.start<b && (e.end||e.start)>a);
+  for(let i=0;i<stops.length;i++){ const o=stops[i]; if(o.t!=="out" || !o.stn || o.stn===base) continue;
+    const key=o.stn+"|"+o.e.start; if(seenOut.has(key)) continue; seenOut.add(key);   // the calendar sometimes repeats a check-out
+    const n=stops.slice(i+1).find(x=>x.t==="in"); if(!n || n.stn!==o.stn) continue;
+    const a=o.e.start, b=n.e.start; if(b-a<4*HR || b-a>10*DAY) continue;
+    if(hotels.some(h=>h.start<b && (h.end||h.start)>a-HR)) continue;   // a hotel event already covers it
+    const prevIn=[...stops.slice(0,i)].reverse().find(x=>x.t==="in"), nextOut=stops.slice(i+1).find(x=>x.t==="out" && x.e.start>b);
+    if(trainNear(prevIn?prevIn.e.start:a, a+1) || trainNear(b, nextOut?nextOut.e.start:b+HR)) continue;
+    const prev=[...sectors].reverse().find(x=>x.end<=a+60000), next=sectors.find(x=>x.start>=b);
+    const uidL="stop|"+(o.e.uid||a);
+    if(!IN_AIRPORTS.has(o.stn)){ const from=prev?prev.end:a, to=next?next.start:b;
+      lays.push({type:"intl", uid:uidL, start:from, country:o.stn, mins:Math.max(0,Math.round((to-from)/60000))}) }
+    else { const nights=Math.max(1,Math.round((Date.parse(istParts(b).date)-Date.parse(istParts(a).date))/86400000));
+      lays.push({type:"dom", uid:uidL, start:a, stn:o.stn, nights}) }
   }
   // one training day per calendar day; consecutive days of the same course become one entry
   const days=[]; const seenDay=new Set();
@@ -1199,7 +1219,9 @@ function dayStrip(all, days, day){
   const tag=d=>{ const L=all.duties.filter(x=>x.date===d);
     if(!L.length){ if(all.standbys.some(b=>sbyDay(b)===d)) return "SBY"; if(offs.has(d)) return offs.get(d).code; return "–" }
     const x=L[0];
-    if(x.type==="flight"){ const ops=x.secs.filter(s=>s.kind==="op"); const far=ops.flatMap(s=>[s.from,s.to]).filter(t=>t!==x.secs[0].from); return far[0]||ops[0].to }
+    if(x.type==="flight"){ const ops=x.secs.filter(s=>s.kind==="op"), base=(profile.base||"BOM").toUpperCase(), endAt=x.secs[x.secs.length-1].to;
+      if(endAt!==base) return endAt;   // night stop away from base
+      const far=ops.map(s=>s.to).filter(t=>t!==base && t!==x.secs[0].from); return far[0]||ops[0].to }
     if(x.type==="positioning") return "DH "+x.secs[x.secs.length-1].to;
     if(x.type==="training") return "TRG";
     return "SBY"; };
@@ -1533,7 +1555,13 @@ function recordCard(){
 // Date order, then departure (or report) time; rows without a time keep their place after timed ones on the same day
 const byDate=(a,b)=>(a.date||"").localeCompare(b.date||"");
 const byDateTime=(a,b)=>byDate(a,b) || (a.dep||a.report||"99:99").localeCompare(b.dep||b.report||"99:99");
-function sortMonth(d){ d.sectors.sort(byDateTime); d.dom.sort(byDate); d.intl.sort(byDate); if(d.train) d.train.sort(byDate) }
+// A duty dated by its check-in can depart after midnight UTC, so order flights by when they actually leave
+function sortSectors(L){ const ev=new Map(rosterEvents.filter(e=>e.t==="sector").map(e=>[e.uid,e]));
+  const at=r=>{ const e=r.uid&&ev.get(r.uid); if(e) return e.pStart||e.start;
+    let t=Date.parse((r.date||"9999-12-31")+"T"+(/^\d\d:\d\d$/.test(r.dep||"")?r.dep:/^\d\d:\d\d$/.test(r.report||"")?r.report:"23:59")+":00Z");
+    if(r.dep&&r.report&&r.dep<r.report) t+=DAY; return isNaN(t)?Infinity:t };
+  return L.sort((a,b)=>byDate(a,b) || at(a)-at(b)) }
+function sortMonth(d){ sortSectors(d.sectors); d.dom.sort(byDate); d.intl.sort(byDate); if(d.train) d.train.sort(byDate) }
 
 function viewLog(){
   if(isRecorded(cur)) return recordCard();
