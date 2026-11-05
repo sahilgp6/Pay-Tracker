@@ -105,6 +105,13 @@ td .del:hover{color:var(--red)}
 td.act{white-space:nowrap;text-align:right;width:1%}
 td.act .chip{margin-right:4px}
 .chip.warn{color:var(--yellow);border-color:var(--yellow)}
+/* The block time you are paid on */
+td.paidc{background:rgba(45,106,48,.13)!important;box-shadow:inset 3px 0 0 var(--green)}
+td.paidc .in{border-color:rgba(45,106,48,.55)}
+.fbv{font-family:var(--f-mono);font-size:14px;color:var(--green)}
+.fbtick{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;white-space:nowrap;justify-content:flex-end}
+.fbtick input{margin:0}
+.fbprev{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--surface2);margin-top:10px}
 input[type=date].in{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;width:100%;text-align:left;min-height:34px}
 input[type=date].in::-webkit-date-and-time-value{text-align:left;margin:0}
 input[type=date].in::-webkit-datetime-edit{padding:0}
@@ -288,7 +295,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 31</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 32</span></span></footer>
 </div>
 
 <script>
@@ -387,7 +394,9 @@ function summary(ym){
 function normProfile(p){ const d=DEFAULT_PROFILE(); p=p||{};
   const extra=Array.isArray(p.extra)?p.extra.filter(x=>x&&typeof x==="object").map(x=>({id:String(x.id||uid()), name:String(x.name||""), amt:+x.amt||0, cash:x.cash!==false})):[];
   const compNames=(p.compNames&&typeof p.compNames==="object")?{...p.compNames}:{}, compHidden=Array.isArray(p.compHidden)?p.compHidden.filter(k=>COMP.some(c=>c[0]===k)):[];
-  return {...d,...p, extra, compNames, compHidden, fixed:{cur:{...(p.fixed&&p.fixed.cur||{})},rev:{...(p.fixed&&p.fixed.rev||{})}}} }
+  const cleanMap=o=>{ const r={}; if(o&&typeof o==="object") for(const k in o) if(/^[A-Z]{3}-[A-Z]{3}$/.test(k) && +o[k]>0) r[k]=Math.round(+o[k]*100)/100; return r };
+  const fbLists=Array.isArray(p.fbLists)?p.fbLists.filter(l=>l&&/^\d{4}-\d\d-\d\d$/.test(l.eff||"")).map(l=>({id:String(l.id||uid()), eff:l.eff, name:String(l.name||""), dom:cleanMap(l.dom), intl:cleanMap(l.intl), loaded:String(l.loaded||"")})):[];
+  return {...d,...p, extra, compNames, compHidden, fbLists, fixed:{cur:{...(p.fixed&&p.fixed.cur||{})},rev:{...(p.fixed&&p.fixed.rev||{})}}} }
 
 // Built-in components can be renamed or removed in Setup; removed ones keep their amount but count for nothing
 const compLabel = (k,l)=>((profile.compNames||{})[k]||"").trim() || l;
@@ -407,6 +416,33 @@ function taxOld(t){
   let sc=t>20000000?.25:t>10000000?.15:t>5000000?.10:0;
   return tax*(1+sc)*1.04;
 }
+/* ---------- Fixed block lists ----------
+   Each list you load from the company PDF applies from its own start date until a later list takes over.
+   From then on: a listed sector pays its fixed block; a diversion, a sector not on the list, or a listed
+   international sector ticked "airspace affected" pays its actual block. Deadheads keep SOD on the planned block. */
+const fbLists = ()=>Array.isArray(profile.fbLists)?profile.fbLists:[];
+function fbFor(date){ let best=null; for(const l of fbLists()) if(l.eff<=(date||"") && (!best||l.eff>best.eff)) best=l; return best }
+let blockACache=null, blockAFrom=null;
+function actualBlockOf(s){   // the Duty tab's actual block for this sector, if the calendar or you supplied actual times
+  if(!fdtlCache) return null;
+  if(blockAFrom!==fdtlCache){ blockAFrom=fdtlCache; blockACache=new Map(); for(const d of fdtlCache.duties) for(const x of (d.secs||[])) if(x.blockA!=null) blockACache.set(x.uid, Math.round(x.blockA)) }
+  return blockACache.get(s.uid||("m|"+s.id)) ?? null;
+}
+function paidBlock(s){
+  const planned=(+s.fixed||0)||(+s.actual||0);   // older rows may only hold actual
+  if(s.kind==="dh"||s.kind==="dhx") return {m:planned, how:"planned"};
+  const L=fbFor(s.date);
+  if(!L) return {m: s.kind==="div" ? ((+s.act||0)||planned) : planned, how:"planned"};
+  const key=(s.from||"").toUpperCase()+"-"+(s.to||"").toUpperCase();
+  const fb = s.kind==="div" ? null : (L.dom[key]!=null ? {m:L.dom[key], intl:false} : L.intl[key]!=null ? {m:L.intl[key], intl:true} : null);
+  if(fb && !(fb.intl && s.airspace)) return {m:fb.m, how:"fixed", intl:fb.intl, list:L};
+  const why = s.kind==="div" ? "Diversion" : fb ? "Airspace affected" : "Not in list";
+  const dutyA=actualBlockOf(s), legacy=s.kind==="div" && !s.roster;   // a diversion you typed in before holds its actual in the block field
+  const act=(+s.act||0) || dutyA || (legacy ? planned : 0);
+  const src=+s.act>0?"typed":dutyA?"from Duty tab":legacy?"from Planned Block":"";
+  return act ? {m:act, how:"actual", why, src, typed:+s.act>0, intl:fb&&fb.intl, list:L} : {m:planned, how:"actual", why, need:true, intl:fb&&fb.intl, list:L};
+}
+
 function calc(ym, st){
   st = st || structFor(ym);
   const d = monthData(ym), rank = profile.rank in RANKS ? profile.rank : "fo";
@@ -418,7 +454,7 @@ function calc(ym, st){
   const fixedCash = fixedLines.reduce((a,x)=>a+x[1],0);
   let opMin=0, dhMin=0;
   for(const s of d.sectors){
-    const b=(+s.fixed||0)||(+s.actual||0);   // older rows may only hold actual
+    const b=paidBlock(s).m;
     if(s.kind==="dhx") continue;   // unpaid deadhead: duty, but no SOD
     if(s.kind==="dh") dhMin += b; else opMin += b;
   }
@@ -714,7 +750,7 @@ function importRoster(text){
       // A flown sector comes back at actual block; keep the fixed block we had from before it flew
       if(key==="sectors" && j.flown && row.sched) keep.push("fixed","dep");
       if(key==="sectors" && row.ownPlan) keep.push("fixed","dep","report");
-      if(key==="sectors" && row.kind==="dhx") keep.push("kind");   // you marked it unpaid
+      if(key==="sectors" && (row.kind==="dhx"||row.kind==="div")) keep.push("kind");   // you marked it unpaid, or a diversion
       for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
       if(key==="sectors"){ if(!j.flown){ row.sched=true; delete row.checkFixed } else if(!row.sched && !row.edited) row.checkFixed=true; else delete row.checkFixed }
       if(moved||dups||JSON.stringify(row)!==before) st.updated++ }
@@ -1423,7 +1459,7 @@ function dutyCard(d){
   return `<section class="card duty">
     <div class="dhead"><div><h2>${esc(typeName)}</h2><p class="sub">${esc(route||d.trn.map(t=>t.code).join(", ")||(d.type==="asby"?`${d.checkinStn||""} ${hhmmZ(P.report)}–${hhmmZ(P.signout)}Z`.trim():""))}</p></div>${chipFor(overall, overall==="ok"?"Legal":overall==="warn"?"Close to a limit":"Limit exceeded")}</div>
     <div class="tbl"><table class="tl"><thead><tr><th>UTC <button class="refbtn" type="button" data-ref="tl|${esc(d.uid)}" aria-label="Show how to enter times">🔽</button></th><th class="n">Planned</th><th class="n">Actual</th><th class="n">Diff</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
-    <p class="note refx" data-refof="tl|${esc(d.uid)}">${d.secs.some(s=>s.aStart!=null)?"Actual times came from your calendar, which Crew Access updates after each flight. ":""}Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL only; pay stays on fixed block. If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
+    <p class="note refx" data-refof="tl|${esc(d.uid)}">${d.secs.some(s=>s.aStart!=null)?"Actual times came from your calendar, which Crew Access updates after each flight. ":""}Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL, and for pay only where a sector is paid on actual block (a diversion, or a sector not on your fixed block list). If Crew Control moved your report before you left home, the revised time is your actual report (Rostering Policy 2.5).</p>
     <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">Limit</th><th class="n">Planned</th><th class="n">Actual</th></tr></thead><tbody>${chk.join("")}</tbody></table></div>
     ${notes.length?`<ul class="fnotes">${notes.map(n=>`<li>${n}</li>`).join("")}</ul>`:""}
     ${nextPanel(d)}
@@ -1552,9 +1588,7 @@ function recordCard(){
   </section>`;
 }
 
-// Date order, then departure (or report) time; rows without a time keep their place after timed ones on the same day
 const byDate=(a,b)=>(a.date||"").localeCompare(b.date||"");
-const byDateTime=(a,b)=>byDate(a,b) || (a.dep||a.report||"99:99").localeCompare(b.dep||b.report||"99:99");
 // A duty dated by its check-in can depart after midnight UTC, so order flights by when they actually leave
 function sortSectors(L){ const ev=new Map(rosterEvents.filter(e=>e.t==="sector").map(e=>[e.uid,e]));
   const at=r=>{ const e=r.uid&&ev.get(r.uid); if(e) return e.pStart||e.start;
@@ -1567,11 +1601,22 @@ function viewLog(){
   if(isRecorded(cur)) return recordCard();
   const d=monthData(cur); sortMonth(d); const k=calc(cur), rev=k.st==="rev";
   const haltBefore=new Map(); for(const du of (fdtlCache||fdtlAll()).duties){ const X=du.hasActual?du.A:du.P; for(const h of X.halts) haltBefore.set(h.before,{h,date:du.date}) }
+  let plannedTot=0;
   const rows = d.sectors.map(s=>{
-    const b=(+s.fixed||0)||(+s.actual||0);
+    const b=(+s.fixed||0)||(+s.actual||0), pb=paidBlock(s);
+    if(s.kind!=="dh"&&s.kind!=="dhx") plannedTot+=b;
     const hb=haltBefore.get(s.uid||("m|"+s.id));
-    const haltTr = hb ? `<tr class="halt-row"><td colspan="7"><button class="mlink" data-dday="${hb.date}" data-go="duty">Transit halt ${esc(hb.h.stn)} · ${hm(hb.h.mins)}</button> · unpaid, counts as duty${hb.h.mins>150?" · lounge":""}</td></tr>` : "";
-    const lbl = s.kind==="div" ? "Actual block" : "Fixed block";
+    const haltTr = hb ? `<tr class="halt-row"><td colspan="8"><button class="mlink" data-dday="${hb.date}" data-go="duty">Transit halt ${esc(hb.h.stn)} · ${hm(hb.h.mins)}</button> · unpaid, counts as duty${hb.h.mins>150?" · lounge":""}</td></tr>` : "";
+    const lbl = "Planned block", planPaid = pb.how==="planned";
+    // The Fixed Block cell: the list's figure, or the actual block where the policy pays actual. Tinted where it is the paid figure.
+    let fbCell;
+    if(s.kind==="dhx") fbCell=`<td data-l="Fixed block" class="w2 n muted">Unpaid</td>`;
+    else if(s.kind==="dh") fbCell=`<td data-l="Fixed block" class="w2 n muted">–<span class="rtime">SOD on planned</span></td>`;
+    else if(pb.how==="fixed") fbCell=`<td data-l="Fixed block" class="w2 n paidc"><b class="fbv">${hm(pb.m)}</b>${pb.intl?`<label class="fbtick"><input type="checkbox" id="s-${s.id}-airspace" data-f="airspace"> Airspace affected</label>`:""}</td>`;
+    else if(pb.how==="actual"){ const air=pb.why==="Airspace affected";
+      fbCell=`<td data-l="Actual block" class="w2 paidc"><input class="in n" id="s-${s.id}-act" data-f="act" data-hm="1" value="${pb.typed?hm(pb.m):""}" placeholder="${pb.need?"Actual":hm(pb.m)}" inputmode="numeric" aria-label="Actual block">
+        <span class="rtime">${air?"Actual block":esc(pb.why)+": actual"}${pb.src&&!pb.typed?", "+esc(pb.src):""}</span>${pb.need?'<span class="chip warn" title="Paid on actual block. Type it here, or add actual times in the Duty tab. Until then the planned block stands in.">Enter actual</span>':""}${air?`<label class="fbtick"><input type="checkbox" id="s-${s.id}-airspace" data-f="airspace" checked> Airspace affected</label>`:""}</td>` }
+    else fbCell=`<td data-l="Fixed block" class="w2 n muted">–</td>`;
     return haltTr+`<tr data-id="${s.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="s-${s.id}-date" data-f="date" value="${esc(s.date)}"></td>
       <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${!s.roster?`<span class="tpair"><label>Planned dep Z<input class="in n" id="s-${s.id}-dep" data-f="dep" data-tm="1" value="${esc(s.dep||"")}" placeholder="HH:MM" inputmode="numeric" aria-label="Planned departure time UTC"></label><label>Report Z<input class="in n" id="s-${s.id}-report" data-f="report" data-tm="1" value="${esc(s.report||"")}" placeholder="auto" inputmode="numeric" aria-label="Report time UTC, optional"></label></span>${s.dep?"":'<span class="rtime">Add the planned departure to include it in the Duty tab</span>'}`:s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
@@ -1582,8 +1627,9 @@ function viewLog(){
         <option value="dh"${s.kind==="dh"?" selected":""}>Deadhead (SOD)</option>
         <option value="dhx"${s.kind==="dhx"?" selected":""}>Deadhead (unpaid)</option>
         <option value="div"${s.kind==="div"?" selected":""}>Diversion / ferry</option></select></td>
-      <td data-l="${lbl}" class="w2"><input class="in n" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
-      <td class="act">${s.example?'<span class="chip ex">Example</span>':""}${s.roster?`<span class="chip${s.edited?"":" rev"}" title="${s.edited?"From roster, edited by you":"From roster"}">${s.edited?"Edited":"Roster"}</span>${s.checkFixed&&!s.edited?'<span class="chip warn" title="First synced after it flew, so this is the actual block. Type the fixed block over it.">Check block</span>':""}`:""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
+      <td data-l="${lbl}" class="w2${planPaid&&s.kind!=="dhx"?" paidc":""}"><input class="in n" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
+      ${fbCell}
+      <td class="act">${s.example?'<span class="chip ex">Example</span>':""}${s.roster?`<span class="chip${s.edited?"":" rev"}" title="${s.edited?"From roster, edited by you":"From roster"}">${s.edited?"Edited":"Roster"}</span>${s.checkFixed&&!s.edited&&planPaid&&s.kind!=="dhx"?'<span class="chip warn" title="First synced after it flew, so this is the actual block. Type the planned block over it.">Check block</span>':""}`:""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
   }).join("");
   const domRows = d.dom.map(x=>`<tr data-id="${x.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="d-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
@@ -1596,11 +1642,12 @@ function viewLog(){
   ${hasEx?`<div class="banner"><span>Rows marked Example are sample data to show how the log works. Replace them with your own sectors.</span><button class="btn ghost" id="clearEx">Remove examples</button></div>`:""}
   <section class="card">
     <h2>Sectors</h2>
-    <p class="sub">Pay uses the fixed block for each sector. Dates and times in UTC. <button class="refbtn" type="button" data-ref="help|sectors" aria-label="Show more">🔽</button></p>
-    <p class="sub refx" data-refof="help|sectors">Flying pay uses the fixed block hours published for each sector. Dates and times are UTC; each sector takes the date of its duty's check-in. Synced sectors come in at their rostered block time, and keep it after Crew Access rewrites the flight with actual times; those actual times go to the Duty tab. A sector first synced after it flew is tagged Check block, because only its actual time was available. If the published fixed block differs, type over it and later syncs keep your figure. For a diversion or ferry flight, enter the actual block. Deadheads earn SOD at 65% of the 0 to 40 hour rate. Type times as 2:35, 0235 or 2.58.</p>
-    ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Block</th><th></th></tr></thead>
+    <p class="sub">The tinted time is the one you are paid on. Dates and times in UTC. <button class="refbtn" type="button" data-ref="help|sectors" aria-label="Show more">🔽</button></p>
+    <p class="sub refx" data-refof="help|sectors">Planned Block is the roster's block time. Synced sectors keep it after Crew Access rewrites the flight with actual times; those go to the Duty tab. Fixed Block comes from the fixed block list you load in Setup, from that list's start date. A listed sector is paid on its fixed block. A diversion, a sector not on the list, or a listed international sector you tick as airspace affected is paid on actual block: the Duty tab's actual times fill it in, or type it yourself. Before any list applies, pay uses the planned block. Deadheads earn SOD at 65% of the 0 to 40 hour rate on the planned block. Type times as 2:35, 0235 or 2.58.</p>
+    ${d.sectors.length&&!fbLists().length?`<div class="banner"><span>No fixed block list loaded yet, so pay uses the planned block.</span><button class="btn ghost" data-go="setup">Load in Setup</button></div>`:""}
+    ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Planned Block</th><th class="n">Fixed Block</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="pay">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
+      <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="n muted" data-l="Planned">${hm(plannedTot)}</td><td class="pay paidc" data-l="Paid">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
     : `<div class="empty"><b>No sectors logged for ${esc(ymLabel(cur))}</b><span>Add each sector from your roster as you fly it. Payable hours, SOD and the tiered flying allowance update as you type.</span><div class="btns"><button class="btn" data-add="sectors">Add first sector</button>${Object.keys(months).some(m=>monthData(m).sectors.length)?"":`<button class="btn quiet" id="loadEx">Show an example month</button>`}</div></div>`}
     ${d.sectors.length?`<div class="btns"><button class="btn" data-add="sectors">Add sector</button><button class="btn quiet" data-add="sectors" data-copy="1">Repeat last sector</button></div>`:""}
   </section>
@@ -1786,6 +1833,69 @@ function pasteHistCard(){
     <div class="tbl"><table class="phist"><tbody>${rosterHist.slice(0,15).map(h=>`<tr><td class="n">${t(h.at)}</td><td>${esc(line(h))}</td></tr>`).join("")}</tbody></table></div>
   </section>`;
 }
+/* Fixed block lists: read from the company PDF on this device with pdf.js (Mozilla's PDF reader, plain JavaScript
+   that runs in Safari). It is fetched from this site only when you load a PDF, then kept for offline use. */
+let fbPending=null, fbBusy="";
+const fmtDay = d=>new Date(d+"T00:00:00Z").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"});
+function loadScript(src){ return new Promise((ok,bad)=>{ const s=document.createElement("script"); s.src=src; s.onload=ok; s.onerror=()=>bad(new Error("load")); document.head.appendChild(s) }) }
+async function pdfText(buf){
+  if(!window.pdfjsLib) await loadScript("pdfjs/pdf.min.js");
+  const lib=window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc="pdfjs/pdf.worker.min.js";
+  const doc=await lib.getDocument({data:buf}).promise; let out="";
+  for(let i=1;i<=doc.numPages;i++){ const tc=await (await doc.getPage(i)).getTextContent();
+    out+=tc.items.map(it=>it.str+(it.hasEOL?"\n":" ")).join("")+"\n" }
+  return out;
+}
+// "ABC-XYZ 01:30:00": two station codes and a block time. Domestic is everything before Annexure B.
+function parseFixedBlocks(text){
+  const t=text.replace(/ /g," "), cut=t.search(/Annexure\s*B\s*:/i), startA=t.search(/Annexure\s*A\s*:/i);
+  const grab=s=>{ const map={}, clash=[]; const re=/\b([A-Z]{3})\s*[-–]\s*([A-Z]{3})\b\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/g; let m;
+    while((m=re.exec(s))){ const k=m[1]+"-"+m[2], v=Math.round(((+m[3])*60+(+m[4])+(+m[5]||0)/60)*100)/100; if(!(v>0)) continue;   // a few blocks carry seconds; kept exactly
+      if(map[k]!=null && map[k]!==v) clash.push(k); else map[k]=v }
+    return {map, clash} };
+  if(cut<0) return null;
+  const dom=grab(t.slice(Math.max(0,startA),cut)), intl=grab(t.slice(cut));
+  const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  let eff=""; const d=t.match(/ISSUE\s*DATE\s*:?\s*(\d{1,2})-([A-Za-z]{3})-(\d{2,4})/i);
+  if(d&&MON[d[2].toLowerCase()]){ const y=d[3].length===2?"20"+d[3]:d[3]; eff=`${y}-${String(MON[d[2].toLowerCase()]).padStart(2,"0")}-${d[1].padStart(2,"0")}` }
+  return {dom:dom.map, intl:intl.map, clash:[...dom.clash,...intl.clash], eff};
+}
+async function readFixedBlockPdf(file){
+  fbBusy="Reading "+file.name+"…"; fbPending=null; render();
+  try{
+    const parsed=parseFixedBlocks(await pdfText(await file.arrayBuffer()));
+    const n=parsed?Object.keys(parsed.dom).length+Object.keys(parsed.intl).length:0;
+    fbBusy="";
+    if(!parsed||!n){ showBanner("Could not find a fixed block table in that PDF. Nothing was saved."); render(); return }
+    const t=new Date(), today=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-01";
+    fbPending={...parsed, eff:parsed.eff||today, name:file.name.replace(/\.pdf$/i,"")};
+  }catch(e){ fbBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
+  render();
+}
+function fbTable(map){ return `<div class="tbl"><table><thead><tr><th>Sector</th><th class="n">Block</th></tr></thead><tbody>${Object.keys(map).sort().map(k=>`<tr><td>${esc(k.replace("-"," → "))}</td><td class="n">${hm(map[k])}</td></tr>`).join("")}</tbody></table></div>` }
+function fbCard(){
+  const L=[...fbLists()].sort((a,b)=>b.eff.localeCompare(a.eff)), n=o=>Object.keys(o).length;
+  const sample=o=>Object.keys(o).slice(0,4).map(k=>`${esc(k)} ${hm(o[k])}`).join(", ");
+  const rows=L.map((l,i)=>{ const next=L[i-1];
+    return `<tr><td>${esc(fmtDay(l.eff))}${next?` to ${esc(fmtDay(next.eff))}`:" onwards"}<span class="rtime">${esc(l.name||"Fixed block list")}</span></td><td class="n">${n(l.dom)}</td><td class="n">${n(l.intl)}</td>
+      <td class="act"><button class="refbtn" type="button" data-ref="fb|${esc(l.id)}" aria-label="Show the list">🔽</button><button class="del" data-fbdel="${esc(l.id)}" aria-label="Delete list">×<span class="dl"> Remove</span></button></td></tr>` }).join("");
+  const lists=L.map(l=>`<div class="refx fbprev" data-refof="fb|${esc(l.id)}"><b>${esc(fmtDay(l.eff))} list: domestic</b>${fbTable(l.dom)}<b>International</b>${fbTable(l.intl)}</div>`).join("");
+  const P=fbPending;
+  return `<section class="card">
+    <h2>Fixed block lists</h2>
+    <p class="sub">Load each fixed block PDF the company sends. <button class="refbtn" type="button" data-ref="help|fb" aria-label="Show more">🔽</button></p>
+    <p class="sub refx" data-refof="help|fb">The PDF is read on this phone and only the sector list is kept, here and in your backups. Each list applies from its start date until a later one takes over. The first load fetches the PDF reader from this site, so it needs internet once.</p>
+    ${L.length?`<div class="tbl"><table><thead><tr><th>Applies</th><th class="n">Domestic</th><th class="n">Intl</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${lists}`:""}
+    ${P?`<div class="fbprev"><b>Found ${n(P.dom)} domestic and ${n(P.intl)} international sectors</b>
+      <span class="rtime">Domestic: ${sample(P.dom)||"none"}. International: ${sample(P.intl)||"none"}.</span>
+      ${P.clash.length?`<p class="note" style="color:var(--orange)">Listed twice with different times, first one kept: ${esc(P.clash.join(", "))}.</p>`:""}
+      ${L.some(l=>l.eff===P.eff)?`<p class="note">A list already starts on this date; saving replaces it.</p>`:""}
+      <label class="f" style="max-width:220px;margin-top:8px">Applies from<input class="in" type="date" id="fbEff" value="${esc(P.eff)}"></label>
+      <div class="btns"><button class="btn" id="fbSave">Save list</button><button class="btn quiet" id="fbCancel">Cancel</button></div></div>`
+    : `<div class="btns">${fbBusy?`<span class="muted">${esc(fbBusy)}</span>`:`<label class="btn${L.length?" quiet":""}" for="fbFile" style="display:inline-flex;align-items:center">Load fixed block PDF</label><input type="file" id="fbFile" accept=".pdf,application/pdf" hidden>`}</div>`}
+  </section>`;
+}
+
 function viewSetup(){
   const fxRows = COMP.filter(([k])=>compOn(k)).map(([k,l,cash])=>`<tr class="exrow"><td><div class="exname"><input class="in" id="cn-${k}" data-cn="${k}" data-def="${esc(l)}" value="${esc(compLabel(k,l))}" placeholder="${esc(l)}" aria-label="Name for ${esc(l)}" autocomplete="off">${cash?"":'<span><span class="chip">CTC only</span></span>'}</div></td>
     ${["rev"].map(st=>`<td><div class="examt"><input class="in n" id="fx-${st}-${k}" data-fx="${st}" data-k="${k}" value="${profile.fixed[st][k]?Number(profile.fixed[st][k]).toLocaleString("en-IN"):""}" placeholder="0" inputmode="numeric"><button class="del" data-cdel="${k}" aria-label="Remove ${esc(compLabel(k,l))}">×<span class="dl"> Remove</span></button></div></td>`).join("")}</tr>`).join("");
@@ -1820,6 +1930,7 @@ function viewSetup(){
       <label class="f">Domestic layover allowance<select id="p-layoverExempt" data-p="layoverExempt"><option value="0"${!profile.layoverExempt?" selected":""}>Taxed with salary</option><option value="1"${profile.layoverExempt?" selected":""}>Tax-exempt</option></select></label>
     </div>
   </section>
+  ${fbCard()}
   ${pasteHistCard()}
   <section class="card">
     <h2>Backup</h2>
@@ -1869,6 +1980,15 @@ document.addEventListener("click", e=>{
   if(t.id==="pasteRoster"){ pasteRoster(); return }
   if(t.id==="rosterGo"){ const ta=document.getElementById("rosterText"); if(ta&&ta.value.trim()) applyRoster(ta.value); return }
   if(t.id==="backupBtn"){ downloadBackup(); return }
+  if(t.id==="fbCancel"){ fbPending=null; render(); return }
+  if(t.id==="fbSave" && fbPending){ const e=(document.getElementById("fbEff")||{}).value||fbPending.eff;
+    if(!/^\d{4}-\d\d-\d\d$/.test(e)){ showBanner("Choose the date this list applies from."); return }
+    const keep=fbLists().filter(l=>l.eff!==e), lp=fbPending;
+    profile.fbLists=[...keep, {id:uid(), eff:e, name:lp.name, dom:lp.dom, intl:lp.intl, loaded:new Date().toISOString()}];
+    fbPending=null; queueProfile(); showBanner(`Fixed block list saved: ${Object.keys(lp.dom).length} domestic and ${Object.keys(lp.intl).length} international sectors from ${fmtDay(e)}.`); render(); return }
+  if(t.dataset.fbdel){ const l=fbLists().find(x=>x.id===t.dataset.fbdel); if(!l) return;
+    if(!confirm(`Delete the fixed block list starting ${fmtDay(l.eff)}? Sectors it covered go back to the planned block or an earlier list.`)) return;
+    profile.fbLists=fbLists().filter(x=>x!==l); queueProfile(); render(); return }
   if(t.id==="prevM"){ cur=ymShift(cur,-1); render(); return }
   if(t.id==="nextM"){ cur=ymShift(cur,1); render(); return }
   const d=monthData(cur);
@@ -1905,6 +2025,8 @@ document.addEventListener("change", e=>{
   const el=e.target;
   if(el.id==="rosterFile"){ const f=el.files&&el.files[0]; if(f){ const r=new FileReader(); r.onload=()=>applyRoster(r.result); r.readAsText(f) } el.value=""; return }
   if(el.id==="rosterText") return;
+  if(el.id==="fbFile"){ const f=el.files&&el.files[0]; el.value=""; if(f) readFixedBlockPdf(f); return }
+  if(el.id==="fbEff"){ if(fbPending&&el.value) fbPending.eff=el.value; return }
   if(el.id==="restoreFile"){ if(el.files&&el.files[0]) restoreBackup(el.files[0]); el.value=""; return }
   if(el.dataset.p){ let v=el.value;
     if(el.dataset.num) v=parseFloat(String(v).replace(/,/g,""))||0;
@@ -1941,6 +2063,10 @@ document.addEventListener("change", e=>{
   const list = el.id[0]==="s"?"sectors":el.id[0]==="d"?"dom":el.id[0]==="t"?"train":"intl";
   const row = monthData(cur)[list].find(r=>r.id===tr.dataset.id); if(!row) return;
   let v=el.value;
+  // Pay-only fields: your actual block and the airspace tick survive roster pastes without marking the row edited
+  if(el.dataset.f==="airspace"||el.dataset.f==="act"){ if(el.type==="checkbox") { if(el.checked) row.airspace=true; else delete row.airspace }
+    else { const m=parseHM(v); if(m>0) row.act=m; else delete row.act }
+    queueMonth(cur); render(); return }
   if(el.dataset.tm){ const t=normHHMM(v); if(t===null){ showBanner("Enter times in UTC as 14:35 or 1435."); el.value=row[el.dataset.f]||""; return } v=t }
   else if(el.dataset.hm) v=parseHM(v); else if(el.dataset.num) v=parseFloat(v)||0; else if(el.classList.contains("caps")) v=v.toUpperCase().trim();
   row[el.dataset.f]=v; if(row.example) row.example=false; if(row.roster) row.edited=true;
