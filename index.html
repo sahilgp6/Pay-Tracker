@@ -106,9 +106,10 @@ td.act{white-space:nowrap;text-align:right;width:1%}
 td.act .chip{margin-right:4px}
 .chip.warn{color:var(--yellow);border-color:var(--yellow)}
 /* The block time you are paid on */
-td.paidc{background:rgba(45,106,48,.13)!important;box-shadow:inset 3px 0 0 var(--green)}
-td.paidc .in{border-color:rgba(45,106,48,.55)}
-.fbv{font-family:var(--f-mono);font-size:14px;color:var(--green)}
+.in.paid{background:rgba(45,106,48,.14);border-color:rgba(45,106,48,.6);color:var(--green);font-weight:700}
+.in.paid:focus{background:rgba(45,106,48,.08)}
+.fbv{display:block;min-height:34px;line-height:20px}
+@media (max-width:700px){ table.stack tr.halt-row td{text-align:left;grid-column:auto} }
 .fbtick{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;white-space:nowrap;justify-content:flex-end}
 .fbtick input{margin:0}
 .fbprev{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--surface2);margin-top:10px}
@@ -259,7 +260,7 @@ tr.tl-rep td{font-weight:700}
 .bar-f{height:100%;border-radius:4px;background:var(--green)} .bar-f.warn{background:var(--orange)} .bar-f.bad{background:var(--red)}
 tr.halt-row td{background:rgba(160,88,40,.08);color:var(--orange);font-size:12px;font-weight:600;padding:6px 8px;border-left:3px solid var(--orange)}
 tr.halt-row .mlink{color:var(--orange);font-size:12px}
-@media (max-width:700px){ table.stack tr.halt-row{display:block;padding:6px 8px} table.stack tr.halt-row td{display:block} }
+@media (max-width:700px){ table.stack tr.halt-row{display:block;padding:8px 0} table.stack tr.halt-row td{display:block} }
 footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:12px}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.btn,.iconbtn{transition:all .15s}}
 </style>
@@ -295,7 +296,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 32</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 33</span></span></footer>
 </div>
 
 <script>
@@ -1612,9 +1613,9 @@ function viewLog(){
     let fbCell;
     if(s.kind==="dhx") fbCell=`<td data-l="Fixed block" class="w2 n muted">Unpaid</td>`;
     else if(s.kind==="dh") fbCell=`<td data-l="Fixed block" class="w2 n muted">–<span class="rtime">SOD on planned</span></td>`;
-    else if(pb.how==="fixed") fbCell=`<td data-l="Fixed block" class="w2 n paidc"><b class="fbv">${hm(pb.m)}</b>${pb.intl?`<label class="fbtick"><input type="checkbox" id="s-${s.id}-airspace" data-f="airspace"> Airspace affected</label>`:""}</td>`;
+    else if(pb.how==="fixed") fbCell=`<td data-l="Fixed block" class="w2 n paidc"><div class="in n paid fbv">${hm(pb.m)}</div>${pb.intl?`<label class="fbtick"><input type="checkbox" id="s-${s.id}-airspace" data-f="airspace"> Airspace affected</label>`:""}</td>`;
     else if(pb.how==="actual"){ const air=pb.why==="Airspace affected";
-      fbCell=`<td data-l="Actual block" class="w2 paidc"><input class="in n" id="s-${s.id}-act" data-f="act" data-hm="1" value="${pb.typed?hm(pb.m):""}" placeholder="${pb.need?"Actual":hm(pb.m)}" inputmode="numeric" aria-label="Actual block">
+      fbCell=`<td data-l="Actual block" class="w2 paidc"><input class="in n paid" id="s-${s.id}-act" data-f="act" data-hm="1" value="${pb.typed?hm(pb.m):""}" placeholder="${pb.need?"Actual":hm(pb.m)}" inputmode="numeric" aria-label="Actual block">
         <span class="rtime">${air?"Actual block":esc(pb.why)+": actual"}${pb.src&&!pb.typed?", "+esc(pb.src):""}</span>${pb.need?'<span class="chip warn" title="Paid on actual block. Type it here, or add actual times in the Duty tab. Until then the planned block stands in.">Enter actual</span>':""}${air?`<label class="fbtick"><input type="checkbox" id="s-${s.id}-airspace" data-f="airspace" checked> Airspace affected</label>`:""}</td>` }
     else fbCell=`<td data-l="Fixed block" class="w2 n muted">–</td>`;
     return haltTr+`<tr data-id="${s.id}">
@@ -1627,7 +1628,7 @@ function viewLog(){
         <option value="dh"${s.kind==="dh"?" selected":""}>Deadhead (SOD)</option>
         <option value="dhx"${s.kind==="dhx"?" selected":""}>Deadhead (unpaid)</option>
         <option value="div"${s.kind==="div"?" selected":""}>Diversion / ferry</option></select></td>
-      <td data-l="${lbl}" class="w2${planPaid&&s.kind!=="dhx"?" paidc":""}"><input class="in n" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
+      <td data-l="${lbl}" class="w2${planPaid&&s.kind!=="dhx"?" paidc":""}"><input class="in n${planPaid&&s.kind!=="dhx"?" paid":""}" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
       ${fbCell}
       <td class="act">${s.example?'<span class="chip ex">Example</span>':""}${s.roster?`<span class="chip${s.edited?"":" rev"}" title="${s.edited?"From roster, edited by you":"From roster"}">${s.edited?"Edited":"Roster"}</span>${s.checkFixed&&!s.edited&&planPaid&&s.kind!=="dhx"?'<span class="chip warn" title="First synced after it flew, so this is the actual block. Type the planned block over it.">Check block</span>':""}`:""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
   }).join("");
@@ -1647,7 +1648,7 @@ function viewLog(){
     ${d.sectors.length&&!fbLists().length?`<div class="banner"><span>No fixed block list loaded yet, so pay uses the planned block.</span><button class="btn ghost" data-go="setup">Load in Setup</button></div>`:""}
     ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Planned Block</th><th class="n">Fixed Block</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="n muted" data-l="Planned">${hm(plannedTot)}</td><td class="pay paidc" data-l="Paid">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
+      <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="n muted" data-l="Planned">${hm(plannedTot)}</td><td class="pay paidc" data-l="Paid" style="color:var(--green)">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
     : `<div class="empty"><b>No sectors logged for ${esc(ymLabel(cur))}</b><span>Add each sector from your roster as you fly it. Payable hours, SOD and the tiered flying allowance update as you type.</span><div class="btns"><button class="btn" data-add="sectors">Add first sector</button>${Object.keys(months).some(m=>monthData(m).sectors.length)?"":`<button class="btn quiet" id="loadEx">Show an example month</button>`}</div></div>`}
     ${d.sectors.length?`<div class="btns"><button class="btn" data-add="sectors">Add sector</button><button class="btn quiet" data-add="sectors" data-copy="1">Repeat last sector</button></div>`:""}
   </section>
