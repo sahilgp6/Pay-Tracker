@@ -214,7 +214,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
 .refbtn{background:none;border:0;padding:0 2px;margin-left:4px;font-size:13px;line-height:1;cursor:pointer;vertical-align:middle}
 .refx{display:none!important}.refx.ref-open{display:block!important}
 .nextp h3{display:flex;align-items:center;gap:4px}
-.tpair{display:flex;gap:6px;margin-top:6px}.tpair .in{color:var(--text);font-weight:400;letter-spacing:0;text-transform:none}.tpair label{display:flex;flex-direction:column;gap:2px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);flex:1 1 0;min-width:0}
+.tpair{display:flex;gap:6px;margin-top:6px}.tpair .in{color:var(--text);font-weight:400;letter-spacing:0;text-transform:none}.tpair label{display:flex;flex-direction:column;justify-content:flex-end;white-space:nowrap;gap:2px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);flex:1 1 0;min-width:0}
 .phist td:first-child{white-space:nowrap;width:1%;color:var(--muted);font-size:13px}.phist td{font-size:13px}
 .rmrow{justify-content:flex-end}.btn.rm{color:var(--red);border-color:var(--border);font-size:12px;padding:7px 12px}
 .gone{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}.gone li{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px}
@@ -296,7 +296,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 33</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 34</span></span></footer>
 </div>
 
 <script>
@@ -1620,7 +1620,7 @@ function viewLog(){
     else fbCell=`<td data-l="Fixed block" class="w2 n muted">–</td>`;
     return haltTr+`<tr data-id="${s.id}">
       <td data-l="Date" class="w2"><input class="in" type="date" id="s-${s.id}-date" data-f="date" value="${esc(s.date)}"></td>
-      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${!s.roster?`<span class="tpair"><label>Planned dep Z<input class="in n" id="s-${s.id}-dep" data-f="dep" data-tm="1" value="${esc(s.dep||"")}" placeholder="HH:MM" inputmode="numeric" aria-label="Planned departure time UTC"></label><label>Report Z<input class="in n" id="s-${s.id}-report" data-f="report" data-tm="1" value="${esc(s.report||"")}" placeholder="auto" inputmode="numeric" aria-label="Report time UTC, optional"></label></span>${s.dep?"":'<span class="rtime">Add the planned departure to include it in the Duty tab</span>'}`:s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
+      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="IX1237" autocomplete="off">${!s.roster?`<span class="tpair"><label>Report Z<input class="in n" id="s-${s.id}-report" data-f="report" data-tm="1" value="${esc(s.report||"")}" placeholder="auto" inputmode="numeric" aria-label="Report time UTC, optional"></label><label>Dep Z<input class="in n" id="s-${s.id}-dep" data-f="dep" data-tm="1" value="${esc(s.dep||"")}" placeholder="HH:MM" inputmode="numeric" aria-label="Planned departure time UTC"></label></span>${s.dep?"":'<span class="rtime">Add the planned departure to include it in the Duty tab</span>'}`:s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
       <td data-l="From"><input class="in caps" id="s-${s.id}-from" data-f="from" value="${esc(s.from)}" placeholder="BOM" maxlength="4" autocomplete="off"></td>
       <td data-l="To"><input class="in caps" id="s-${s.id}-to" data-f="to" value="${esc(s.to)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
       <td data-l="Type" class="w2"><select class="in" id="s-${s.id}-kind" data-f="kind">
