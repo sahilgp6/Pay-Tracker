@@ -296,7 +296,7 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 
   <main id="view" class="panel"></main>
 
-  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 34</span></span></footer>
+  <footer><span>Made by Sahil Gupta</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 35</span></span></footer>
 </div>
 
 <script>
@@ -601,9 +601,48 @@ function parseICS(text){
     ev[name.toUpperCase()]={params, value:line.slice(i+1)};
   }
   const un=s=>String(s||"").replace(/\\n/gi,"\n").replace(/\\([,;\\])/g,"$1");
-  return evs.map(e=>({uid:e.UID&&e.UID.value, summary:un(e.SUMMARY&&e.SUMMARY.value), desc:un(e.DESCRIPTION&&e.DESCRIPTION.value),
+  return expandExport(evs.map(e=>({uid:e.UID&&e.UID.value, summary:un(e.SUMMARY&&e.SUMMARY.value), desc:un(e.DESCRIPTION&&e.DESCRIPTION.value),
     location:un(e.LOCATION&&e.LOCATION.value), status:(e.STATUS&&e.STATUS.value||"").toUpperCase(),
-    start:e.DTSTART?icsTime(e.DTSTART):null, end:e.DTEND?icsTime(e.DTEND):null, lm:e["LAST-MODIFIED"]?icsTime(e["LAST-MODIFIED"]):null})).filter(e=>e.start!=null && e.status!=="CANCELLED");
+    start:e.DTSTART?icsTime(e.DTSTART):null, end:e.DTEND?icsTime(e.DTEND):null, lm:e["LAST-MODIFIED"]?icsTime(e["LAST-MODIFIED"]):null})).filter(e=>e.start!=null && e.status!=="CANCELLED"));
+}
+/* Crew Access "Export" files hold one event per duty ("FLY (CCJ-MCT-CCJ)", "GROUND (DEL)", "STANDBY (CCJ)") with the
+   check-in, each sector and the release as lines in its notes, all in UTC. Split those into the separate events the
+   calendar subscription gives, so everything downstream treats both the same. Subscription events pass through untouched. */
+function expandExport(evs){
+  const MON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  const out=[];
+  for(const e of evs){
+    const desc=e.desc||"", kind=((e.summary||"").match(/^\s*([A-Z]+)\s*\(/)||[])[1];
+    if(!kind || !/All times are in UTC/i.test(desc) || !["FLY","GROUND","TRAINING","SIM"].includes(kind)){
+      // Days off: carry the code (W-OFF, ROFF) the way the subscription does
+      if(kind==="OFF"){ const c=(desc.match(/^Off\s+\S+\s+\S+\s+[A-Z]{3}\s+([A-Z][A-Z\-]*)/m)||[])[1]; out.push({...e, summary:"Day Off Duty", desc:"Duty Type: "+(c||"OFF")}) }
+      else out.push(e);
+      continue }
+    let day=null, last=e.start, n=0, train=null; const made=[];
+    const at=(hhmm, plus)=>{ if(day==null) return null; const [h,m]=hhmm.split(":").map(Number); let t=day+h*HR+m*MIN+(plus||0)*DAY;
+      while(t<last-12*HR) t+=DAY; return t };   // a time earlier than the last one on the same date header has crossed midnight
+    const add=(o)=>{ made.push({uid:e.uid+"#"+(n++), status:"", lm:e.lm, location:"", ...o}) };
+    for(const raw of desc.split("\n")){
+      const ln=raw.replace(/\s+$/,"");
+      let m=ln.match(/^[A-Z][a-z]{2},\s*(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/);
+      if(m && MON[m[2].toLowerCase()]!=null){ day=Date.UTC(+m[3], MON[m[2].toLowerCase()], +m[1]); continue }
+      if((m=ln.match(/^Check-?in\s+(\d\d:\d\d)\s+([A-Z]{3})/i))){ const t=at(m[1]); if(t==null) continue; last=t; add({summary:"Check In at "+m[2], desc:"Duty Type: Working", start:t, end:t}); continue }
+      if((m=ln.match(/^Release\s+(\d\d:\d\d)\s+([A-Z]{3})/i))){ const t=at(m[1]); if(t==null) continue; last=t; add({summary:"Check Out at "+m[2], desc:"Duty Type: Working", start:t, end:t}); continue }
+      if((m=ln.match(/^(\d{1,4}[A-Z]?)\s+(\d\d:\d\d)\s+(\d\d:\d\d)(?:\/\+(\d))?\s+([A-Z]{3})\s*-\s*([A-Z]{3})\s+(.*)$/))){
+        const dep=at(m[2]); if(dep==null) continue; last=dep; let arr=at(m[3], +m[4]||0); if(arr<dep) arr+=DAY; last=arr;
+        const dh=/DEAD\s*HEAD|\bDH\b|POSITION/i.test(m[7]), role=m[7].trim();
+        add({summary:(dh?"Deadhead: ":"Flight: ")+m[5]+"→"+m[6], desc:`Flight Number: ${dh?m[1]:"IX"+m[1]}\nDuty Type: Working\nPosition: ${role}`, start:dep, end:arr}); continue }
+      if((m=ln.match(/^(?:Ground|Training|Simulator|Sim)\s+(\d\d:\d\d)\s+(\d\d:\d\d)(?:\/\+(\d))?\s+([A-Z]{3})\s*(.*)$/i))){
+        const s=at(m[1]); if(s==null) continue; let f=at(m[2], +m[3]||0); if(f<s) f+=DAY; last=f;
+        const code=(m[5].trim().split(/\s+/).pop()||"").toUpperCase();
+        train={summary:"Training: "+(code||kind), code, names:[], start:s, end:f}; add(train); continue }
+      // course lines under a training row: " trainings: 03:00  09:00  SFD  trainee" or "03:00  09:00  DOOR_TRG  trainee"
+      if(train && (m=ln.match(/^\s*(?:trainings:\s*)?\d\d:\d\d\s+\d\d:\d\d\s+(.+?)\s{2,}\S+\s*$/i))){ train.names.push(m[1].trim()); continue }
+    }
+    for(const o of made) if(o.code!==undefined){ o.desc=`Training Code: ${o.code}\nTraining Description: ${[...new Set(o.names)].join(", ")||o.code}`; delete o.code; delete o.names }
+    if(made.some(o=>!/^Check (In|Out)/.test(o.summary))) out.push(...made); else out.push(e);
+  }
+  return out;
 }
 // Turn calendar events into sectors and layovers
 function rosterItems(events){
@@ -633,7 +672,8 @@ function rosterItems(events){
   for(const h of hotels){
     const prev=[...sectors].reverse().find(x=>x.end<=h.start+60000), next=sectors.find(x=>x.start>=(h.end||h.start));
     const am=(h.desc.match(/,\s*([A-Z]{3})\s*(?:\n|$)/)||[])[1];
-    const stn=(prev&&prev.to)||am||""; if(!stn) continue;
+    const own=(h.summary.match(/^\s*HOTEL\s*\(([A-Z]{3})\)/i)||[])[1];   // export files name the hotel's station
+    const stn=own||(prev&&prev.to)||am||""; if(!stn) continue;
     const from=prev?prev.end:h.start, to=next?next.start:(h.end||h.start);
     const intl=!IN_AIRPORTS.has(stn);
     if(intl) lays.push({type:"intl", uid:h.uid, start:prev?prev.end:h.start, country:stn, mins:Math.max(0,Math.round((to-from)/60000))});
