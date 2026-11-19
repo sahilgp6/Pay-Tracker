@@ -1,0 +1,2138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a3a6b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Pay Tracker">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Pay Tracker</title>
+<style>
+/* Layout: flight-strip header with month selector, five tabs, one working panel each. Theme follows the 737 question bank: parchment, navy, oxblood. Single light look by design. */
+:root{
+  --bg:#ddd8cc; --surface:#f5f0e6; --surface2:#ede8dc; --border:#c4b99a;
+  --accent:#1a3a6b; --accent2:#9e2a1c; --green:#2d6a30; --red:#9e2a1c; --yellow:#8b6914; --orange:#a05828;
+  --text:#1c1814; --muted:#7a6f60; --onfill:#fffaf0;
+  --f-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --radius:10px;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--text)}
+body{margin:0;font-family:var(--f-body);font-size:15px;line-height:1.5;padding-inline:max(16px,env(safe-area-inset-left));padding-block:max(16px,env(safe-area-inset-top)) max(40px,env(safe-area-inset-bottom));-webkit-tap-highlight-color:transparent}
+.wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.num,td.n,input.n,.v,.pay,.kpi b{font-variant-numeric:tabular-nums}
+h1,h2,h3{font-weight:800;margin:0;text-wrap:balance}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Header strip */
+.strip{display:grid;grid-template-columns:auto 1fr auto;border:1px solid var(--border);background:var(--surface);border-radius:var(--radius);overflow:hidden}
+.strip .cs{background:var(--accent);color:var(--onfill);padding:12px 16px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.strip .cs b{font-size:20px;font-weight:800;line-height:1.1}
+.strip .cs span{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.8;margin-top:4px}
+.strip .mid{display:flex;align-items:center;gap:8px;padding:8px 14px;min-width:0;flex-wrap:wrap}
+.mid .mlabel{font-size:20px;font-weight:800;min-width:8.5em;text-align:center}
+.iconbtn{border:1px solid var(--border);background:var(--surface2);border-radius:6px;width:34px;height:34px;cursor:pointer;font-size:16px;font-weight:700}
+.iconbtn:hover{border-color:var(--accent)}
+.iconbtn:active,.btn:active{transform:scale(.97)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:var(--surface2);white-space:nowrap}
+.chip.rev{border-color:var(--accent);color:var(--accent);background:rgba(26,58,107,.08)}
+.chip.ex{border-color:var(--orange);color:var(--orange);background:rgba(160,88,40,.08)}
+.strip .kpis{display:flex;background:var(--surface2);border-left:1px solid var(--border)}
+.kpi{padding:8px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid var(--border)}
+.kpi:first-child{border-left:0}
+.kpi small{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.kpi b{font-size:18px;font-weight:800;white-space:nowrap}
+@media (max-width:820px){
+  .strip{grid-template-columns:1fr}
+  .strip .kpis{border-left:0;border-top:1px solid var(--border)}
+  .strip .mid{justify-content:space-between;border-top:1px solid var(--border)}
+  .kpi{flex:1;min-width:0;padding:8px}
+  .kpi b{font-size:15px}
+}
+
+/* Tabs */
+nav.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+nav.tabs button{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap}
+nav.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--onfill)}
+
+.panel{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card h2{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.card .sub{color:var(--muted);font-size:13px;margin:-4px 0 0;max-width:75ch}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+.row > *{flex:1 1 300px;min-width:0}
+.note{font-size:12px;color:var(--muted);max-width:75ch;margin:0}
+.banner{border:1px solid rgba(160,88,40,.35);background:rgba(160,88,40,.1);color:var(--text);border-radius:8px;padding:10px 14px;font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+.banner.info{border-color:var(--border);background:var(--surface2)}
+
+/* Tables */
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:left;padding:6px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:middle}
+td.n,th.n{text-align:right}
+tfoot td{font-weight:800;border-bottom:0;border-top:2px solid var(--text)}
+.in{border:1px solid var(--border);background:var(--surface2);border-radius:6px;padding:6px 7px;width:100%;min-width:0;font-size:14px}
+.in:focus{border-color:var(--accent);background:var(--surface);outline:none}
+.in.n{text-align:right;font-variant-numeric:tabular-nums}
+.in.caps{text-transform:uppercase}
+td .del{border:0;background:none;color:var(--muted);cursor:pointer;font-size:17px;padding:2px 6px}
+td .del:hover{color:var(--red)}
+.dl{display:none;font-size:12px;font-weight:600}
+@media (max-width:700px){.dl{display:inline}}
+.pay{text-align:right;white-space:nowrap;font-weight:600}
+.short{color:var(--orange);font-size:11px;font-weight:600;display:block}
+.btn{border:1px solid var(--accent2);background:var(--accent2);color:var(--onfill);border-radius:var(--radius);padding:9px 16px;cursor:pointer;font-size:13px;font-weight:700}
+.btn.ghost{background:rgba(26,58,107,.08);border-color:var(--accent);color:var(--accent)}
+.btn.quiet{border-color:var(--border);background:var(--surface2);color:var(--text)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.sbypick{margin-top:12px;align-items:flex-end;justify-content:space-between}.sbypick .muted{flex:1 1 200px;font-size:13px}.sbypick .f{flex:0 1 260px}
+.empty{border:1px dashed var(--border);background:var(--surface2);border-radius:var(--radius);padding:20px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center;font-size:13px}
+.empty b{color:var(--text)}
+
+.sec td:nth-child(1){width:150px}
+.sec td:nth-child(3),.sec td:nth-child(4){width:80px}
+.sec td:nth-child(5){width:170px}
+.sec td:nth-child(6){width:96px}
+td.act{white-space:nowrap;text-align:right;width:1%}
+td.act .chip{margin-right:4px}
+.chip.warn{color:var(--yellow);border-color:var(--yellow)}
+/* The block time you are paid on */
+.in.paid{background:rgba(45,106,48,.14);border-color:rgba(45,106,48,.6);color:var(--green);font-weight:700}
+.in.paid:focus{background:rgba(45,106,48,.08)}
+.fbv{display:block;min-height:34px;line-height:20px}
+@media (max-width:700px){ table.stack tr.halt-row td{text-align:left;grid-column:auto} }
+.fbtick{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;white-space:nowrap;justify-content:flex-end}
+.fbtick input{margin:0}
+.fbprev{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--surface2);margin-top:10px}
+input[type=date].in{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;width:100%;text-align:left;min-height:34px}
+input[type=date].in::-webkit-date-and-time-value{text-align:left;margin:0}
+input[type=date].in::-webkit-datetime-edit{padding:0}
+@media (max-width:700px){
+  table.stack thead{display:none}
+  table.stack, table.stack tbody, table.stack tr, table.stack td{display:block;width:auto!important}
+  table.stack tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px 0;border-bottom:1px solid var(--border)}
+  table.stack td{border:0;padding:0}
+  table.stack td[data-l]::before{content:attr(data-l);display:block;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  table.stack td.w2,table.stack td.pc{grid-column:span 2}
+  table.stack td.pc,table.stack td.dom-amt{text-align:left}
+  table.stack td:last-child{grid-column:span 2;text-align:right;align-self:end}
+  table.stack tfoot{display:block}
+  table.stack tfoot tr{grid-template-columns:1fr auto}
+  table.stack tfoot td:last-child{display:none}
+  table.stack td.act{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px;white-space:normal}
+  table.stack td.act .chip{margin-right:0}
+  table.stack .rtime,table.stack td.pay{white-space:normal;overflow-wrap:anywhere}
+}
+
+/* Payslip */
+.slip{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.slip > div{padding:14px 16px;min-width:0}
+.slip > div + div{border-left:1px solid var(--border)}
+.slip h3{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.line{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--surface2);font-size:14px}
+.line span:first-child{min-width:0}
+.line .sm{display:block;font-size:11.5px;color:var(--muted)}
+.line .v{white-space:nowrap;font-weight:600}
+.line.tot{border-bottom:0;border-top:2px solid var(--text);margin-top:6px;padding-top:8px;font-weight:800}
+.netbar{grid-column:1/-1;border-left:0!important;border-top:1px solid var(--border);background:var(--surface2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.netbar span{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.netbar b{font-size:30px;font-weight:800;color:var(--green)}
+.netbar .extra{flex-basis:100%;font-size:12.5px;letter-spacing:0;text-transform:none;font-weight:500}
+@media (max-width:700px){.slip{grid-template-columns:1fr}.slip > div + div{border-left:0;border-top:1px solid var(--border)}}
+
+.cmp{display:grid;grid-template-columns:auto 1fr 1fr 1fr}
+.cmp > div{padding:7px 10px;border-bottom:1px solid var(--border);font-size:14px}
+.cmp .h{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.cmp .v{text-align:right;white-space:nowrap}
+.up{color:var(--green);font-weight:700} .down{color:var(--red);font-weight:700}
+.verdict{border-radius:8px;padding:10px 12px;font-size:13.5px;font-weight:600;border:1px solid}
+.verdict.ok{color:var(--green);border-color:rgba(45,106,48,.35);background:rgba(45,106,48,.08)}
+.verdict.bad{color:var(--red);border-color:rgba(158,42,28,.35);background:rgba(158,42,28,.08)}
+.verdict.warn{color:var(--orange);border-color:rgba(160,88,40,.4);background:rgba(160,88,40,.08)}
+.verdict+.verdict{margin-top:-4px}
+.verdict.info{color:var(--accent);border-color:rgba(26,58,107,.3);background:rgba(26,58,107,.06)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+label.f .in,label.f select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:14px;font-weight:400;letter-spacing:0;text-transform:none}
+.fx th:not(:first-child),.fx td:not(:first-child){text-align:right}
+.fx td:first-child{font-size:14px}
+.fx td:last-child{width:1%}
+.fx .in{width:122px;max-width:122px;margin-left:auto;display:block}
+
+.chart svg{width:100%;height:auto;display:block}
+.chart text{font-size:10px;font-weight:600;fill:var(--muted);font-family:var(--f-body)}
+.bar{fill:var(--accent)}
+.bar.rec{fill:var(--accent);opacity:.55}
+/* Year table: one text size, one row height, month column pinned while the figures scroll */
+.chart .xlab{display:grid;grid-template-columns:repeat(12,1fr);margin-top:6px}
+.chart .xlab span{text-align:center;font-size:11px;font-weight:600;color:var(--muted)}
+.yr table{font-size:13.5px}
+.yr th,.yr td{white-space:nowrap;padding:9px 10px;height:40px}
+.yr th{height:auto}
+.yr td.n{font-weight:500}
+.yr th:first-child,.yr td:first-child{position:sticky;left:0;background:var(--surface);z-index:1;padding-left:2px}
+.yr td.none{color:var(--muted);font-weight:400}
+.yr tfoot td{font-weight:800}
+.mlink{border:0;background:none;padding:0;font:inherit;font-size:13.5px;font-weight:700;color:var(--accent);cursor:pointer;min-width:2.6em;text-align:left}
+.mlink:hover{text-decoration:underline}
+.rtime{display:block;font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap}
+textarea.in{resize:vertical;width:100%}
+.fleet{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.fleet label.f{flex:0 0 190px}
+.fleet-out{display:flex;flex-direction:column;padding-bottom:6px}
+.fleet-out b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.fleet-out span{font-size:11px;color:var(--muted)}
+.fleet .chip{margin-bottom:9px}
+/* Duty tab */
+.daynav{gap:10px}
+.dn-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dn-mid{display:flex;flex-direction:column;align-items:center}
+.dn-mid b{font-size:19px;font-weight:800}
+.dn-mid span{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+table.chk .rtime,table.tl .rtime{white-space:normal}
+@media (max-width:380px){input.in.actin{width:60px;padding:5px 4px}table.chk th,table.chk td,table.tl th,table.tl td{padding-left:5px;padding-right:5px}table.chk th{font-size:10px;letter-spacing:.3px}table.chk .rtime{overflow-wrap:anywhere}}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
+.flags{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
+label.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}label.chk input{width:18px;height:18px;accent-color:var(--accent)}
+.exrow td{vertical-align:top}
+.exname{display:flex;flex-direction:column;gap:6px}.exname .in{width:100%;max-width:none;margin:0}.examt{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.nextp{border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.nextp h3{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0}
+.nextp .sub{margin:0;font-size:12.5px}
+.nextg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.nextg>div{display:flex;flex-direction:column;gap:1px}.nextg span{font-size:11px;color:var(--muted);font-weight:600}.nextg b{font-size:22px;font-weight:800;line-height:1.15}.nextg small{font-size:12px;color:var(--muted)}.nextg em{font-style:normal;font-size:12px;color:var(--text)}
+.refbtn{background:none;border:0;padding:0 2px;margin-left:4px;font-size:13px;line-height:1;cursor:pointer;vertical-align:middle}
+.refx{display:none!important}.refx.ref-open{display:block!important}
+.nextp h3{display:flex;align-items:center;gap:4px}
+.tpair{display:flex;gap:6px;margin-top:6px}.tpair .in{color:var(--text);font-weight:400;letter-spacing:0;text-transform:none}.tpair label{display:flex;flex-direction:column;justify-content:flex-end;white-space:nowrap;gap:2px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);flex:1 1 0;min-width:0}
+.phist td:first-child{white-space:nowrap;width:1%;color:var(--muted);font-size:13px}.phist td{font-size:13px}
+.rmrow{justify-content:flex-end}.btn.rm{color:var(--red);border-color:var(--border);font-size:12px;padding:7px 12px}
+.gone{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}.gone li{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px}
+.wkline{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:14px}
+.wkline>b{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.dstrip{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:2px 18px 8px;margin:0 -18px;scroll-padding:0 18px;scrollbar-width:none;align-items:stretch}
+.ds{flex:0 0 58px;scroll-snap-align:center;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px;border:1px solid var(--border);background:var(--surface2);border-radius:8px;cursor:pointer;font:inherit;color:var(--ink)}
+.ds b{font-size:18px;font-weight:800;line-height:1.1}
+.ds-w{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.ds-t{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap}
+.ds-off{background:rgba(45,106,48,.08);border-color:rgba(45,106,48,.35)}.ds-off .ds-t{color:var(--green)}
+.ds-free{opacity:.6}
+.ds.on{background:var(--accent);border-color:var(--accent);color:var(--onfill)}.ds.on .ds-w,.ds.on .ds-t{color:var(--onfill);opacity:.85}
+.ds-m{flex:0 0 auto;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted);align-self:center}
+html,body,*{touch-action:manipulation}
+/* iPhone zooms into any text box under 16px when tapped, so phones get 16px boxes */
+@media (pointer:coarse){input.in,select.in,textarea.in,label.f .in,label.f select,.actin{font-size:16px}}
+.iconbtn:disabled{opacity:.35;cursor:default}
+.dn-tools{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.dn-tools label.f{flex:0 0 170px}
+.dhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.fchip{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:4px 10px;border-radius:999px;border:1px solid;white-space:nowrap}
+.fchip.ok,.fv.ok{color:var(--green)} .fchip.ok{border-color:rgba(45,106,48,.4);background:rgba(45,106,48,.08)}
+.fchip.warn,.fv.warn{color:var(--orange)} .fchip.warn{border-color:rgba(160,88,40,.45);background:rgba(160,88,40,.1)}
+.fchip.bad,.fv.bad{color:var(--red)} .fchip.bad{border-color:rgba(158,42,28,.45);background:rgba(158,42,28,.1)}
+.fv{font-weight:800} .fv.na{color:var(--muted);font-weight:600}
+.muted{color:var(--muted)}
+table.tl td,table.chk td{font-size:13.5px;padding:8px 6px;vertical-align:top}
+table.tl td.n,table.chk td.n{white-space:nowrap}
+.actin::placeholder{color:var(--muted);opacity:.45;font-style:italic}
+.actin{width:74px;display:inline-block;padding:5px 6px;font-size:13.5px}
+.act2 .stack{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+tr.tl-halt td{background:rgba(160,88,40,.08);color:var(--orange);font-size:12.5px;font-weight:600;border-left:3px solid var(--orange)}
+tr.tl-trn td{background:var(--surface2)}
+tr.tl-rep td{font-weight:700}
+.fnotes{margin:0;padding-left:18px;font-size:12.5px;color:var(--text);display:flex;flex-direction:column;gap:4px}
+.meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.meter{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface2);display:flex;flex-direction:column;gap:6px}
+.m-h{display:flex;justify-content:space-between;font-size:13px} .m-h span{font-size:11px}
+.m-r{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;font-size:12px}
+.m-r .num{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.bar-t{height:8px;border-radius:4px;background:var(--border);overflow:hidden}
+.bar-f{height:100%;border-radius:4px;background:var(--green)} .bar-f.warn{background:var(--orange)} .bar-f.bad{background:var(--red)}
+tr.halt-row td{background:rgba(160,88,40,.08);color:var(--orange);font-size:12px;font-weight:600;padding:6px 8px;border-left:3px solid var(--orange)}
+tr.halt-row .mlink{color:var(--orange);font-size:12px}
+@media (max-width:700px){ table.stack tr.halt-row{display:block;padding:8px 0} table.stack tr.halt-row td{display:block} }
+footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:12px}
+@media (prefers-reduced-motion:no-preference){nav.tabs button,.btn,.iconbtn{transition:all .15s}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="strip" aria-label="Pilot and month">
+    <div class="cs"><b id="hName">Pay Tracker</b><span id="hRole">Pilot pay</span></div>
+    <div class="mid">
+      <button class="iconbtn" id="prevM" aria-label="Previous month">‹</button>
+      <div class="mlabel" id="mLabel">Month</div>
+      <button class="iconbtn" id="nextM" aria-label="Next month">›</button>
+      
+    </div>
+    <div class="kpis">
+      <div class="kpi"><small>Payable hours</small><b id="kBlock">0:00</b></div>
+      <div class="kpi"><small>Gross</small><b id="kGross">₹0</b></div>
+      <div class="kpi"><small>Est. net</small><b id="kNet">₹0</b></div>
+    </div>
+  </header>
+
+  <div id="topBanner"></div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="log" id="t-log">Flight log</button>
+    <button role="tab" data-tab="duty" id="t-duty">Duty</button>
+    <button role="tab" data-tab="intl" id="t-intl">Intl layovers</button>
+    <button role="tab" data-tab="pay" id="t-pay">Pay</button>
+    <button role="tab" data-tab="year" id="t-year">Year</button>
+    <button role="tab" data-tab="setup" id="t-setup">Setup</button>
+  </nav>
+
+  <main id="view" class="panel"></main>
+
+  <footer><span>Pay Tracker</span><span><span id="saveState">Saved on this device</span> · <span id="appVer">version 37</span></span></footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- Default rates ---------- */
+const RANKS = {
+  jfo:{label:"Junior First Officer",short:"JFO",p1:false,dom:1600},
+  fo:{label:"First Officer",short:"FO",p1:false,dom:1600},
+  sfo:{label:"Captain (SFO)",short:"SFO",p1:false,dom:1600},
+  cdr:{label:"Commander",short:"CDR",p1:true,dom:2200},
+  scdr:{label:"Senior Commander",short:"SR CDR",p1:true,dom:2200}
+};
+// Hourly flying allowance by band: 0-40, 40-70, 70-80, 80-90, 90+
+const RATES = {
+  rev:{ // w.e.f. 1 Oct 2026
+    jfo:[1600,1700,1800,1900,2000], fo:[3100,3300,3400,3700,3800], sfo:[4600,4900,5000,5400,5600],
+    cdr:[7800,8200,8300,8875,9230], scdr:[7800,8200,8300,8875,9230]}
+};
+const REV_FROM = "2026-10";
+const STRUCT = {rev:"Revised structure, w.e.f. 1 Oct 2026"};
+const COMP = [ // annual INR, as written in your pay letter
+  ["basic","Basic",true],["hra","House Rent Allowance",true],["grooming","Grooming Allowance",true],
+  ["other","Other Allowances",true],["gfa","Guaranteed Flying Allowance (40 h)",true],
+  ["narrowBody","Narrow Body Allowance",true],["mgmt","Management Allowance",true],["trainer","Trainer Allowance (fixed part)",true],
+  ["pfEr","Provident Fund (employer)",false],["gratuity","Gratuity",false]
+];
+const FX_RAW = "Afghanistan|115|150;Albania|115|150;Algeria|115|150;American Samoa|90|120;Angola|115|150;Anguilla|115|150;Antigua|115|150;Argentina|115|150;Armenia|115|150;Australia|150|200;Austria|150|200;Azerbaijan|115|150;Aruba|115|150;Bahamas|115|150;Bahrain|115|150;Bangladesh|90|120;Barbados|115|150;Belgium|150|200;Belize|90|120;Belarus|115|150;Benin|90|120;Bermuda|115|150;Bhutan|90|120;Bolivia|115|150;Botswana|115|150;Bosnia Herzegovina|115|150;Brazil|115|150;British Virgin Islands|90|120;Brunei|150|200;Bulgaria|115|150;Burkina Faso|90|120;Burundi|90|120;Cameroon|90|120;Canada|150|200;Cape Verde Islands|90|120;Cayman Islands|90|120;Central African Republic|90|120;Chad|90|120;Chile|115|150;China|150|200;Colombia|115|150;Comoros|90|120;Congo|90|120;Cooks Island|90|120;Costa Rica|115|150;Croatia|115|150;Cuba|115|150;Cyprus|150|200;Czech Republic|115|150;Denmark|150|200;Djibouti|90|120;Dominica|115|150;Dominican Rep.|115|150;Ecuador|115|150;Egypt|115|150;El Salvador|115|150;Eritrea|90|120;Equatorial Guinea|90|120;Estonia|115|150;Ethiopia|90|120;Fiji|150|200;Finland|150|200;France|150|200;French Guinea|115|150;Gabon|90|120;Gambia|90|120;Gaza (PNA)|115|150;Georgia|115|150;Germany|150|200;Ghana|90|120;Gibraltar|150|200;Greece|150|200;Grenada|115|150;Guadeloupe|115|150;Guam|90|120;Guatemala|115|150;Guinea|90|120;Guinea Bissau|90|120;Guyana|115|150;Haiti|115|150;Honduras|115|150;Hong Kong|150|200;Holy See (Vatican)|150|200;Hungary|115|150;Iceland|150|200;India|115|150;Indonesia|115|150;Iran|115|150;Iraq|115|150;Ireland|150|200;Israel|115|150;Italy|150|200;Ivory Coast|90|120;Jamaica|115|150;Japan|150|200;Jordan|90|120;Kampuchea (Cambodia)|115|150;Kazakhstan|115|150;Kenya|90|120;Kiribati|90|120;Korea (North)|90|120;Korea (South)|150|200;Kuwait|115|150;Kyrgyzstan|115|150;Leos|90|120;Latvia|115|150;Lebanon|90|120;Lesotho|90|120;Libya|90|120;Lithuania|150|200;Luxembourg|150|200;Macao|150|200;Madagascar|90|120;Malawi|90|120;Malaysia|115|150;Maldives|90|120;Mali|90|120;Malta|150|200;Martinique|115|150;Macedonia|115|150;Mauritania|90|120;Mauritius|90|120;Mexico|115|150;Micronesia|150|200;Moldova|115|150;Monaco|90|120;Montenegro|115|150;Mongolia|90|120;Montserrat|115|150;Morocco|90|120;Mozambique|90|120;Myanmar|90|120;Namibia|115|150;Nauru|90|120;Nepal|90|120;Netherland|150|200;Netherlands Antilles|115|150;New Caledonia|90|120;New Zealand|150|200;Nicaragua|115|150;Niger|90|120;Nigeria|90|120;Nave|90|120;Norway|150|200;Liberia|90|120;Oman|115|150;Pacific Islands (Trust territory)|115|150;Pakistan|90|120;Panama|115|150;Papua New Guinea|150|200;Paraguay|115|150;Puerto Rico|115|150;Principality of Lichtenstein (Vaduz)|150|200;Peru|115|150;Philippines|115|150;Poland|115|150;Portugal|150|200;Qatar|115|150;Reunion|90|120;Republic of Palau|115|150;Republic of Slovenia|150|200;Republic of San Marino|150|200;Romania|150|200;Rwanda|90|120;Samoa|90|120;Sai Tome & Principe|90|120;Saudi Arabia|115|150;Senegal|90|120;Serbia|115|150;Seychelles|115|150;Sierra Leone|90|120;Singapore|115|150;Slovak Republic|115|150;Solomon Islands|90|120;Somalia|90|120;South Africa|115|150;Spain|150|200;Sri Lanka|90|120;St Kits & Nevis|90|120;St. Lucia|90|120;St. Vincent & Grenadines|90|120;Sudan|90|120;Surinam|115|150;Swaziland|90|120;Sweden|150|200;Switzerland|150|200;Syria|115|150;Tajikistan|115|150;Tanzania|90|120;Thailand|115|150;Togo|90|120;Tonga|90|120;Trinidad & Tobago|115|150;Tunisia|90|120;Turkey|150|200;Turkmenistan|115|150;Turks & Caicos|115|150;Tuvalu|90|120;Uganda|90|120;UAE|115|150;United Kingdom|150|200;United States of America|150|200;Russian Federation|115|150;Ukraine|115|150;Uruguay|115|150;US Virgin Islands|90|120;Uzbekistan|115|150;Vanuatu|115|150;Venezuela|115|150;Vietnam|90|120;Yemen|90|120;Was Future Islands|90|120;Zaire|90|120;Zambia|90|120;Zimbabwe|115|150";
+const FX = FX_RAW.split(";").map(s=>{const [n,p2,p1]=s.split("|");return {n,p2:+p2,p1:+p1,k:n.toLowerCase()}});
+
+/* ---------- Helpers ---------- */
+const $ = s=>document.querySelector(s);
+const inr = v=>"₹"+Math.round(v||0).toLocaleString("en-IN");
+const usd = v=>"$"+(Math.round((v||0)*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc = s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const hm = m=>{m=Math.round(m||0);const s=m<0?"-":"";m=Math.abs(m);return s+Math.floor(m/60)+":"+String(m%60).padStart(2,"0")};
+function parseHM(v){ // "2:35", "2.5", "0235", "235" -> minutes
+  v=String(v||"").trim(); if(!v) return 0;
+  let m=v.match(/^(\d{1,3})[:h\s](\d{1,2})m?$/i); if(m) return (+m[1])*60+(+m[2]);
+  if(/^\d{3,4}$/.test(v)){const n=v.padStart(4,"0");return (+n.slice(0,2))*60+(+n.slice(2))}
+  const f=parseFloat(v); return isFinite(f)?Math.round(f*60):0;
+}
+const ymNow = ()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")};
+const ymShift = (ym,n)=>{let [y,m]=ym.split("-").map(Number);m+=n;while(m<1){m+=12;y--}while(m>12){m-=12;y++}return y+"-"+String(m).padStart(2,"0")};
+const ymLabel = ym=>{const [y,m]=ym.split("-").map(Number);return new Date(y,m-1,1).toLocaleString("en-GB",{month:"long",year:"numeric"})};
+const ymShort = ym=>{const [y,m]=ym.split("-").map(Number);return new Date(y,m-1,1).toLocaleString("en-GB",{month:"short"})};
+const uid = ()=>Math.random().toString(36).slice(2,9);
+const structFor = ()=>"rev";
+const ALIAS = {
+  "united arab emirates":"UAE","u.a.e":"UAE","emirates":"UAE","dubai":"UAE","dxb":"UAE","abu dhabi":"UAE","auh":"UAE","sharjah":"UAE","shj":"UAE","ras al khaimah":"UAE","rkt":"UAE","dwc":"UAE","fujairah":"UAE","fjr":"UAE","al ain":"UAE","aan":"UAE",
+  "riyadh":"Saudi Arabia","ruh":"Saudi Arabia","jeddah":"Saudi Arabia","jed":"Saudi Arabia","dammam":"Saudi Arabia","dmm":"Saudi Arabia","medina":"Saudi Arabia","madinah":"Saudi Arabia","med":"Saudi Arabia","ksa":"Saudi Arabia","saudi":"Saudi Arabia",
+  "muscat":"Oman","mct":"Oman","salalah":"Oman","sll":"Oman","doha":"Qatar","doh":"Qatar","kwi":"Kuwait","kuwait city":"Kuwait","manama":"Bahrain","bah":"Bahrain",
+  "sin":"Singapore","kathmandu":"Nepal","ktm":"Nepal","dhaka":"Bangladesh","dac":"Bangladesh","bangkok":"Thailand","bkk":"Thailand","phuket":"Thailand","hkt":"Thailand",
+  "kuala lumpur":"Malaysia","kul":"Malaysia","colombo":"Sri Lanka","cmb":"Sri Lanka","male":"Maldives","mle":"Maldives",
+  "usa":"United States of America","us":"United States of America","united states":"United States of America","america":"United States of America",
+  "uk":"United Kingdom","england":"United Kingdom","great britain":"United Kingdom","london":"United Kingdom",
+  "south korea":"Korea (South)","north korea":"Korea (North)","russia":"Russian Federation","viet nam":"Vietnam","turkiye":"Turkey","türkiye":"Turkey",
+  "czechia":"Czech Republic","eswatini":"Swaziland","north macedonia":"Macedonia","cote d'ivoire":"Ivory Coast","côte d'ivoire":"Ivory Coast","cabo verde":"Cape Verde Islands","cape verde":"Cape Verde Islands"
+};
+function byName(n){ n=n.toLowerCase(); return FX.find(c=>c.k===n)||null }
+function findCountry(q){
+  q=String(q||"").trim().toLowerCase().replace(/\s+/g," "); if(!q) return null;
+  const tries=[q, ...q.split(/[,/()-]/).map(s=>s.trim()).filter(Boolean).reverse()];
+  for(const t of tries){ const hit=byName(t)||(ALIAS[t]&&byName(ALIAS[t])); if(hit) return hit }
+  // longest table name or alias contained in the text wins
+  let best=null, len=0;
+  for(const c of FX){ if(c.k.length>len && new RegExp("\\b"+c.k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b").test(q)){best=c;len=c.k.length} }
+  for(const a in ALIAS){ if(a.length>len && a.length>3 && new RegExp("\\b"+a.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b").test(q)){best=byName(ALIAS[a]);len=a.length} }
+  return best;
+}
+function dayFrac(remH){ if(remH<=0) return 0; if(remH<=6) return .3; if(remH<=12) return .7; return 1 }
+
+/* ---------- State ---------- */
+const DEFAULT_PROFILE = ()=>({
+  name:"", rank:"fo", fleet:"B737", base:"BOM",
+  fixed:{cur:{},rev:{}},
+  regime:"new", oldDeductions:0, layoverExempt:false, fleetAvg:40
+});
+let profile = DEFAULT_PROFILE();
+let months = {};          // ym -> {sectors:[], dom:[], intl:[]}
+let cur = ymNow();
+let tab = "log";
+let yearMode = (()=>{ try{ return localStorage.getItem("crewpaylog.v1.year")||"cal" }catch(e){ return "cal" } })();
+let mode = "loading";     // db | local | loading
+
+function monthData(ym){ const m=months[ym] || (months[ym]={sectors:[],dom:[],intl:[],train:[]}); if(!m.train) m.train=[]; return m }
+function normMonth(d){ const m={sectors:Array.isArray(d&&d.sectors)?d.sectors.map(x=>({...x})):[], dom:Array.isArray(d&&d.dom)?d.dom.map(x=>({...x})):[], intl:Array.isArray(d&&d.intl)?d.intl.map(x=>({...x})):[], train:Array.isArray(d&&d.train)?d.train.map(x=>({...x})):[]}; if(d&&d.record&&typeof d.record==="object") m.record={...d.record}; if(d&&d.paid&&typeof d.paid==="object") m.paid={...d.paid}; return m }
+const hasLog = d=>!!d && (d.sectors.length||d.dom.length||d.intl.length||(d.train&&d.train.length));
+const isRecorded = ym=>{ const d=months[ym]; return !!(d && d.record && !hasLog(d)) };
+// One summary shape for both kinds of month: logged sectors (calculated) or recorded totals (as entered)
+function summary(ym){
+  if(isRecorded(ym)){ const r=months[ym].record;
+    return {rec:true, opMin:(+r.block||0)*60, dhMin:(+r.dh||0)*60, domNights:+r.dom||0, intlMin:(+r.intlHrs||0)*60, intlUSD:+r.usd||0, gross:+r.gross||0, tds:null, net:+r.net||0} }
+  return calc(ym);
+}
+function normProfile(p){ const d=DEFAULT_PROFILE(); p=p||{};
+  const extra=Array.isArray(p.extra)?p.extra.filter(x=>x&&typeof x==="object").map(x=>({id:String(x.id||uid()), name:String(x.name||""), amt:+x.amt||0, cash:x.cash!==false})):[];
+  const compNames=(p.compNames&&typeof p.compNames==="object")?{...p.compNames}:{}, compHidden=Array.isArray(p.compHidden)?p.compHidden.filter(k=>COMP.some(c=>c[0]===k)):[];
+  const cleanMap=o=>{ const r={}; if(o&&typeof o==="object") for(const k in o) if(/^[A-Z]{3}-[A-Z]{3}$/.test(k) && +o[k]>0) r[k]=Math.round(+o[k]*100)/100; return r };
+  const fbLists=Array.isArray(p.fbLists)?p.fbLists.filter(l=>l&&/^\d{4}-\d\d-\d\d$/.test(l.eff||"")).map(l=>({id:String(l.id||uid()), eff:l.eff, name:String(l.name||""), dom:cleanMap(l.dom), intl:cleanMap(l.intl), loaded:String(l.loaded||"")})):[];
+  return {...d,...p, extra, compNames, compHidden, fbLists, fixed:{cur:{...(p.fixed&&p.fixed.cur||{})},rev:{...(p.fixed&&p.fixed.rev||{})}}} }
+
+// Built-in components can be renamed or removed in Setup; removed ones keep their amount but count for nothing
+const compLabel = (k,l)=>((profile.compNames||{})[k]||"").trim() || l;
+const compOn = k=>!(profile.compHidden||[]).includes(k);
+/* ---------- Pay engine ---------- */
+function taxNew(t){
+  t=Math.max(0,t); const b=[[400000,0],[800000,.05],[1200000,.10],[1600000,.15],[2000000,.20],[2400000,.25],[Infinity,.30]];
+  let tax=0,lo=0; for(const [hi,r] of b){ if(t>lo) tax+=(Math.min(t,hi)-lo)*r; lo=hi }
+  if(t<=1200000) tax=0;
+  let sc=t>20000000?.25:t>10000000?.15:t>5000000?.10:0;
+  return tax*(1+sc)*1.04;
+}
+function taxOld(t){
+  t=Math.max(0,t); const b=[[250000,0],[500000,.05],[1000000,.20],[Infinity,.30]];
+  let tax=0,lo=0; for(const [hi,r] of b){ if(t>lo) tax+=(Math.min(t,hi)-lo)*r; lo=hi }
+  if(t<=500000) tax=0;
+  let sc=t>20000000?.25:t>10000000?.15:t>5000000?.10:0;
+  return tax*(1+sc)*1.04;
+}
+/* ---------- Fixed block lists ----------
+   Each list you load from a fixed block PDF applies from its own start date until a later list takes over.
+   From then on: a listed sector pays its fixed block; a diversion, a sector not on the list, or a listed
+   international sector ticked "airspace affected" pays its actual block. Deadheads keep SOD on the planned block. */
+const fbLists = ()=>Array.isArray(profile.fbLists)?profile.fbLists:[];
+function fbFor(date){ let best=null; for(const l of fbLists()) if(l.eff<=(date||"") && (!best||l.eff>best.eff)) best=l; return best }
+let blockACache=null, blockAFrom=null;
+function actualBlockOf(s){   // the Duty tab's actual block for this sector, if the calendar or you supplied actual times
+  if(!fdtlCache) return null;
+  if(blockAFrom!==fdtlCache){ blockAFrom=fdtlCache; blockACache=new Map(); for(const d of fdtlCache.duties) for(const x of (d.secs||[])) if(x.blockA!=null) blockACache.set(x.uid, Math.round(x.blockA)) }
+  return blockACache.get(s.uid||("m|"+s.id)) ?? null;
+}
+function paidBlock(s){
+  const planned=(+s.fixed||0)||(+s.actual||0);   // older rows may only hold actual
+  if(s.kind==="dh"||s.kind==="dhx") return {m:planned, how:"planned"};
+  const L=fbFor(s.date);
+  if(!L) return {m: s.kind==="div" ? ((+s.act||0)||planned) : planned, how:"planned"};
+  const key=(s.from||"").toUpperCase()+"-"+(s.to||"").toUpperCase();
+  const fb = s.kind==="div" ? null : (L.dom[key]!=null ? {m:L.dom[key], intl:false} : L.intl[key]!=null ? {m:L.intl[key], intl:true} : null);
+  if(fb && !(fb.intl && s.airspace)) return {m:fb.m, how:"fixed", intl:fb.intl, list:L};
+  const why = s.kind==="div" ? "Diversion" : fb ? "Airspace affected" : "Not in list";
+  const dutyA=actualBlockOf(s), legacy=s.kind==="div" && !s.roster;   // a diversion you typed in before holds its actual in the block field
+  const act=(+s.act||0) || dutyA || (legacy ? planned : 0);
+  const src=+s.act>0?"typed":dutyA?"from Duty tab":legacy?"from Planned Block":"";
+  return act ? {m:act, how:"actual", why, src, typed:+s.act>0, intl:fb&&fb.intl, list:L} : {m:planned, how:"actual", why, need:true, intl:fb&&fb.intl, list:L};
+}
+
+function calc(ym, st){
+  st = st || structFor(ym);
+  const d = monthData(ym), rank = profile.rank in RANKS ? profile.rank : "fo";
+  const r = RATES[st][rank], fx = profile.fixed[st] || {};
+  const mon = k=>compOn(k)?(+fx[k]||0)/12:0;
+  // Components you added yourself: paid in salary (in gross, taxed) or CTC only
+  const extra = (profile.extra||[]).filter(x=>+x.amt>0);
+  const fixedLines = [...COMP.filter(c=>c[2]&&compOn(c[0])).map(([k,l])=>[compLabel(k,l),mon(k)]), ...extra.filter(x=>x.cash).map(x=>[x.name||"Other component", x.amt/12])].filter(x=>x[1]>0);
+  const fixedCash = fixedLines.reduce((a,x)=>a+x[1],0);
+  let opMin=0, dhMin=0;
+  for(const s of d.sectors){
+    const b=paidBlock(s).m;
+    if(s.kind==="dhx") continue;   // unpaid deadhead: duty, but no SOD
+    if(s.kind==="dh") dhMin += b; else opMin += b;
+  }
+  // Training: each day credits fleet average / 22 hours, added to the month's hours.
+  // Pay above the guaranteed 40 hours starts only once flying + training passes 40.
+  const train = d.train||[], trainDays = train.reduce((a,x)=>a+(+x.days||0),0);
+  const fleetAvg = +profile.fleetAvg||40, trainPerDay = fleetAvg/22, trainHrs = trainDays*trainPerDay;
+  const bands=[[40,70,r[1]],[70,80,r[2]],[80,90,r[3]],[90,Infinity,r[4]]];
+  const above=H=>{ let pay=0; const lines=[]; for(const [lo,hi,rate] of bands){ const h=Math.max(0,Math.min(H,hi)-lo); if(h>0){ lines.push([lo,hi,h,rate]); pay+=h*rate } } return {pay,lines} };
+  const flyH = opMin/60, H = flyH + trainHrs, totMin = H*60;
+  const {pay:addFly, lines:addLines} = above(H);
+  const trainPay = addFly - above(flyH).pay;   // what training added this month
+  const sodRate = .65*r[0], sod = dhMin/60*sodRate;
+  const domRate = RANKS[rank].dom, domNights = d.dom.reduce((a,x)=>a+(+x.nights||0),0), dom = domNights*domRate;
+  const p1 = RANKS[rank].p1;
+  const intlRows = d.intl.map(x=>{
+    const c=findCountry(x.country), min=+x.mins||0, h=min/60, full=Math.floor(h/24), rem=h-full*24, frac=dayFrac(rem);
+    const rate=c?(p1?c.p1:c.p2):0, days=full+frac;
+    return {...x, c, rate, full, rem, frac, days, amt:days*rate};
+  });
+  const intlUSD = intlRows.reduce((a,x)=>a+x.amt,0);   // tax-exempt, outside CTC and gross
+  const gross = fixedCash + addFly + sod + dom;
+  const exempt = profile.layoverExempt ? dom : 0;
+  const annual = (gross-exempt)*12;
+  const isFeb = ym.endsWith("-02"), pt = isFeb?300:200;
+  const taxN = taxNew(annual-75000), taxO = taxOld(annual-50000-2500-(+profile.oldDeductions||0));
+  const annTax = profile.regime==="old" ? taxO : taxN;
+  const tds = annTax/12, pfEe = mon("basic")*.12;
+  const net = gross - tds - pfEe - pt;
+  return {st, rank, r, fixedLines, fixedCash, opMin, dhMin, H, addLines, addFly, sodRate, sod, domRate, domNights, dom,
+    intlRows, intlUSD, trainDays, trainPerDay, trainHrs, trainPay, fleetAvg, totMin, gross, annual, taxN, taxO, tds, pfEe, pt, net, p1,
+    hasFixed: fixedCash>0, ctc: COMP.reduce((a,[k])=>a+(compOn(k)?(+fx[k]||0):0),0) + extra.reduce((a,x)=>a+(+x.amt||0),0)};
+}
+
+/* ---------- Storage (this device only) ---------- */
+const LS_KEY = "crewpaylog.v1";
+function lsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LS_KEY)||"null"); if(j) applyData(j) }catch(e){} }
+function applyData(j){ profile=normProfile(j.profile); months={}; for(const k in (j.months||{})) months[k]=normMonth(j.months[k]);
+  rosterEvents=Array.isArray(j.rosterEvents)?j.rosterEvents:[]; actuals=(j.actuals&&typeof j.actuals==="object")?j.actuals:{};
+  rosterChanges=Array.isArray(j.rosterChanges)?j.rosterChanges:[]; lastPaste=+j.lastPaste||0; rosterHist=Array.isArray(j.rosterHist)?j.rosterHist:[]; dismissed=Array.isArray(j.dismissed)?j.dismissed:[] }
+function lsSave(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify({profile, months, rosterEvents, actuals, rosterChanges, lastPaste, rosterHist, dismissed})); setSave("Saved on this device") }
+  catch(e){ setSave("Could not save. Storage may be full or blocked in private browsing.") }
+}
+function setSave(t){ $("#saveState").textContent=t }
+let saveTimer=null;
+function queueSave(){ setSave("Saving…"); clearTimeout(saveTimer); saveTimer=setTimeout(lsSave,400) }
+// Write at once when the app is hidden or closed, so a change made just before is never lost
+function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; lsSave() } }
+addEventListener("pagehide", flushSave); document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") flushSave() });
+const queueMonth = ()=>queueSave();
+const queueProfile = ()=>queueSave();
+
+function backupData(){
+  const m={}; for(const k in months){ const d=months[k]; if(hasLog(d)||d.record||d.paid) m[k]=d }
+  return {app:"crew-pay-log", version:1, exported:new Date().toISOString(), profile, months:m, rosterEvents, actuals, rosterChanges, lastPaste, rosterHist, dismissed};
+}
+function downloadBackup(){
+  const d=new Date(), stamp=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const blob=new Blob([JSON.stringify(backupData(),null,1)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="pay-tracker-backup-"+stamp+".json";
+  document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove()},1000);
+  try{ localStorage.setItem(LS_KEY+".lastBackup", stamp) }catch(e){}
+  showBanner("Backup downloaded. Keep it somewhere safe, like Files or iCloud Drive.");
+}
+function restoreBackup(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const j=JSON.parse(r.result);
+      if(j && j.app==="crew-pay-log" && j.kind==="records" && j.records && typeof j.records==="object"){
+        let n=0; for(const ym in j.records){ if(!/^\d{4}-\d{2}$/.test(ym)) continue; monthData(ym).record={...j.records[ym]}; n++ }
+        lsSave(); showBanner(`Imported recorded totals for ${n} month${n===1?"":"s"}. Your logged flights and Setup were not changed.`); render(); return;
+      }
+      if(!j || typeof j!=="object" || !j.profile || typeof j.months!=="object") throw new Error("shape");
+      applyData(j); lsSave();
+      const n=Object.values(months).reduce((a,d)=>a+d.sectors.length,0);
+      showBanner(`Backup restored: ${n} sector${n===1?"":"s"} across ${Object.keys(j.months).length} month${Object.keys(j.months).length===1?"":"s"}, plus your Setup.`);
+      render();
+    }catch(e){ showBanner("That file is not a Pay Tracker backup. Choose the .json file the Download backup button made.") }
+  };
+  r.readAsText(file);
+}
+
+function initStore(){
+  lsLoad(); mode="local"; render(); setSave("Saved on this device");
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist() }catch(e){}
+}
+
+/* ---------- Roster import (crew app calendar, .ics) ---------- */
+const TRAIN_TYPES = ["AGTR (Recurrent) / AVSEC / DGR", "IR PPC (Recurrent)", "Licence endorsement", "Management-nominated (CBTA / Core / OEM)", "Ground training / Office duty", "Upgrade / Conversion (incl. CCQ, MFF)", "CRM / ELP trainer duty", "Training standby"];
+const IN_AIRPORTS = new Set(("BOM DEL BLR MAA CCU HYD COK CCJ CNN TRV IXE GOI GOX PNQ AMD JAI LKO VNS PAT IXR BBI GAU IXB IMF IXA DIB JRH IXS AJL SHL "+
+  "IXC ATQ SXR IXJ IXL DED VTZ VGA RJA TIR IXM TRZ CJB IXZ NAG IDR BHO RPR JLR GWL UDR JDH BDQ STV RAJ BHJ IXU NDC IXG HBX MYQ IXY IXK KLH TCR "+
+  "GAY DBR AYJ KNU HDO JSA ISK GOP IXD BEK AGR DGH PGH JGB IXW KJB SAG HJR TEZ IXH IXT IXV IXI CDP PYG RQY BPM").split(" "));
+const IST = "Asia/Kolkata";
+function tzOffsetMin(tz, utcMs){
+  try{
+    const p=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(new Date(utcMs)).map(x=>[x.type,x.value]));
+    return (Date.UTC(+p.year,+p.month-1,+p.day,+p.hour%24,+p.minute,+p.second)-utcMs)/60000;
+  }catch(e){ return 330 }
+}
+function icsTime(prop){ // {params, value} -> epoch ms
+  const m=prop.value.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?)?(Z)?$/); if(!m) return null;
+  const [_,y,mo,d,h="0",mi="0",s="0",z]=m; const naive=Date.UTC(+y,+mo-1,+d,+h,+mi,+s);
+  if(z) return naive;
+  const tz=(prop.params.TZID||IST).replace(/^"|"$/g,"");
+  let t=naive-tzOffsetMin(tz,naive)*60000; return t-(tzOffsetMin(tz,t)-tzOffsetMin(tz,naive))*60000;
+}
+function utcParts(ms){ const d=new Date(ms); const p=n=>String(n).padStart(2,"0");
+  return {date:`${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}`, time:`${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`} }
+function istParts(ms){ const d=new Date(ms+330*60000); const p=n=>String(n).padStart(2,"0");
+  return {date:`${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}`, time:`${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`} }
+const dutyCode = desc=>((String(desc).match(/Duty Type:\s*([^\n]+)/i)||[])[1]||"").trim();
+// Paid training, recognised from the calendar title, notes or duty type
+function trainingType(summary, desc){
+  const t=(summary+" "+desc), code=dutyCode(desc).toUpperCase();
+  const isStandby=/stand\s*by|\bSBY\b/i.test(t), isOff=/day off|\bW-?OFF\b|\bR-?OFF\b|\bLEAVE\b/i.test(t);
+  if(isOff) return null;
+  const trainingWord=/ground duty|training|trg|simulator|\bsim\b|classroom|course|\bcbt\b|cbta|refresher|recurrent|\bcrm\b|\belp\b|\bdgr\b|avsec|agtr|\bppc\b|\bloft\b|\bccq\b|\bmff\b|conversion|upgrade|endorsement|office duty/i.test(t)
+    || /^(GRD|GD|GND|TRG|TRN|SIM|CRM|DGR|AVSEC|AGTR|PPC|IR|LOFT|CBT|CBTA|OFC|OFFICE|PADT|ELP|CCQ|MFF)$/.test(code);
+  if(!trainingWord) return null;
+  if(isStandby) return /train/i.test(t)?TRAIN_TYPES[7]:null;
+  if(/\bsim\b|simulator|\bppc\b|\bIR\b|\bloft\b/i.test(t)||/^(SIM|PPC|IR|LOFT)$/.test(code)) return TRAIN_TYPES[1];
+  if(/agtr|avsec|\bdgr\b/i.test(t)||/^(AGTR|AVSEC|DGR)$/.test(code)) return TRAIN_TYPES[0];
+  // The crew app "Training" events list their course codes; classroom recurrent training (SEP, tech, CRM, AGTR...) is one bucket
+  if(/Training Code:/i.test(desc) && !/conversion|upgrade|\bccq\b|\bmff\b|endorsement|cbta|trainer|instructor/i.test(t)) return TRAIN_TYPES[0];
+  if(/endorsement/i.test(t)) return TRAIN_TYPES[2];
+  if(/cbta|\bcore\b|\boem\b/i.test(t)) return TRAIN_TYPES[3];
+  if(/conversion|upgrade|\bccq\b|\bmff\b|command/i.test(t)||/^(CCQ|MFF)$/.test(code)) return TRAIN_TYPES[5];
+  if(/\bcrm\b|\belp\b/i.test(t)&&/trainer|instructor|facilitat/i.test(t)) return TRAIN_TYPES[6];
+  return TRAIN_TYPES[4];
+}
+function parseICS(text){
+  const lines=String(text).replace(/\r\n|\r/g,"\n").replace(/\n[ \t]/g,"").split("\n");
+  const evs=[]; let ev=null;
+  for(const line of lines){
+    if(line==="BEGIN:VEVENT"){ ev={}; continue }
+    if(line==="END:VEVENT"){ if(ev) evs.push(ev); ev=null; continue }
+    if(!ev) continue;
+    const i=line.indexOf(":"); if(i<0) continue;
+    const [name,...ps]=line.slice(0,i).split(";"); const params={};
+    for(const p of ps){ const j=p.indexOf("="); if(j>0) params[p.slice(0,j).toUpperCase()]=p.slice(j+1) }
+    ev[name.toUpperCase()]={params, value:line.slice(i+1)};
+  }
+  const un=s=>String(s||"").replace(/\\n/gi,"\n").replace(/\\([,;\\])/g,"$1");
+  return expandExport(evs.map(e=>({uid:e.UID&&e.UID.value, summary:un(e.SUMMARY&&e.SUMMARY.value), desc:un(e.DESCRIPTION&&e.DESCRIPTION.value),
+    location:un(e.LOCATION&&e.LOCATION.value), status:(e.STATUS&&e.STATUS.value||"").toUpperCase(),
+    start:e.DTSTART?icsTime(e.DTSTART):null, end:e.DTEND?icsTime(e.DTEND):null, lm:e["LAST-MODIFIED"]?icsTime(e["LAST-MODIFIED"]):null})).filter(e=>e.start!=null && e.status!=="CANCELLED"));
+}
+/* The crew app "Export" files hold one event per duty ("FLY (CCJ-MCT-CCJ)", "GROUND (DEL)", "STANDBY (CCJ)") with the
+   check-in, each sector and the release as lines in its notes, all in UTC. Split those into the separate events the
+   calendar subscription gives, so everything downstream treats both the same. Subscription events pass through untouched. */
+// your own airline's flight-number prefix, learned from flight numbers already held (the most common two-character prefix)
+function ownCode(extra){ const n={}, add=f=>{ const m=/^([A-Z0-9]{2})\d/.exec(f||""); if(m) n[m[1]]=(n[m[1]]||0)+1 };
+  for(const ym in months) for(const r of ((months[ym]||{}).sectors||[])) if(!r.example && r.kind!=="dh" && r.kind!=="dhx") add(r.flt);
+  (extra||[]).forEach(add);
+  let best="", c=0; for(const k in n) if(n[k]>c){ best=k; c=n[k] } return best }
+function expandExport(evs){
+  const MON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  const out=[], own=ownCode();
+  for(const e of evs){
+    const desc=e.desc||"", kind=((e.summary||"").match(/^\s*([A-Z]+)\s*\(/)||[])[1];
+    if(!kind || !/All times are in UTC/i.test(desc) || !["FLY","GROUND","TRAINING","SIM"].includes(kind)){
+      // Days off: carry the code (W-OFF, ROFF) the way the subscription does
+      if(kind==="OFF"){ const c=(desc.match(/^Off\s+\S+\s+\S+\s+[A-Z]{3}\s+([A-Z][A-Z\-]*)/m)||[])[1]; out.push({...e, summary:"Day Off Duty", desc:"Duty Type: "+(c||"OFF")}) }
+      else out.push(e);
+      continue }
+    let day=null, last=e.start, n=0, train=null; const made=[];
+    const at=(hhmm, plus)=>{ if(day==null) return null; const [h,m]=hhmm.split(":").map(Number); let t=day+h*HR+m*MIN+(plus||0)*DAY;
+      while(t<last-12*HR) t+=DAY; return t };   // a time earlier than the last one on the same date header has crossed midnight
+    const add=(o)=>{ made.push({uid:e.uid+"#"+(n++), status:"", lm:e.lm, location:"", ...o}) };
+    for(const raw of desc.split("\n")){
+      const ln=raw.replace(/\s+$/,"");
+      let m=ln.match(/^[A-Z][a-z]{2},\s*(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/);
+      if(m && MON[m[2].toLowerCase()]!=null){ day=Date.UTC(+m[3], MON[m[2].toLowerCase()], +m[1]); continue }
+      if((m=ln.match(/^Check-?in\s+(\d\d:\d\d)\s+([A-Z]{3})/i))){ const t=at(m[1]); if(t==null) continue; last=t; add({summary:"Check In at "+m[2], desc:"Duty Type: Working", start:t, end:t}); continue }
+      if((m=ln.match(/^Release\s+(\d\d:\d\d)\s+([A-Z]{3})/i))){ const t=at(m[1]); if(t==null) continue; last=t; add({summary:"Check Out at "+m[2], desc:"Duty Type: Working", start:t, end:t}); continue }
+      if((m=ln.match(/^(\d{1,4}[A-Z]?)\s+(\d\d:\d\d)\s+(\d\d:\d\d)(?:\/\+(\d))?\s+([A-Z]{3})\s*-\s*([A-Z]{3})\s+(.*)$/))){
+        const dep=at(m[2]); if(dep==null) continue; last=dep; let arr=at(m[3], +m[4]||0); if(arr<dep) arr+=DAY; last=arr;
+        const dh=/DEAD\s*HEAD|\bDH\b|POSITION/i.test(m[7]), role=m[7].trim();
+        add({summary:(dh?"Deadhead: ":"Flight: ")+m[5]+"→"+m[6], desc:`Flight Number: ${dh?m[1]:own+m[1]}\nDuty Type: Working\nPosition: ${role}`, start:dep, end:arr}); continue }
+      if((m=ln.match(/^(?:Ground|Training|Simulator|Sim)\s+(\d\d:\d\d)\s+(\d\d:\d\d)(?:\/\+(\d))?\s+([A-Z]{3})\s*(.*)$/i))){
+        const s=at(m[1]); if(s==null) continue; let f=at(m[2], +m[3]||0); if(f<s) f+=DAY; last=f;
+        const code=(m[5].trim().split(/\s+/).pop()||"").toUpperCase();
+        train={summary:"Training: "+(code||kind), code, names:[], start:s, end:f}; add(train); continue }
+      // course lines under a training row: " trainings: 03:00  09:00  SFD  trainee" or "03:00  09:00  DOOR_TRG  trainee"
+      if(train && (m=ln.match(/^\s*(?:trainings:\s*)?\d\d:\d\d\s+\d\d:\d\d\s+(.+?)\s{2,}\S+\s*$/i))){ train.names.push(m[1].trim()); continue }
+    }
+    for(const o of made) if(o.code!==undefined){ o.desc=`Training Code: ${o.code}\nTraining Description: ${[...new Set(o.names)].join(", ")||o.code}`; delete o.code; delete o.names }
+    if(made.some(o=>!/^Check (In|Out)/.test(o.summary))) out.push(...made); else out.push(e);
+  }
+  return out;
+}
+// Turn calendar events into sectors and layovers
+function rosterItems(events){
+  events=events.slice().sort((a,b)=>a.start-b.start);
+  const sectors=[], hotels=[], reports=[];
+  const route=s=>{ const m=s.match(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/); return m?[m[1],m[2]]:null };
+  const training=[]; let duty=null;   // a duty runs from check-in to check-out; its sectors share the check-in date
+  const stops=[];   // check-ins and check-outs with their station, to find nights away that have no hotel event
+  const stnOf=s=>(s.match(/\bat\s+([A-Z]{3})\b/)||[])[1]||"";
+  for(const e of events){
+    const s=e.summary, end=e.end||e.start;
+    const tt=trainingType(s, e.desc); if(tt){ training.push({e, type:tt}); continue }
+    if(/check\s*in/i.test(s)){ reports.push(e); stops.push({t:"in", e, stn:stnOf(s)}); duty={start:e.start, date:utcParts(e.start).date}; continue }
+    if(/check\s*out/i.test(s)){ stops.push({t:"out", e, stn:stnOf(s)}); duty=null; continue }
+    if(/layover in hotel|hotel/i.test(s)){ hotels.push(e); continue }
+    const r=route(s); if(!r) continue;
+    let kind=null;
+    if(/deadhead|\bDHD?\b|positioning|\bOAT\b/i.test(s)) kind="dh";
+    else if(/flight/i.test(s)) kind="op";
+    if(!kind) continue;
+    const fm=e.desc.match(/Flight Number:\s*([A-Z0-9]+)/i);
+    const date = duty && e.start-duty.start <= 20*3600000 ? duty.date : utcParts(e.start).date;   // UTC, logbook style
+    sectors.push({uid:e.uid||`${e.start}-${r[0]}-${r[1]}`, start:e.start, date, end, from:r[0], to:r[1], kind, flt:fm?fm[1].toUpperCase():"", fixed:Math.round((end-e.start)/60000)});
+  }
+  for(const rp of reports){ const nx=sectors.find(x=>x.start>=rp.start && x.start-rp.start<=6*3600000); if(nx && !nx.report) nx.report=utcParts(rp.start).time }
+  const lays=[];
+  for(const h of hotels){
+    const prev=[...sectors].reverse().find(x=>x.end<=h.start+60000), next=sectors.find(x=>x.start>=(h.end||h.start));
+    const am=(h.desc.match(/,\s*([A-Z]{3})\s*(?:\n|$)/)||[])[1];
+    const own=(h.summary.match(/^\s*HOTEL\s*\(([A-Z]{3})\)/i)||[])[1];   // export files name the hotel's station
+    const stn=own||(prev&&prev.to)||am||""; if(!stn) continue;
+    const from=prev?prev.end:h.start, to=next?next.start:(h.end||h.start);
+    const intl=!IN_AIRPORTS.has(stn);
+    if(intl) lays.push({type:"intl", uid:h.uid, start:prev?prev.end:h.start, country:stn, mins:Math.max(0,Math.round((to-from)/60000))});
+    else { const a=istParts(h.start).date, b=istParts(h.end||h.start).date;
+      const nights=Math.max(1,Math.round((Date.parse(b)-Date.parse(a))/86400000));
+      lays.push({type:"dom", uid:h.uid, start:h.start, stn, nights}) }
+  }
+  // The crew app often leaves out the hotel event. A check-out away from base followed by the next check-in at the
+  // same station is a night stop all the same. Stays for training (a temporary base) are left out.
+  const base=(profile.base||"BOM").toUpperCase(), seenOut=new Set();
+  const trainNear=(a,b)=>training.some(({e})=>e.start<b && (e.end||e.start)>a);
+  for(let i=0;i<stops.length;i++){ const o=stops[i]; if(o.t!=="out" || !o.stn || o.stn===base) continue;
+    const key=o.stn+"|"+o.e.start; if(seenOut.has(key)) continue; seenOut.add(key);   // the calendar sometimes repeats a check-out
+    const n=stops.slice(i+1).find(x=>x.t==="in"); if(!n || n.stn!==o.stn) continue;
+    const a=o.e.start, b=n.e.start; if(b-a<4*HR || b-a>10*DAY) continue;
+    if(hotels.some(h=>h.start<b && (h.end||h.start)>a-HR)) continue;   // a hotel event already covers it
+    const prevIn=[...stops.slice(0,i)].reverse().find(x=>x.t==="in"), nextOut=stops.slice(i+1).find(x=>x.t==="out" && x.e.start>b);
+    if(trainNear(prevIn?prevIn.e.start:a, a+1) || trainNear(b, nextOut?nextOut.e.start:b+HR)) continue;
+    const prev=[...sectors].reverse().find(x=>x.end<=a+60000), next=sectors.find(x=>x.start>=b);
+    const uidL="stop|"+(o.e.uid||a);
+    if(!IN_AIRPORTS.has(o.stn)){ const from=prev?prev.end:a, to=next?next.start:b;
+      lays.push({type:"intl", uid:uidL, start:from, country:o.stn, mins:Math.max(0,Math.round((to-from)/60000))}) }
+    else { const nights=Math.max(1,Math.round((Date.parse(istParts(b).date)-Date.parse(istParts(a).date))/86400000));
+      lays.push({type:"dom", uid:uidL, start:a, stn:o.stn, nights}) }
+  }
+  // one training day per calendar day; consecutive days of the same course become one entry
+  const days=[]; const seenDay=new Set();
+  const dayIds=new Map();   // every calendar event id on that training day
+  for(const {e,type} of training){ const date=istParts(e.start).date, key=date+"|"+type;
+    if(!dayIds.has(key)) dayIds.set(key,[]); if(e.uid) dayIds.get(key).push(e.uid);
+    if(seenDay.has(key)) continue; seenDay.add(key); days.push({date,type,code:dutyCode(e.desc),ids:dayIds.get(key)}) }
+  days.sort((a,b)=>a.date<b.date?-1:1);
+  const courses=[];
+  for(const d of days){ const last=courses[courses.length-1];
+    const next=last&&new Date(Date.parse(last.end)+86400000).toISOString().slice(0,10);
+    if(last && last.type===d.type && next===d.date && last.date.slice(0,7)===d.date.slice(0,7)){ last.days++; last.end=d.date; last.ids.push(...d.ids) }
+    else courses.push({...d, ids:[...d.ids], days:1, end:d.date}) }
+  // A course is named by its first day and type, which stay put; the order of events in a paste does not
+  for(const c of courses) c.uid="train|"+c.date+"|"+c.type;
+  return {sectors, lays, courses, from:events.length?events[0].start:0, to:events.length?events[events.length-1].start:0};
+}
+function importRoster(text){
+  const evs=parseICS(text);
+  if(!evs.length) return {error:"No calendar events found. Copy the whole roster calendar, not a single event."};
+  const info=storeRosterEvents(evs);
+  const {sectors,lays,courses,from,to}=rosterItems(evs);
+  const evByUid=new Map(evs.map(e=>[e.uid,e])), now0=Date.now();
+  if(info.historical){   // an older export: restore fixed blocks of flights flown since, nothing else
+    let fixedN=0;
+    for(const sc of sectors){ const ev=evByUid.get(sc.uid); if(!ev || isRewrite(ev,now0)) continue;
+      const L=months[sc.date.slice(0,7)]&&months[sc.date.slice(0,7)].sectors; if(!L) continue;
+      const sameRoute=r=>(r.from||"").toUpperCase()===sc.from&&(r.to||"").toUpperCase()===sc.to;
+      const row=L.find(r=>r.uid===sc.uid&&sameRoute(r)) || L.find(r=>r.date===sc.date&&sameRoute(r));
+      if(!row||row.edited||row.sched||row.ownPlan) continue;
+      row.fixed=sc.fixed; row.dep=utcParts(sc.start).time; row.sched=true; delete row.checkFixed; fixedN++ }
+    logPaste({historical:true, filled:info.filled, offs:info.offs, fixed:fixedN, events:evs.length}); lsSave();
+    return {historical:true, filled:info.filled, offs:info.offs, fixed:fixedN};
+  }
+  if(!sectors.length && !lays.length && !courses.length) return {error:"The calendar had events but no flights, deadheads or hotel layovers the app recognises."};
+  const st={added:0, updated:0, removed:0, skipped:new Set(), touched:new Set()};
+  const lo=istParts(from).date, hi=istParts(to).date;
+  const HOURS=["fixed","nights","mins","days"];
+  const pasted=new Set(evs.map(e=>e.uid).filter(Boolean));
+  for(const c of courses) pasted.add(c.uid);
+  const free=r=>!r.uid || !pasted.has(r.uid);   // hand-typed, or synced under an id the crew app has since replaced
+  const stale=r=>!!r.uid && !pasted.has(r.uid);
+  const near=(a,b)=>Math.abs(Date.parse(a)-Date.parse(b))<=DAY;
+  // Everything this paste will put, so a match never takes a row that belongs to another rostered duty
+  const jobs=[], seen=new Set();
+  for(const s of sectors){
+    const date=s.date, ym=date.slice(0,7);
+    if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
+    jobs.push({key:"sectors", ym, noPlan:!!(rosterEvents.find(e=>e.uid===s.uid)||{}).noPlan, flown:(evByUid.get(s.uid)?isRewrite(evByUid.get(s.uid),now0):s.start<=now0), item:{uid:s.uid,date,flt:s.flt,from:s.from,to:s.to,kind:s.kind,fixed:s.fixed,dep:utcParts(s.start).time,report:s.report||"",roster:true},
+      same:r=>(r.from||"").toUpperCase()===s.from && (r.to||"").toUpperCase()===s.to});
+  }
+  for(const l of lays){
+    const date=istParts(l.start).date, ym=date.slice(0,7);
+    if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
+    if(l.type==="dom") jobs.push({key:"dom", ym, item:{uid:l.uid,date,stn:l.stn,nights:l.nights,roster:true}, same:r=>(r.stn||"").toUpperCase()===l.stn});
+    else jobs.push({key:"intl", ym, item:{uid:l.uid,date,country:l.country,mins:l.mins,roster:true}, same:r=>!r.uid || (r.country||"").toUpperCase()===l.country});
+  }
+  for(const c of courses){
+    const ym=c.date.slice(0,7);
+    if(months[ym]&&months[ym].record){ st.skipped.add(ym); continue }
+    jobs.push({key:"train", ym, item:{uid:c.uid,date:c.date,type:c.type,days:c.days,code:c.code,roster:true}, alias:new Set(c.ids), same:r=>!r.uid || r.type===c.type});
+  }
+  const others=(j,r,date)=>jobs.filter(o=>o!==j && o.key===j.key && o.item.date===date && o.same(r)).length;
+  // Exact date first. A row under a replaced id may carry an older date (rows were once dated in IST), so it can match
+  // a day either side, unless another rostered duty sits on its own date.
+  const fitsExact=(j,r)=>free(r) && j.same(r) && r.date===j.item.date;
+  const fitsNear =(j,r)=>stale(r) && j.same(r) && r.date!==j.item.date && near(r.date,j.item.date) && !others(j,r,r.date);
+  const take=(key, ym, pred)=>{ // find a row in this month or another one, and move it here
+    for(const m of [ym, ...Object.keys(months).filter(x=>x!==ym)]){ const L=months[m]&&months[m][key]; if(!L) continue;
+      const i=L.findIndex(pred); if(i<0) continue;
+      if(m===ym) return {row:L[i], moved:false};
+      const r=L.splice(i,1)[0]; monthData(ym)[key].push(r); return {row:r, moved:true} }
+    return {row:null, moved:false};
+  };
+  const put=j=>{ // update by uid, else adopt a matching row of yours, else add
+    const {key, ym, item}=j, list=monthData(ym)[key];
+    const mine=r=>r.uid===item.uid || !!(j.alias && j.alias.has(r.uid));   // this duty, under its id or (training) any event id inside it
+    let {row, moved}=take(key, ym, r=>r.uid===item.uid);
+    if(!row) ({row, moved}=take(key, ym, mine));
+    if(!row){
+      for(const f of [r=>fitsExact(j,r)&&r.edited, r=>fitsExact(j,r), r=>fitsNear(j,r)&&r.edited, r=>fitsNear(j,r)]){ ({row, moved}=take(key, ym, f)); if(row) break }
+      if(row){ if(!row.uid && key==="sectors") row.ownPlan=true; if(!row.uid||row.edited) row.edited=true; row.example=false } }   // your entry keeps your hours and, for a flight you added, your planned times
+    if(row){ const before=JSON.stringify(row), adopted=row.uid!==item.uid; let dups=0;
+      // More copies of the same duty: typed by hand, or left over under a replaced id. Only when the roster has one such duty that day.
+      const extra=r=>r!==row && (mine(r) || (!jobs.some(o=>o.item.uid===r.uid || (o.alias && o.alias.has(r.uid))) && (fitsExact(j,r) ? !others(j,r,item.date) : fitsNear(j,r))));
+      for(let dup; (dup=take(key, ym, extra).row); dups++){
+        if((!dup.uid || dup.edited) && !(adopted && row.edited)){ for(const h of [...HOURS,"type"]) if(dup[h]!=null && dup[h]!=="") row[h]=dup[h]; row.edited=true }
+        list.splice(list.indexOf(dup),1) }
+      if(key==="sectors" && j.noPlan && !row.edited && !row.ownPlan) delete row.sched;   // no valid plan on record: the block is the calendar's
+      const keep=row.edited?["fixed","nights","mins","days","type"]:[];
+      // A flown sector comes back at actual block; keep the fixed block we had from before it flew
+      if(key==="sectors" && j.flown && row.sched) keep.push("fixed","dep");
+      if(key==="sectors" && row.ownPlan) keep.push("fixed","dep","report");
+      if(key==="sectors" && (row.kind==="dhx"||row.kind==="div")) keep.push("kind");   // you marked it unpaid, or a diversion
+      for(const k in item){ if(k!=="id" && !keep.includes(k)) row[k]=item[k] } row.uid=item.uid;
+      if(key==="sectors"){ if(!j.flown){ row.sched=true; delete row.checkFixed } else if(!row.sched && !row.edited) row.checkFixed=true; else delete row.checkFixed }
+      if(moved||dups||JSON.stringify(row)!==before) st.updated++ }
+    else { const r={id:uid(), ...item}; if(key==="sectors"){ if(j.flown) r.checkFixed=true; else r.sched=true } list.push(r); st.added++ }
+  };
+  // rows you deleted from the log stay deleted
+  const isDismissed=j=>dismissed.some(x=>x.key===j.key && ((x.uid && x.uid===j.item.uid) || (x.date===j.item.date && (j.key!=="sectors" || (x.from===j.item.from && x.to===j.item.to)) && (j.key!=="dom" || x.stn===j.item.stn))));
+  for(let i=jobs.length-1;i>=0;i--) if(isDismissed(jobs[i])){ seen.add(jobs[i].item.uid); jobs.splice(i,1) }
+  for(const j of jobs){ seen.add(j.item.uid); if(j.alias) for(const a of j.alias) seen.add(a); st.touched.add(j.ym); put(j) }
+  // Duties dropped from the roster: remove synced rows in the roster's date range that you have not edited
+  for(const ym in months){ const d=months[ym]; if(d.record) continue;
+    for(const key of ["sectors","dom","intl","train"]){ if(!d[key]) continue; const n0=d[key].length;
+      d[key]=d[key].filter(r=>!(r.roster && r.uid && !r.edited && !seen.has(r.uid) && r.date>=lo && r.date<=hi)); st.removed+=n0-d[key].length } }
+  logPaste({events:evs.length, added:st.added, updated:st.updated, removed:st.removed, changes:info.changes||0});
+  lsSave();
+  return st;
+}
+// A short record of every paste, newest first (Setup shows it)
+function logPaste(x){ rosterHist=[{at:Date.now(), ...x}, ...rosterHist].slice(0,60) }
+function rosterMessage(st){
+  if(st.error) return st.error;
+  if(st.historical) return st.filled||st.fixed||st.offs ? `Older roster used to fill gaps: ${[st.filled?`planned times for ${st.filled} event${st.filled===1?"":"s"} already flown`:"", st.fixed?`the fixed block for ${st.fixed} sector${st.fixed===1?"":"s"}`:"", st.offs?`${st.offs} day${st.offs===1?"":"s"} off or standby${st.offs===1?"":"s"} that newer pastes had dropped`:""].filter(Boolean).join(", ")}. Nothing newer was changed.` : "This roster is older than the one already saved, and had no missing planned times to restore. Nothing was changed.";
+  const parts=[]; if(st.added) parts.push(`${st.added} added`); if(st.updated) parts.push(`${st.updated} updated`); if(st.removed) parts.push(`${st.removed} removed (no longer on your roster)`);
+  let m = parts.length?`Roster synced: ${parts.join(", ")}.`:"Roster synced: everything was already up to date.";
+  if(st.skipped.size) m+=` ${[...st.skipped].sort().map(ymLabel).join(", ")} kept as recorded totals.`;
+  return m;
+}
+async function pasteRoster(){
+  let text="";
+  try{ text=await navigator.clipboard.readText() }catch(e){ text="" }
+  if(!text || text.indexOf("BEGIN:VEVENT")<0){ showRosterBox=true; render(); const ta=document.getElementById("rosterText"); if(ta) ta.focus();
+    if(text) showBanner("The clipboard does not hold a calendar. Run the Copy Roster shortcut first, or paste below."); return }
+  applyRoster(text);
+}
+function applyRoster(text){
+  const st=importRoster(text); showRosterBox=false;
+  try{ if(!st.error) localStorage.setItem(LS_KEY+".lastSync", new Date().toISOString()) }catch(e){}
+  showBanner(rosterMessage(st)); render();
+}
+let showRosterBox=false;
+function rosterCard(){
+  let last=""; try{ const l=localStorage.getItem(LS_KEY+".lastSync"); if(l){ const d=new Date(l); last=` Last synced ${d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}, ${d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}.` } }catch(e){}
+  return `<section class="card">
+    <h2>Roster</h2>
+    <p class="sub">Copy Roster shortcut, then Paste roster.${last} <button class="refbtn" type="button" data-ref="help|roster" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|roster">Run the Copy Roster shortcut, then tap Paste roster. Flights, deadheads, standbys, days off, hotel layovers and training come in from your the crew app calendar.</p>
+    <div class="btns">
+      <button class="btn" id="pasteRoster">Paste roster</button>
+      <label class="btn quiet" for="rosterFile" style="display:inline-flex;align-items:center">Choose .ics file</label>
+      <input type="file" id="rosterFile" accept=".ics,text/calendar" hidden>
+    </div>
+    ${dismissed.length?`<p class="note">${dismissed.length} roster row${dismissed.length===1?"":"s"} you deleted will stay out of the log. <button class="linkbtn" id="undismiss">Bring them back</button></p>`:""}
+    ${showRosterBox?`<label class="f" for="rosterText">Paste the copied roster here<textarea class="in" id="rosterText" rows="4" placeholder="BEGIN:VCALENDAR…" style="font-family:var(--f-mono);font-size:12px"></textarea></label><div class="btns"><button class="btn" id="rosterGo">Import</button></div>`:""}
+  </section>`;
+}
+
+/* ---------- FDTL ---------- */
+const FDTL_START = Date.UTC(2026,9,1);          // history is kept from 1 Oct 2026 (UTC)
+let rosterEvents = [];                           // parsed crew app events from FDTL_START, kept for duty times
+let actuals = {};
+let rosterChanges = [];                          // duty changes seen between pastes
+let lastPaste = 0;
+let rosterHist = [];
+let dismissed = [];                              // roster rows you deleted; a paste does not bring them back                             // one line per paste                               // when the roster was last pasted                                // uid -> {off, on} for sectors, duty uid -> {report}; UTC "HH:MM"
+const MIN=60000, HR=3600000, DAY=86400000;
+const IST_OFF = 330*MIN;
+
+function evType(e){
+  const s=e.summary||"";
+  if(trainingType(s, e.desc||"")) return "training";
+  if(/check\s*in/i.test(s)) return "checkin";
+  if(/check\s*out/i.test(s)) return "checkout";
+  if(/layover in hotel|hotel/i.test(s)) return "hotel";
+  if(/stand\s*by|\bSBY\b/i.test(s+" "+(e.desc||""))) return "standby";
+  if(/day off|\bW-?OFF\b|\bR-?OFF\b|\bHOFF\b|leave/i.test(s+" "+(e.desc||""))) return "off";
+  if(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/.test(s) && /flight|deadhead|\bOAT\b|positioning|\bDHD?\b/i.test(s)) return "sector";
+  return "other";
+}
+function slimEvent(e){
+  const t=evType(e), o={uid:e.uid||(e.start+"|"+e.summary), t, start:e.start, end:e.end||e.start, s:e.summary};
+  if(e.lm) o.lm=e.lm;
+  if(t==="off"){ const m=(e.desc||"").match(/Duty Type:\s*([A-Za-z\-]+)/); o.code=m?m[1].toUpperCase():"OFF" }
+  if(t==="sector"){ const m=e.summary.match(/([A-Z]{3})\s*(?:→|->|–|-|to)\s*([A-Z]{3})/); o.from=m[1]; o.to=m[2];
+    o.kind=/deadhead|\bOAT\b|positioning|\bDHD?\b/i.test(e.summary)?"dh":"op";
+    const fm=(e.desc||"").match(/Flight Number:\s*([A-Z0-9]+)/i); o.flt=fm?fm[1].toUpperCase():"" }
+  if(t==="checkin"||t==="checkout"){ const m=e.summary.match(/at\s+([A-Z]{3})/); o.stn=m?m[1]:"" }
+  if(t==="training"){ o.code=dutyCode(e.desc||""); o.desc=((e.desc||"").match(/Training Description:\s*([^\n]+)/gi)||[]).map(x=>x.replace(/Training Description:\s*/i,"")).join(", ") }
+  return o;
+}
+// Compare a new paste with what was stored, for duties still ahead: what moved, appeared or went away.
+// The crew app rewrites past events with actual times, so only future events are compared.
+function detectChanges(oldEvs, newEvs, lo, hi, now){
+  const prevPaste=lastPaste; lastPaste=now;
+  if(!oldEvs.length) return;
+  const rel=e=>["checkin","sector","training","standby","off"].includes(e.t);
+  const oldHi=Math.max(...oldEvs.map(e=>e.start));
+  const O=oldEvs.filter(e=>rel(e) && e.start>now && e.start>=lo && e.start<=hi);
+  const N=newEvs.filter(e=>rel(e) && e.start>now && e.start<=oldHi);
+  const sig=e=>e.t+"|"+e.start+"|"+e.end+"|"+(e.s||"");
+  const oSig=new Set(O.map(sig)), nSig=new Set(N.map(sig)), nUid=new Set(N.map(e=>e.uid)), oByUid=new Map(O.map(e=>[e.uid,e]));
+  const offs=O.filter(e=>e.t==="off");
+  // When did it change? The calendar's own modified time if it falls since the last paste, else now (an upper bound)
+  const when=e=> e&&e.lm && e.lm<=now && e.lm>(prevPaste||0) ? e.lm : now;
+  const add=c=>{ c.id=c.t+"|"+(c.newStart||c.oldStart)+"|"+(c.oldStart||"")+"|"+c.kind;
+    if(!rosterChanges.some(x=>x.id===c.id)) rosterChanges.push(c) };
+  for(const n of N){ if(oSig.has(sig(n))) continue;
+    const o=oByUid.get(n.uid);
+    if(o && o.start===n.start && o.end===n.end) continue;   // same times, wording only
+    if(!o && n.t==="off") continue;                          // a day off appearing is not a duty change
+    const onOff = n.t!=="off" && offs.some(f=>n.start<f.end && n.end>f.start);
+    add({kind:o?"moved":"added", t:n.t, s:n.s, newStart:n.start, newEnd:n.end, oldStart:o?o.start:null, oldEnd:o?o.end:null, at:when(n), seen:now, dayOff:onOff}) }
+  for(const o of O){ if(nSig.has(sig(o)) || nUid.has(o.uid)) continue;
+    if(N.some(n=>n.t===o.t && n.start===o.start && n.end===o.end)) continue;   // same duty under a new id
+    add({kind:"removed", t:o.t, s:o.s, oldStart:o.start, oldEnd:o.end, newStart:null, at:now, seen:now, dayOff:o.t==="off"}) }
+  rosterChanges=rosterChanges.filter(c=>(c.newStart||c.oldStart)>=FDTL_START);
+}
+// Called by importRoster: replace stored events inside the pasted range, keep the rest
+// The crew app rewrites a duty with its actual times once it has operated. The calendar's own "last modified" time tells
+// the two apart: modified before departure = the plan, modified after = the rewrite carrying actuals.
+const isRewrite = (e, now)=> e.lm!=null ? e.lm>e.start : e.start<=now;
+const isPlanVersion = (o, now)=> o.pStart!=null || (o.lm!=null ? o.lm<=o.start : (o.seen!=null ? o.seen<o.start : o.start>now));
+// Store a paste's events. Planned times, once known, never change after the flight; a rewrite only supplies actuals.
+// A paste older than what is stored (an earlier export) only fills in planned times that are missing.
+function storeRosterEvents(evs){
+  const keep=evs.filter(e=>e.start>=FDTL_START-DAY).map(slimEvent);
+  if(!keep.length) return {historical:false, filled:0};
+  const lo=Math.min(...evs.map(e=>e.start)), hi=Math.max(...evs.map(e=>e.start));
+  const now=Date.now(), timed=t=>t==="sector"||t==="checkin"||t==="checkout";
+  const lmOf=list=>list.reduce((m,e)=>Math.max(m,e.lm||0),0);
+  const byUid=new Map(rosterEvents.map(e=>[e.uid,e])), newUids=new Set(keep.map(e=>e.uid));
+  // Two versions are the same duty only on the same route (or check-in/out station) at a nearby time; the crew app
+  // sometimes keeps an event's id when it swaps the duty itself, and that is a roster change, not a rewrite.
+  const same=(o,e)=> o.t===e.t && (e.t==="sector" ? (o.from===e.from&&o.to===e.to) : (o.stn||"")===(e.stn||"")) && Math.abs((o.pStart??o.start)-e.start)<=3*HR;   // a wrong match does more harm than a lost plan
+  const twin=e=>{ const u=byUid.get(e.uid); if(u) return same(u,e)?u:null;
+    return rosterEvents.find(o=>!newUids.has(o.uid) && same(o,e) && Math.abs(o.start-e.start)<=6*HR) || null };
+  const historical = rosterEvents.length>0 && lmOf(keep)>0 && lmOf(keep) < lmOf(rosterEvents)-60000;
+  if(historical){
+    let filled=0, offs=0;
+    for(const e of keep){ if(!timed(e.t) || isRewrite(e,now)) continue;
+      const o=twin(e); if(!o || isPlanVersion(o,now)) continue;
+      const cal={s:o.start, e:o.end};
+      o.start=e.start; o.end=e.end; o.pStart=e.start; o.pEnd=e.end; delete o.noPlan;
+      if(o.t!=="checkout" && (cal.s!==e.start||cal.e!==e.end)){ o.aStart=cal.s; o.aEnd=cal.e } else if(o.t!=="checkout"){ delete o.aStart; delete o.aEnd }
+      filled++ }
+    // and bring back past days off and standbys that newer pastes no longer carry
+    for(const e of keep){ if((e.t==="off"||e.t==="standby") && e.start<=now && !rosterEvents.some(o=>o.t===e.t && o.start<e.end && o.end>e.start)){ rosterEvents.push(e); offs++ } }
+    rosterEvents.sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:1));
+    return {historical:true, filled, offs};
+  }
+  const nChg=rosterChanges.length;
+  detectChanges(rosterEvents, keep, lo, hi, now);
+  for(const e of keep){ if(!timed(e.t)) continue;
+    const o=twin(e);
+    e.seen = o&&o.seen!=null ? o.seen : now;
+    if(!isRewrite(e,now)){ e.pStart=e.start; e.pEnd=e.end; continue }   // the plan, or a change to it before the flight
+    const plan = o && isPlanVersion(o,now) ? {s:o.pStart??o.start, e:o.pEnd??o.end} : null;
+    if(plan){
+      if(e.t!=="checkout"){ if(e.start!==plan.s||e.end!==plan.e){ e.aStart=e.start; e.aEnd=e.end } else if(o.aStart!=null){ e.aStart=o.aStart; e.aEnd=o.aEnd } }
+      e.start=plan.s; e.end=plan.e; e.pStart=plan.s; e.pEnd=plan.e }
+    else if(e.t!=="checkout"){ e.noPlan=true; e.aStart=e.start; e.aEnd=e.end }   // first seen after it flew: actuals only
+  }
+  // The crew app drops days off and standbys once they have started; keep the ones we already hold
+  const pastKeep=e=>(e.t==="off"||e.t==="standby") && e.start<=now && !keep.some(n=>n.t===e.t && n.start<e.end && n.end>e.start);
+  const map=new Map(rosterEvents.filter(e=>e.start<lo||e.start>hi||pastKeep(e)).map(e=>[e.uid,e]));
+  for(const e of keep) map.set(e.uid,e);
+  rosterEvents=[...map.values()].sort((a,b)=>a.start-b.start||(a.t==="checkin"?-1:1));
+  return {historical:false, filled:0, changes:rosterChanges.length-nChg};
+}
+
+/* Resolve an "HH:MM" UTC entry to the instant nearest the planned time */
+function nearUTC(hhmm, planned){
+  const m=String(hhmm||"").match(/^(\d{1,2}):?(\d{2})$/); if(!m) return null;
+  const h=+m[1], mi=+m[2]; if(h>23||mi>59) return null;
+  const d=new Date(planned), base=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),h,mi);
+  return [base-DAY,base,base+DAY].reduce((a,b)=>Math.abs(b-planned)<Math.abs(a-planned)?b:a);
+}
+const hhmmZ = ms=>{ const d=new Date(ms); return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0") };
+const utcDate = ms=>new Date(ms).toISOString().slice(0,10);
+
+/* Minutes of [a,b] that fall in daily IST windows [h1,h2) (minutes after IST midnight) */
+function istOverlap(a,b,h1,h2){
+  let tot=0; const d0=Math.floor((a+IST_OFF)/DAY)-1, d1=Math.floor((b+IST_OFF)/DAY)+1;
+  for(let d=d0; d<=d1; d++){ const s=d*DAY-IST_OFF+h1*MIN, e=d*DAY-IST_OFF+h2*MIN; tot+=Math.max(0,Math.min(b,e)-Math.max(a,s)) }
+  return tot/MIN;
+}
+function containsLocalNight(a,b){ // a full 00:00-08:00 IST inside [a,b]
+  const d0=Math.floor((a+IST_OFF)/DAY), d1=Math.floor((b+IST_OFF)/DAY);
+  for(let d=d0; d<=d1; d++){ const s=d*DAY-IST_OFF, e=s+8*HR; if(s>=a && e<=b) return true } return false;
+}
+
+/* limits by landings; night duty (any FDP touching 00:00-06:00 IST, which covers the WOCL) */
+function fdpLimits(landings, night){
+  if(night) return {ft:8*60, fdp:10*60, land:2, ref:"night duty"};
+  const t={1:[600,780],2:[540,780],3:[480,750],4:[480,720],5:[480,690],6:[480,660]}[Math.min(Math.max(landings,1),6)];
+  return {ft:t[0], fdp:t[1], land:6, ref:landings<=1?"1 landing":landings===2?"2 landings":"3 or more landings"};
+}
+
+/* Build duties from the stored roster events */
+// Sectors in the Flight log that the calendar does not hold: ones you typed in, and roster ones that a later calendar
+// dropped. A flight the calendar still has on the same route within 12 h is never added twice.
+function logEvents(){
+  const cal=rosterEvents.filter(e=>e.t==="sector"), have=new Set(cal.map(e=>e.uid)), out=[];
+  for(const ym in months){ if(ym<"2026-10") continue; const d=months[ym]; if(!d||!d.sectors) continue;
+    for(const r of d.sectors){
+      if(!r.dep || !r.date || !(+r.fixed>0) || (r.uid && have.has(r.uid))) continue;
+      const from=(r.from||"").toUpperCase(), to=(r.to||"").toUpperCase(); if(!from||!to) continue;
+      let start=Date.parse(r.date+"T"+r.dep+":00Z"); if(isNaN(start)) continue;
+      if(cal.some(e=>e.from===from && e.to===to && Math.abs((e.pStart??e.start)-start)<=12*HR)) continue;   // already in the calendar
+      const id=r.uid||("m|"+r.id);
+      if(r.report){ let rep=Date.parse(r.date+"T"+r.report+":00Z"); if(!isNaN(rep)){ if(start<rep) start+=DAY;
+        out.push({uid:"mr|"+id, t:"checkin", start:rep, end:rep, stn:from, manual:true}) } }
+      out.push({uid:id, t:"sector", start, end:start+(+r.fixed)*MIN, from, to, kind:(r.kind==="dh"||r.kind==="dhx")?"dh":"op", flt:(r.flt||"").toUpperCase(), manual:true});
+    } }
+  return out;
+}
+// Standbys you added on a day the calendar left blank: actuals["msby|YYYY-MM-DD"] = {s, e} in UTC, end before start = next day
+function mySbyTimes(day){ const x=actuals["msby|"+day]; if(!x||!x.s||!x.e) return null;
+  let st=Date.parse(day+"T"+x.s+":00Z"), en=Date.parse(day+"T"+x.e+":00Z"); if(isNaN(st)||isNaN(en)) return null;
+  if(en<=st){ // crosses midnight UTC: place it so most of it falls on the day you added it to
+    const d0=Date.parse(day+"T00:00:00Z"), d1=d0+DAY, cov=(a,b)=>Math.max(0,Math.min(b,d1)-Math.max(a,d0));
+    if(cov(st-DAY,en) >= cov(st,en+DAY)) st-=DAY; else en+=DAY }
+  return {st,en} }
+// The day a standby belongs to: the one you added it to, otherwise the UTC date it starts
+const sbyDay = b=> String(b.uid||"").startsWith("msby|") ? String(b.uid).slice(5) : utcDate(b.start);
+function mySbyEvents(){ const out=[], stn=(profile.base||"BOM").toUpperCase();
+  for(const k in actuals){ if(!k.startsWith("msby|")) continue; const day=k.slice(5), t=mySbyTimes(day); if(!t) continue;
+    out.push({uid:k, t:"checkin", start:t.st, end:t.st, stn, manual:true}, {uid:k+"|out", t:"checkout", start:t.en, end:t.en, stn, manual:true}) }
+  return out;
+}
+// Report 1:00 before departure, 1:15 for an international departure from a metropolitan station
+const reportLead = e=>(e.kind!=="dh" && METROS.has(e.from) && (!isDomStn(e.from)||!isDomStn(e.to))) ? REPORT_INTL_METRO : REPORT_DOM;
+function buildDuties(){
+  // A flight you added yourself keeps your planned times even once the calendar holds it; the calendar only adds actuals
+  const own=new Map(); for(const ym in months) for(const r of ((months[ym]||{}).sectors||[])) if(r.ownPlan&&r.uid&&r.dep&&+r.fixed>0) own.set(r.uid,r);
+  const mine=e=>{ const r=e.t==="sector"&&own.get(e.uid); if(!r) return e;
+    let st=Date.parse(r.date+"T"+r.dep+":00Z"); if(isNaN(st)) return e;
+    if(r.report){ const rp=Date.parse(r.date+"T"+r.report+":00Z"); if(!isNaN(rp)&&st<rp) st+=DAY }
+    const cal = e.aStart!=null ? {s:e.aStart,e:e.aEnd} : (isRewrite(e,Date.now()) ? {s:e.start,e:e.end} : null);
+    return {...e, start:st, end:st+(+r.fixed)*MIN, noPlan:false, aStart:cal?cal.s:null, aEnd:cal?cal.e:null} };
+  const ev=[...rosterEvents.map(mine), ...logEvents(), ...mySbyEvents()].sort((a,b)=>a.start-b.start || ((a.t==="checkin"?0:1)-(b.t==="checkin"?0:1)) || ((a.manual?1:0)-(b.manual?1:0))), duties=[], standbys=[];
+  let cur=null;
+  const open=(e,report)=>{ cur={uid:e.uid, report, items:[], checkinStn:e.stn||"", aReport:e.t==="checkin"?e.aStart:null } };
+  const close=(endMs, stn)=>{ if(!cur) return; cur.signoutPlanned=endMs; cur.signoutStn=stn||""; duties.push(cur); cur=null };
+  for(let i=0;i<ev.length;i++){ const e=ev[i];
+    // A check-in while a bare check-in (standby) is open: called out, so the standby ends here
+    if(e.t==="checkin" && cur && !cur.items.length && Math.abs(e.start-cur.report)<2*MIN) continue;   // the same check-in twice
+    if(e.t==="checkin"){ if(cur) close(cur.items.length?cur.items[cur.items.length-1].end+15*MIN:Math.min(e.start,cur.report+12*HR)); open(e,e.start); continue }
+    if(e.t==="checkout"){ if(!cur) continue;
+      // A check-out hours after this duty's last flight or training belongs to some later duty whose other events are
+      // missing: this duty ended with its own work, not there
+      if(cur.items.length && e.start-cur.items[cur.items.length-1].end>4*HR){ close(cur.items[cur.items.length-1].end+15*MIN); continue }
+      // A standby's check-out can land inside the duty it was called out for: skip it if this duty's flying carries on
+      let more=false; for(let j=i+1;j<ev.length && ev[j].t!=="checkin";j++){ if((ev[j].t==="sector"||ev[j].t==="training") && ev[j].start-e.start<6*HR){ more=true; break } }   // only work that follows within 6 h carries on; anything later is a new duty even if its check-in is missing
+      if(more && cur.items.length) continue;
+      close(e.end>e.start?e.end:e.start+(cur.items.some(x=>x.t==="sector")?15*MIN:0), e.stn); continue }
+    if(e.t==="sector"||e.t==="training"){
+      // A hand-added sector leaving within 4 h of the last duty's final on-blocks belongs to that duty
+      if(!cur && e.manual && e.t==="sector"){ const last=duties[duties.length-1];
+        if(last && last.items.length && e.start-last.items[last.items.length-1].end<=4*HR && e.start>=last.items[last.items.length-1].end){ cur=duties.pop(); cur.items.push(e); continue } }
+      const gap = cur && cur.items.length ? e.start-cur.items[cur.items.length-1].end : 0;
+      const gapTooLong = cur && cur.items.length && (e.manual ? gap>4*HR : gap>=8*HR);   // a gap that long is a rest, never one duty
+      if(!cur || e.start-cur.report>20*HR || gapTooLong){ if(cur) close(cur.items.length?cur.items[cur.items.length-1].end+15*MIN:cur.report+HR); open(e, e.t==="sector"?e.start-reportLead(e)*MIN:e.start) }
+      cur.items.push(e); continue }
+    if(e.t==="standby") standbys.push(e);
+  }
+  if(cur) close(cur.items.length?cur.items[cur.items.length-1].end+15*MIN:cur.report+HR);
+  // A check-in/check-out pair with nothing between is a standby that the crew app exported without an SBY event.
+  // Home standby by default (25% counts); you can mark it as an airport standby (100%).
+  const kept=[];
+  for(const d of duties){
+    if(d.items.length){ kept.push(d); continue }
+    if(standbys.some(s=>s.start<=d.signoutPlanned && s.end>=d.report)) continue;
+    if(((actuals[d.uid]||{}).sby)==="airport") kept.push(d);
+    else standbys.push({uid:d.uid, t:"standby", start:d.report, end:d.signoutPlanned, stn:d.checkinStn, bare:true});
+  }
+  standbys.sort((a,b)=>a.start-b.start);
+  // Standby call-outs: a duty reporting inside a standby came from it, unless you say otherwise.
+  // With "called out" set and no report inside, the first duty within 12 h of the standby ending is taken.
+  const pick=(st,en,uid)=>{ const ov=(actuals[uid]||{}).called; if(ov===false) return null;
+    return kept.filter(d=>d.items.length && d.report>=st && d.report<=(ov===true?en+12*HR:en)).sort((p,q)=>p.report-q.report)[0]||null };
+  for(const sb of standbys){ const d=pick(sb.start,sb.end,sb.uid); sb.called=!!d; if(d) d.sby={kind:"home", uid:sb.uid, start:sb.start, end:sb.end, bare:!!sb.bare} }
+  for(const a of kept.filter(d=>!d.items.length)){ const d=pick(a.report,a.signoutPlanned,a.uid);
+    if(d){ d.sby={kind:"airport", uid:a.uid, start:a.report, end:a.signoutPlanned, stn:a.checkinStn}; a.merged=true } }
+  // Removed by you from the Duty tab. A removal applies only to the kind of thing you removed: a standby you removed
+  // never hides a flight duty that later turns out to share its check-in.
+  const hk=u=>{ const a=actuals[u]; if(!a||!a.hide) return ""; return a.hk || (/standby/i.test(a.hl||"") && !/^Airport/i.test(a.hl||"") ? "sby" : "duty") };
+  return {duties:kept.filter(d=>!d.merged && hk(d.uid)!=="duty").map(d=>evalDuty(d)), standbys:standbys.filter(x=>hk(x.uid)!=="sby")};
+}
+
+function evalDuty(d){
+  if(!d.items.length){
+    const a=actuals[d.uid]||{}, rp=d.report, ra=nearUTC(a.report,d.report);
+    const mk=R=>({report:R, signout:d.signoutPlanned, fdpEnd:null, fdp:null, duty:(d.signoutPlanned-R)/MIN, ft:0, landings:0, night:false, lim:fdpLimits(0,false), note3:0, halts:[]});
+    // The crew app shows an airport standby as a bare check-in/check-out at the airport (no SBY event)
+    return {...d, type:"asby", secs:[], trn:[], rep:{plan:rp, act:ra}, P:mk(rp), A:mk(ra??rp), hasActual:ra!=null, restStn:d.checkinStn||d.signoutStn, date:String(d.uid).startsWith("msby|")?String(d.uid).slice(5):utcDate(rp)};
+  }
+  const sectors=d.items.filter(x=>x.t==="sector"), ops=sectors.filter(x=>x.kind==="op"), trn=d.items.filter(x=>x.t==="training");
+  const type = ops.length?"flight":sectors.length?"positioning":"training";
+  const a=actuals[d.uid]||{};
+  const airport = d.sby && d.sby.kind==="airport";
+  // Called from an airport standby: the whole standby is FDP and duty, so the duty starts when the standby did
+  const rep={plan:airport?d.sby.start:d.report, act:nearUTC(a.report,d.report) ?? (d.aReport!=null && d.aReport!==d.report ? d.aReport : null)};
+  const nofly = !!a.nofly && (d.items.some(x=>x.t==="sector"));
+  const secs=sectors.map(s=>{ const x=actuals[s.uid]||{};
+    // first seen after it flew: planned is whatever you type in; until then the calendar's times stand in
+    const pS=s.noPlan?(nearUTC(x.poff,s.start)??s.start):s.start, pE=s.noPlan?(nearUTC(x.pon,s.end)??s.end):s.end;
+    const off=nearUTC(x.off,pS) ?? (s.aStart??null), on=nearUTC(x.on,pE) ?? (s.aEnd??null);
+    return {...s, start:pS, end:pE, offA:off, onA:on, blockP:(pE-pS)/MIN, blockA:(off!=null||on!=null)?((on??pE)-(off??pS))/MIN:null} });
+  const one=(which)=>{
+    const R = which==="act" ? (airport ? rep.plan : (rep.act??rep.plan)) : rep.plan;
+    if(which==="act" && nofly){   // reported, then cancelled: no flying
+      const rel=nearUTC(a.rel, R+HR) ?? d.signoutPlanned;
+      return {report:R, signout:rel, fdpEnd:null, fdp:null, duty:Math.max(0,(rel-R)/MIN), ft:0, landings:0, night:false, lim:fdpLimits(0,false), note3:0, halts:[], nofly:true} }
+    const T = s=>({off: which==="act"&&s.offA!=null?s.offA:s.start, on: which==="act"&&s.onA!=null?s.onA:s.end});
+    const lastItemEnd = Math.max(...d.items.map(x=> x.t==="sector"?T(secs.find(y=>y.uid===x.uid)).on : x.end));
+    const plannedTail = d.signoutPlanned - Math.max(...d.items.map(x=>x.end));
+    let signout = lastItemEnd + Math.max(0,plannedTail);
+    const lastIt=d.items[d.items.length-1];
+    if(lastIt && lastIt.t==="sector" && lastIt.kind==="op" && !isDomStn(lastIt.from) && isDomStn(lastIt.to)) signout=Math.max(signout, lastItemEnd+30*MIN);
+    const opT = secs.filter(s=>s.kind==="op").map(T);
+    const fdpEnd = opT.length ? Math.max(...opT.map(t=>t.on)) : null;
+    const ft = secs.filter(s=>s.kind==="op").reduce((x,s)=>{const t=T(s);return x+(t.on-t.off)/MIN},0);
+    const night = fdpEnd!=null && istOverlap(R,fdpEnd,0,360)>0;
+    const lim = fdpLimits(opT.length, night);
+    const note3 = fdpEnd!=null ? istOverlap(R,fdpEnd,0,120)+istOverlap(R,fdpEnd,301,360) : 0;   // 00:00-01:59, 05:01-06:00
+    const halts=[]; for(let i=1;i<secs.length;i++){ const g=(T(secs[i]).off-T(secs[i-1]).on)/MIN; if(g>60) halts.push({stn:secs[i-1].to, mins:g, before:secs[i].uid}) }
+    const x={report:R, signout, fdpEnd, fdp:fdpEnd!=null?(fdpEnd-R)/MIN:null, duty:(signout-R)/MIN, ft, landings:opT.length, night, lim, note3, halts};
+    // Called from home standby at 6 h or later: the FDP limit drops by half the standby time
+    if(d.sby && d.sby.kind==="home"){ const rr = which==="act" ? (rep.act??rep.plan) : rep.plan;
+      x.sbyMins=Math.max(0,(rr-d.sby.start)/MIN);
+      if(x.sbyMins>=360){ x.sbyCut=Math.round(x.sbyMins/2); x.lim={...x.lim, fdp:x.lim.fdp-x.sbyCut} } }
+    if(airport) x.sbyMins=(d.report-d.sby.start)/MIN;
+    // Extension (unforeseen operational circumstances), marked by you
+    if(a.ext && x.fdp!=null){ const b=x.lim;
+      x.ext={ft:Math.max(0,x.ft-b.ft), fdp:Math.max(0,x.fdp-b.fdp), land:Math.max(0,x.landings-b.land)};
+      x.limBase=b; x.lim={...b, ft:b.ft+90, fdp:b.fdp+180, land:b.land+1, ref:b.ref+" + extension"} }
+    return x;
+  };
+  const lastSec=secs[secs.length-1];
+  return {...d, type, secs, trn, rep, P:one("plan"), A:one("act"),
+    hasActual: rep.act!=null || nofly || secs.some(s=>s.offA!=null||s.onA!=null), nofly, ext:!!a.ext,
+    restStn: d.signoutStn || (lastSec?lastSec.to:"") || d.checkinStn,
+    date: utcDate(d.report)};
+}
+
+/* Rest before each duty and standby/local-night rules; cumulative windows */
+function fdtlAll(){
+  const {duties, standbys}=buildDuties();
+  for(let i=0;i<duties.length;i++){
+    const d=duties[i], prev=duties[i-1];
+    for(const k of ["P","A"]){
+      const x=d[k];
+      if(!prev){ x.rest=null; continue }
+      const p=prev[k], avail=(x.report-p.signout)/MIN;
+      const flying = d.type==="flight" || d.type==="positioning";   // the next duty includes flying or positioning
+      const {req, why}=restNeed(prev, p, flying);
+      const sb=flying ? standbys.filter(s=>!s.called && s.end<=x.report && s.end>p.signout && !(x.report>=s.start && x.report<=s.end)).pop() : null;
+      const needNight = p.duty>18*60;
+      const sbReq=720+30+transportFor(prev.restStn);   // home standby: 12 h + 0:30 domestic + transport to the airport
+      if(sb && sb.end+sbReq*MIN>p.signout+req*MIN){   // the standby is the binding rest: measure from its end
+        x.rest={avail:(x.report-sb.end)/MIN, req:sbReq, why:["12 h from the end of your standby before a flight", "+0:30 at a domestic station", `+${hm(transportFor(prev.restStn))} transport to the airport`], needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:sb.end, stn:prev.restStn};
+        continue }
+      x.rest={avail, req, why, needNight, nightOk: !needNight || containsLocalNight(p.signout, x.report), from:p.signout, stn:prev.restStn};
+    }
+  }
+  // The earliest flight you could take after each duty (for the panel at the foot of its card)
+  for(const d of duties) for(const k of ["P","A"]){ const x=d[k], n=restNeed(d, x, true);
+    let rep=x.signout+n.req*MIN, why=[...n.why];
+    const stn=d.restStn||"", T=transportFor(stn), intlStn=!isDomStn(stn);
+    if(x.duty>18*60){ // the rest must include a local night: 00:00-08:00 IST between getting there and leaving again
+      const home=x.signout+T*MIN; let ns=Math.floor((home+IST_OFF)/DAY)*DAY-IST_OFF; if(ns<home) ns+=DAY;
+      const r2=ns+8*HR+T*MIN; if(r2>rep){ rep=r2; why.push("must include a local night, 00:00-08:00 IST") } }
+    x.next={report:rep, dom:intlStn?null:rep+REPORT_DOM*MIN, intl:rep+intlLead(stn)*MIN, train:x.signout+(600+2*T)*MIN, why, stn, intlStn, T} }
+  const all={duties, standbys};
+  for(const k of ["P","A"]) all["wk"+k]=cycleRules(all, k);
+  return all;
+}
+// transport to and from the airport is neither duty nor rest (45 min at domestic stations, 30 min at
+// international ones), and a domestic station adds 30 min of rest before a flight duty. Report 1:00
+// before a domestic departure, 1:15 before an international one from a metropolitan station, 1:00 otherwise.
+const REPORT_DOM=60, REPORT_INTL_METRO=75;
+const METROS=new Set(["BOM","DEL","MAA","HYD","BLR","CCU","NMI"]);
+const isDomStn = stn=>!stn || IN_AIRPORTS.has(stn);
+const transportFor = stn=>isDomStn(stn)?45:30;
+const intlLead = stn=>METROS.has(stn)?REPORT_INTL_METRO:REPORT_DOM;
+// Rest needed between a duty (x is its planned or actual figures) and the next one
+function restNeed(prev, p, flying){
+  const stn=prev.restStn||"", T=transportFor(stn), dom=isDomStn(stn);
+  let req, why=[];
+  if(!flying){ req=600; why.push("10 h before duties other than flying") }
+  else if(prev.type==="asby"){ req=Math.max(720,p.duty); why.push("12 h after standby before a flight") }
+  else { req=Math.max(p.duty,720); why.push(p.duty>720?"as long as the previous duty":"12 h minimum") }
+  if(p.note3>0){ req+=2*p.note3; why.push(`+${hm(2*p.note3)} after flying in 00:00-01:59 or 05:01-06:00 IST`) }
+  if(p.ext && (p.ext.ft>0||p.ext.fdp>0)){ const add=(p.ext.fdp<=60&&p.ext.ft<=30)?120:240; req+=add; why.push(`+${hm(add)} after an extension of ${hm(p.ext.fdp)} FDP / ${hm(p.ext.ft)} flight time`) }
+  if(p.nofly){ const r2=Math.max(720,2*p.duty); if(r2>req){ req=r2; why.length=0; why.push(`twice the ${hm(p.duty)} you spent after reporting, at least 12 h`) } }
+  if(flying && dom){ req+=30; why.push("+0:30 at a domestic station") }
+  req+=2*T; why.push(`+${hm(2*T)} transport, ${T} min each way at ${dom?"a domestic":"an international"} station (neither duty nor rest)`);
+  return {req, why};
+}
+
+/* Weekly rest, consecutive nights, Note 3 frequency and early-morning reports, per mode (P planned, A actual) */
+const istDate = ms=>new Date(ms+IST_OFF).toISOString().slice(0,10);
+const istMin  = ms=>{ const d=new Date(ms+IST_OFF); return d.getUTCHours()*60+d.getUTCMinutes() };
+function nightsIn(a,b){ // local nights (00:00-08:00 IST) lying wholly inside [a,b]
+  const out=[]; const d0=Math.floor((a+IST_OFF)/DAY), d1=Math.floor((b+IST_OFF)/DAY);
+  for(let d=d0; d<=d1; d++){ const s=d*DAY-IST_OFF; if(s>=a && s+8*HR<=b) out.push(s) } return out;
+}
+function cycleRules(all, k){
+  const base=(profile.base||"BOM").toUpperCase();
+  const D=all.duties.map(d=>({d, x:d[k]}));
+  // Busy periods: every duty and standby (rest means free of duty, standby and reserve)
+  const busy=[...D.map(o=>({a:o.x.report, b:o.x.signout, d:o.d})), ...all.standbys.map(s=>({a:s.start, b:s.end, sby:true}))].sort((p,q)=>p.a-q.a);
+  const nightFdp=D.filter(o=>o.x.night).map(o=>o.x.report);
+  const rests=[];
+  let endSoFar=null, lastBusy=null;
+  for(const bz of busy){
+    if(endSoFar!=null && bz.a>endSoFar){
+      const a=endSoFar, b=bz.a, hrs=(b-a)/MIN;
+      if(hrs>=48*60){
+        const nights=nightsIn(a,b);
+        // sign out by 23:14 LT, so a night that starts less than 46 min after sign-out does not count
+        const counted=nights.filter(n=>n-a>=46*MIN);
+        const n3=nightFdp.filter(r=>r<a && r>=a-168*HR).length;
+        const req=n3>3?60*60:48*60;
+        const stn=(lastBusy&&lastBusy.d&&lastBusy.d.restStn)||"";
+        const ok=hrs>=req && counted.length>=2;
+        const tbKey="tb|"+stn+"|"+istDate(a), temp=!!(actuals[tbKey]&&actuals[tbKey].tb);
+        rests.push({a,b,hrs,nights:nights.length,counted:counted.length,req,n3,stn,away:!!stn&&stn!==base&&!temp,temp,tbKey,ok,
+          lateSignout: nights.length>counted.length});
+      }
+    }
+    if(endSoFar==null || bz.b>endSoFar){ endSoFar=bz.b; lastBusy=bz }
+  }
+  const valid=rests.filter(r=>r.ok);
+  // Per duty
+  const nightDates=new Map();   // IST date of a 00:00-06:00 window -> duties touching it
+  for(const o of D){ if(o.x.fdpEnd==null || !o.x.night) continue;
+    const d0=Math.floor((o.x.report+IST_OFF)/DAY), d1=Math.floor((o.x.fdpEnd+IST_OFF)/DAY);
+    for(let d=d0; d<=d1; d++){ const s=d*DAY-IST_OFF; if(Math.min(o.x.fdpEnd,s+6*HR)>Math.max(o.x.report,s)) nightDates.set(d,(nightDates.get(d)||[]).concat(o.d.uid)) } }
+  const nd=[...nightDates.keys()].sort((p,q)=>p-q), runOf=new Map(), runs=[];
+  for(let i=0;i<nd.length;i++){ const len=(i>0&&nd[i-1]===nd[i]-1)?runOf.get(nd[i-1]).len+1:1; const start=len>1?runOf.get(nd[i-1]).start:nd[i];
+    runOf.set(nd[i],{len,start}) }
+  for(const [day,r] of runOf) if(r.len===3) runs.push(day);   // the day each run reaches 3 nights
+  const per=new Map(); let early=0, lastRestEnd=null;
+  for(const o of D){
+    const x=o.x;
+    const prevRest=valid.filter(r=>r.b<=x.report).pop();
+    if(prevRest && prevRest.b!==lastRestEnd){ early=0; lastRestEnd=prevRest.b }
+    const isEarly=istMin(x.report)<6*60;   // RP: early morning = report 00:00-06:00 IST
+    early=isEarly?early+1:0;
+    const since=prevRest?(x.signout-prevRest.b)/MIN:null;
+    // consecutive nights for the nights this duty touches
+    let nights=null;
+    for(const [day,uids] of nightDates) if(uids.includes(o.d.uid)){ const r=runOf.get(day);
+      const threes=runs.filter(t=>t<=day && (day-t)*DAY<168*HR);   // runs of 3 that reached 3 in the last 168 h, this one included
+      const n={len:r.len, threes:threes.length}; if(!nights || n.len>nights.len || n.threes>nights.threes) nights=n }
+    const n3=x.note3>0 ? D.filter(q=>q.x.note3>0 && q.x.report<=x.report && q.x.report>x.report-168*HR).length : 0;
+    let ext28=null;
+    if(x.ext){ ext28={ft:0,fdp:0}; for(const q of D) if(q.x.ext && q.x.report<=x.report && q.x.report>x.report-28*DAY){ ext28.ft+=q.x.ext.ft; ext28.fdp+=q.x.ext.fdp } }
+    per.set(o.d.uid,{since, prevRest, early: isEarly?early:0, nights, n3, ext28});
+  }
+  return {rests, per};
+}
+function cumulative(all, dayEndMs, mode){
+  const out=[];
+  for(const [days,ftL,dutyL] of [[7,35,60],[14,65,100],[28,100,190],[90,300,600],[365,1000,1800]]){
+    const from=dayEndMs-days*DAY, partial=from<FDTL_START;
+    let ft=0, duty=0;
+    for(const d of all.duties){ const x=d[mode];
+      if(x.report>=from && x.report<dayEndMs){ ft+=x.ft; duty+=x.duty } }
+    for(const s of all.standbys){ // home standby not called out: 25% counts as duty
+      if(s.start>=from && s.start<dayEndMs && !s.called) duty+=0.25*(s.end-s.start)/MIN }
+    out.push({days, ft, duty, ftL:ftL*60, dutyL:dutyL*60, partial});
+  }
+  return out;
+}
+const fdtlStatus=(v,lim)=> v==null||lim==null ? "na" : v>lim+0.01 ? "bad" : v>=0.9*lim ? "warn" : "ok";
+
+/* ---------- Duty tab: one day at a time, planned vs actual, FDTL checks ---------- */
+let dutyDay = null;            // UTC date being viewed
+let fdtlCache = null;          // recomputed on every render
+const DOW = d=>new Date(d+"T00:00:00Z").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
+function offDays(){
+  const m=new Map();
+  for(const k in actuals) if(k.startsWith("off|") && actuals[k] && actuals[k].code){ const d=k.slice(4), t=Date.parse(d+"T00:00:00Z"); m.set(d,{code:actuals[k].code, start:t, end:t+DAY, manual:true}) }
+  for(const e of rosterEvents){ if(e.t!=="off") continue;
+    for(let d=Math.floor(e.start/DAY)*DAY; d<e.end; d+=DAY){ const cov=Math.min(e.end,d+DAY)-Math.max(e.start,d);
+      if(cov>=12*HR && !m.has(new Date(d).toISOString().slice(0,10))) m.set(new Date(d).toISOString().slice(0,10), {code:e.code||"OFF", start:e.start, end:e.end}) } }
+  return m;
+}
+function dutyDays(all){
+  const s=new Set(all.duties.map(d=>d.date)); for(const b of all.standbys) s.add(sbyDay(b));
+  for(const c of rosterChanges) if(c.kind==="removed") s.add(utcDate(c.oldStart));
+  for(const k in actuals) if(actuals[k]&&actuals[k].hide&&actuals[k].hd) s.add(actuals[k].hd);   // keep removed days reachable for Restore
+  for(const d of offDays().keys()) s.add(d);
+  for(const k in actuals) if(k.startsWith("msby|")) s.add(k.slice(5));
+  const known=[...s].filter(d=>d>="2026-10-01").sort(); if(!known.length) return [];
+  // fill every day from the first of the first month to the last of the last month
+  const out=[]; const a=new Date(known[0].slice(0,8)+"01T00:00:00Z"), z=new Date(known[known.length-1]+"T00:00:00Z"); z.setUTCMonth(z.getUTCMonth()+1,0);
+  for(let t=a.getTime(); t<=z.getTime(); t+=DAY) out.push(new Date(t).toISOString().slice(0,10));
+  return out;
+}
+// One chip per duty day, scrolled sideways: weekday, date and what the day holds
+function dayStrip(all, days, day){
+  const offs=offDays();
+  const kind=d=> all.duties.some(x=>x.date===d) ? "duty" : all.standbys.some(b=>sbyDay(b)===d) ? "sby" : offs.has(d) ? "off" : "free";
+  const tag=d=>{ const L=all.duties.filter(x=>x.date===d);
+    if(!L.length){ if(all.standbys.some(b=>sbyDay(b)===d)) return "SBY"; if(offs.has(d)) return offs.get(d).code; return "–" }
+    const x=L[0];
+    if(x.type==="flight"){ const ops=x.secs.filter(s=>s.kind==="op"), base=(profile.base||"BOM").toUpperCase(), endAt=x.secs[x.secs.length-1].to;
+      if(endAt!==base) return endAt;   // night stop away from base
+      const far=ops.map(s=>s.to).filter(t=>t!==base && t!==x.secs[0].from); return far[0]||ops[0].to }
+    if(x.type==="positioning") return "DH "+x.secs[x.secs.length-1].to;
+    if(x.type==="training") return "TRG";
+    return "SBY"; };
+  let lastM="";
+  return (days.includes(day)?days:[...days,day].sort()).map(d=>{
+    const dt=new Date(d+"T00:00:00Z"), m=dt.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"});
+    const mark=m!==lastM?`<span class="ds-m">${m}</span>`:""; lastM=m;
+    const k=kind(d);
+    return `${mark}<button class="ds ds-${k}${d===day?" on":""}" data-dday="${d}" role="option" aria-selected="${d===day}">
+      <span class="ds-w">${dt.toLocaleDateString("en-GB",{weekday:"short",timeZone:"UTC"})}</span><b>${dt.getUTCDate()}</b><span class="ds-t">${esc(tag(d))}</span></button>`;
+  }).join("");
+}
+function pickDutyDay(all){
+  const days=dutyDays(all); if(!days.length) return utcDate(Date.now());
+  if(dutyDay) return dutyDay;
+  const today=utcDate(Date.now());
+  return days.find(d=>d>=today) || days[days.length-1];
+}
+function chipFor(st, text){ return `<span class="fchip ${st}">${text}</span>` }
+const STATUS_TXT={ok:"Within limit",warn:"Within 10%",bad:"Exceeded",na:"Not checked"};
+function cell(v,lim,fmt){ if(v==null) return `<td class="n muted">–</td>`; const st=fdtlStatus(v,lim); return `<td class="n"><span class="fv ${st}">${fmt(v)}</span></td>` }
+function actInput(uid, field, value, planned, label){
+  const id=`act-${btoa(unescape(encodeURIComponent(uid+"|"+field))).replace(/[^A-Za-z0-9]/g,"").slice(-24)}`;
+  return `<input class="in n actin" id="${id}" data-act="${esc(uid)}" data-af="${field}" value="${esc(value||"")}" placeholder="${esc(planned)}" inputmode="numeric" aria-label="${esc(label)}">`;
+}
+
+function viewDuty(){
+  const all=fdtlCache||fdtlAll();
+  const hadRows=Object.values(months).some(m=>(m.sectors||[]).some(r=>r.roster));
+  if(!rosterEvents.length) return `<section class="card"><h2>Duty</h2>
+    <div class="empty"><b>${hadRows?"Paste your roster once more":"No roster yet"}</b><span>${hadRows?"Your sectors came in before the Duty tab existed, so their report and sign-out times were never saved. Paste the roster again on the Flight log tab and every duty from 1 October 2026 is checked here against the FDTL limits. Your log and pay stay as they are.":"Paste your roster on the Flight log tab. Duty times from 1 October 2026 onwards are checked here against the FDTL limits."}</span><button class="btn" data-go="log">Open Flight log</button></div></section>`;
+  const days=dutyDays(all), day=pickDutyDay(all); dutyDay=day;
+  const list=all.duties.filter(d=>d.date===day);
+  const sbs=all.standbys.filter(s=>sbyDay(s)===day);
+  const dayEnd=Date.parse(day+"T00:00:00Z")+DAY;
+  const cum=cumulative(all, dayEnd, "A");
+
+  const off=offDays().get(day), msb=actuals["msby|"+day];
+  const nav=`<section class="card daynav">
+    <div class="dn-mid"><b>${esc(DOW(day))}</b><span>UTC date · ${list.length?list.length===1?"1 duty":list.length+" duties":sbs.length?"standby":off?"day off ("+esc(off.code)+")":"no duty"}</span></div>
+    <div class="dstrip" id="dstrip" role="listbox" aria-label="Duty days">${dayStrip(all, days, day)}</div>
+    <div class="dn-tools"><label class="f" for="dutyJump">Go to date<input class="in" type="date" id="dutyJump" value="${day}"></label>
+      <button class="btn quiet" data-dday="${esc(days.find(d=>d>=utcDate(Date.now()))||days[days.length-1]||"")}">Next duty from today</button></div>
+  </section>`;
+
+  const cards=list.map(d=>dutyCard(d)).join("") ||
+    (sbs.length || msb ? "" : off ? offCard(all, day, off) : `<section class="card"><div class="empty"><b>No duty on ${esc(DOW(day))}</b><span>Nothing on your roster for this day. If it was a day off, mark it:</span><div class="btns" style="justify-content:center">${["W-OFF","ROFF","LEAVE"].map(c=>`<button class="btn quiet" data-markoff="${day}" data-code="${c}">${c==="LEAVE"?"Leave":c}</button>`).join("")}<button class="btn quiet" data-addsby="${day}">STBY</button></div></div></section>`);
+  const sbCard = sbs.map(s=>{ const m=(s.end-s.start)/MIN;
+    return `<section class="card duty"><div class="dhead"><div><h2>Home standby</h2><p class="sub">${hhmmZ(s.start)}–${hhmmZ(s.end)}Z · ${hm(m)}</p></div>${chipFor(m>720?"bad":"ok", m>720?"Over 12 h":"Legal")}</div>
+      ${s.called?"":`<p class="note">25% (${hm(m*0.25)}) counts as duty. <button class="refbtn" type="button" data-ref="help|sbynote" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|sbynote">Not called out, so 25% (${hm(m*0.25)}) counts towards cumulative duty. A flight after it needs 12 h rest from the end of the standby.</p>`}
+      ${s.called?`<p class="note"><b>Called out.</b> The duty that followed is checked on its own card.</p>`:""}
+      ${s.bare&&!String(s.uid).startsWith("msby|")?sbyPick(s.uid,"home"):""}${callPick(s.uid)}${String(s.uid).startsWith("msby|")?"":rmBtn(s.uid, utcDate(s.start), "Home standby "+hhmmZ(s.start)+"Z")}</section>` }).join("");
+
+  const meters=`<section class="card">
+    <h2>Cumulative to end of ${esc(DOW(day))}</h2>
+    <p class="sub">Rolling limits. <button class="refbtn" type="button" data-ref="help|meters" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|meters">Flight time and duty in the rolling windows, using your actual times where entered. History starts on 1 October 2026, so longer windows show what has built up since then.</p>
+    ${weeklyLine(all, dayEnd)}
+    <div class="meters">${cum.map(c=>meterRow(c)).join("")}</div>
+  </section>`;
+  const wkCards=all.wkA.rests.filter(r=>utcDate(r.a)===day).map(weeklyCard).join("");
+  const sbyEdit = msb ? `<section class="card duty"><div class="dhead"><div><h2>Standby you added</h2><p class="sub">Times in UTC. <button class="refbtn" type="button" data-ref="help|msby" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|msby">If it crosses midnight UTC, it is placed so most of it falls on this day.</p></div>${mySbyTimes(day)?chipFor("ok","Saved"):chipFor("warn","Add times")}</div>
+    <div class="grid2">
+      <label class="f">Start (UTC)${actInput("msby|"+day,"s",msb.s,"HH:MM","Standby start UTC").replace('class="in n actin"','class="in n"')}</label>
+      <label class="f">End (UTC)${actInput("msby|"+day,"e",msb.e,"HH:MM","Standby end UTC").replace('class="in n actin"','class="in n"')}</label>
+      <label class="f">Type<select class="in" data-sby="msby|${day}"><option value="home"${msb.sby==="airport"?"":" selected"}>Home standby (25% counts)</option><option value="airport"${msb.sby==="airport"?" selected":""}>Airport standby (100% counts)</option></select></label>
+    </div>
+    <div class="btns rmrow"><button class="btn quiet rm" data-delsby="${day}">Delete this standby</button></div></section>` : "";
+  // only list removals that still hide something here (an old standby removal no longer hides the duty on its check-in)
+  const gone=Object.entries(actuals).filter(([k,v])=>v&&v.hide&&v.hd===day && !(list.some(d=>d.uid===k) && (v.hk==="sby"||(!v.hk&&/^Home standby/.test(v.hl||"")))));
+  const goneCard=gone.length?`<section class="card"><h2>Removed from this day</h2><ul class="gone">${gone.map(([k,v])=>`<li><span>${esc(v.hl||"Duty")}</span><button class="btn quiet" data-unhide="${esc(k)}">Restore</button></li>`).join("")}</ul><p class="note">Removed items are left out of every FDTL check. Your Flight log and pay are unchanged.</p></section>`:"";
+  return nav+sbyEdit+cards+sbCard+goneCard+changesCard(day,list)+wkCards+meters;
+}
+function weeklyLine(all, dayEnd){
+  const now=all.wkA.rests.find(r=>r.ok && r.a<dayEnd && r.b>=dayEnd);
+  if(now) return `<div class="wkline"><b>Weekly rest</b><span>In progress: ${hhmmZ(now.a)}Z ${esc(DOW(utcDate(now.a)))} to ${hhmmZ(now.b)}Z ${esc(DOW(utcDate(now.b)))}, ${hm(now.hrs)} with ${now.counted} local nights.</span></div>`;
+  const last=all.wkA.rests.filter(r=>r.ok && r.b<=dayEnd).pop();
+  if(!last) return `<p class="note">Weekly rest: none on record yet. History starts on 1 October 2026.</p>`;
+  const due=last.b+168*HR, left=(due-dayEnd)/MIN;
+  return `<div class="wkline"><b>Weekly rest</b><span>Last ended ${hhmmZ(last.b)}Z ${esc(DOW(utcDate(last.b)))}. The next must start by <b>${hhmmZ(due)}Z ${esc(DOW(utcDate(due)))}</b>${left>0?` (${hm(left)} after this day ends)`:""}.</span></div>`;
+}
+function weeklyCard(r){
+  const reasons=[];
+  if(r.hrs<r.req) reasons.push(`${hm(r.hrs)} is short of the ${hm(r.req)} needed`);
+  if(r.counted<2) reasons.push(`only ${r.counted} local night${r.counted===1?"":"s"} counted`);
+  const st=r.ok?(r.away?"warn":"ok"):"bad";
+  const L=(a,b,c)=>`<tr><td>${a}${c?`<span class="rtime">${c}</span>`:""}</td><td class="n">${b}</td></tr>`;
+  const so=istMin(r.a), soTxt=`${String(Math.floor(so/60)).padStart(2,"0")}:${String(so%60).padStart(2,"0")} IST`;
+  return `<section class="card duty">
+    <div class="dhead"><div><h2>${r.ok?"Weekly rest":"Long rest, not a weekly rest"}</h2><p class="sub">${hhmmZ(r.a)}Z ${esc(DOW(utcDate(r.a)))} to ${hhmmZ(r.b)}Z ${esc(DOW(utcDate(r.b)))}${r.stn?` · ${esc(r.stn)}`:""}</p></div>${chipFor(st, r.ok?(r.away?"Check base":"Valid"):"Not valid")}</div>
+    <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">This rest</th></tr></thead><tbody>
+      ${L("Length", `<span class="fv ${r.hrs>=r.req?"ok":"bad"}">${hm(r.hrs)}</span>`, `At least ${hm(r.req)} continuous${r.req>48*60?`: ${r.n3} night duties in the 168 h before it, so 60 h applies`:""}`)}
+      ${L("Local nights", `<span class="fv ${r.counted>=2?"ok":"bad"}">${r.counted}</span>`, "00:00–08:00 IST, at least 2")}
+      ${L("Sign-out before it", `<span class="fv ${r.lateSignout?"warn":"ok"}">${soTxt}</span>`, r.lateSignout?"After 23:14 local, so the night that follows does not count":"By 23:14 local, or early enough for the next night to count")}
+    </tbody></table></div>
+    ${reasons.length?`<p class="note">${esc(reasons.join("; "))}.</p>`:""}
+    ${r.away?`<p class="note">Taken at ${esc(r.stn)}, not your home base. It counts only if ${esc(r.stn)} is a temporary base for this period.</p><div class="btns"><button class="btn quiet" data-tb="${esc(r.tbKey)}">${esc(r.stn)} is my temporary base</button></div>`:""}
+    ${r.temp?`<p class="note">At ${esc(r.stn)}, your temporary base for this period. <button class="linkbtn" data-tb="${esc(r.tbKey)}" data-undo="1">Undo</button></p>`:""}
+  </section>`;
+}
+function meterRow(c){
+  const bar=(v,l)=>{ const st=fdtlStatus(v,l), pct=Math.min(100,v/l*100); return `<div class="bar-t"><div class="bar-f ${st}" style="width:${pct.toFixed(1)}%"></div></div>` };
+  return `<div class="meter"><div class="m-h"><b>${c.days} days</b>${c.partial?`<span class="muted">since 1 Oct</span>`:""}</div>
+    <div class="m-r"><span>Flight</span>${bar(c.ft,c.ftL)}<span class="num">${hm(c.ft)} / ${c.ftL/60}h</span></div>
+    <div class="m-r"><span>Duty</span>${bar(c.duty,c.dutyL)}<span class="num">${hm(c.duty)} / ${c.dutyL/60}h</span></div></div>`;
+}
+function dutyCard(d){
+  const P=d.P, A=d.A, act=d.hasActual, X=act?A:P;
+  const typeName={flight:"Flight duty",positioning:"Positioning",training:"Training",asby:"Airport standby"}[d.type];
+  const route=d.secs.map(s=>s.from).concat(d.secs.length?[d.secs[d.secs.length-1].to]:[]).join(" → ");
+  // timeline
+  const rows=[];
+  const a=actuals[d.uid]||{};
+  if(d.sby&&d.sby.kind==="airport") rows.push(`<tr class="tl-rep"><td>Airport standby${d.sby.stn?` ${esc(d.sby.stn)}`:""}<span class="rtime">Counts as FDP from here</span></td><td class="n">${hhmmZ(d.sby.start)}</td><td class="n muted">–</td><td></td></tr>`);
+  rows.push(`<tr class="tl-rep"><td>Report${d.checkinStn?` ${esc(d.checkinStn)}`:""}</td><td class="n">${hhmmZ(d.report)}</td><td class="n">${d.sby&&d.sby.kind==="airport"?'<span class="muted">–</span>':actInput(d.uid,"report",a.report||(d.aReport!=null&&d.aReport!==d.report?hhmmZ(d.aReport):""),hhmmZ(P.report),"Actual report time UTC")}</td><td class="n muted">${A.report!==P.report&&!(d.sby&&d.sby.kind==="airport")?diffTxt((A.report-P.report)/MIN):""}</td></tr>`);
+  const haltsBy=new Map(X.halts.map(h=>[h.before,h]));
+  for(const it of d.items){
+    if(it.t==="training"){ rows.push(`<tr class="tl-trn"><td colspan="4"><b>Training</b> ${hhmmZ(it.start)}–${hhmmZ(it.end)}Z<span class="rtime" style="white-space:normal">${esc(it.desc||it.code||"")}</span></td></tr>`); continue }
+    const s=d.secs.find(x=>x.uid===it.uid), x=actuals[s.uid]||{};
+    const h=haltsBy.get(s.uid); if(h) rows.push(haltRow(h));
+    rows.push(`<tr class="tl-sec"><td><b>${esc(s.flt||(s.kind==="dh"?"Positioning":""))}</b> ${esc(s.from)} → ${esc(s.to)}${s.kind==="dh"?' <span class="chip">Deadhead</span>':""}<span class="rtime">${s.noPlan&&!x.poff&&!x.pon?"Planned times not in your calendar: add them":`Planned block ${hm(s.blockP)}`}${s.blockA!=null?` · actual ${hm(s.blockA)}`:""}</span></td>
+      <td class="n${s.noPlan?" act2":""}">${s.noPlan?`<div class="stack">${actInput(s.uid,"poff",x.poff,"HH:MM","Planned off-blocks UTC")}${actInput(s.uid,"pon",x.pon,"HH:MM","Planned on-blocks UTC")}</div>`:`${hhmmZ(s.start)}<br>${hhmmZ(s.end)}`}</td>
+      <td class="n act2">${d.nofly?'<span class="muted">Not flown</span>':`<div class="stack">${actInput(s.uid,"off",x.off||(s.aStart!=null?hhmmZ(s.aStart):""),hhmmZ(s.start),"Actual off-blocks UTC")}${actInput(s.uid,"on",x.on||(s.aEnd!=null?hhmmZ(s.aEnd):""),hhmmZ(s.end),"Actual on-blocks UTC")}</div>`}</td>
+      <td class="n muted">${s.blockA!=null&&!(s.noPlan&&!x.poff&&!x.pon)?diffTxt(s.blockA-s.blockP):""}</td></tr>`);
+  }
+  if(d.nofly) rows.push(`<tr class="tl-rep"><td>Released, no flying<span class="rtime">When you were released</span></td><td class="n muted">–</td><td class="n">${actInput(d.uid,"rel",a.rel,"",'Release time UTC')}</td><td></td></tr>`);
+  rows.push(`<tr class="tl-rep"><td>Sign-out${d.signoutStn?` ${esc(d.signoutStn)}`:""}</td><td class="n">${hhmmZ(P.signout)}</td><td class="n">${act?hhmmZ(A.signout):"–"}</td><td class="n muted">${act&&A.signout!==P.signout?diffTxt((A.signout-P.signout)/MIN):""}</td></tr>`);
+
+  // checks
+  const L=P.lim, LA=A.lim, chk=[];
+  if(d.type==="flight"){
+    const landCell=(v,l)=>`<td class="n"><span class="fv ${v>l?"bad":"ok"}">${v}</span></td>`;
+    chk.push(`<tr><td>Landings<span class="rtime">Limit for ${esc(X.lim.ref)}</span></td><td class="n">${X.lim.land}</td>${landCell(P.landings,L.land)}${act?landCell(A.landings,LA.land):'<td class="n muted">–</td>'}</tr>`);
+    chk.push(`<tr><td>Flight time</td><td class="n">${hm(X.lim.ft)}</td>${cell(P.ft,L.ft,hm)}${act?cell(A.ft,LA.ft,hm):'<td class="n muted">–</td>'}</tr>`);
+    chk.push(`<tr><td>Flight duty period<span class="rtime">Report to last on-blocks</span></td><td class="n">${hm(X.lim.fdp)}</td>${cell(P.fdp,L.fdp,hm)}${act?cell(A.fdp,LA.fdp,hm):'<td class="n muted">–</td>'}</tr>`);
+    chk.push(`<tr><td>Duty period<span class="rtime">Max FDP + 1 h</span></td><td class="n">${hm(X.lim.fdp+60)}</td>${cell(P.duty,L.fdp+60,hm)}${act?cell(A.duty,LA.fdp+60,hm):'<td class="n muted">–</td>'}</tr>`);
+  } else if(d.type==="asby"){
+    chk.push(`<tr><td>Standby period<span class="rtime">Airport standby, max 8 h. Not called out, so all of it counts as duty</span></td><td class="n">8:00</td>${cell(P.duty,480,hm)}${act?cell(A.duty,480,hm):'<td class="n muted">–</td>'}</tr>`);
+  } else {
+    chk.push(`<tr><td>Duty period<span class="rtime">Counts towards cumulative duty</span></td><td class="n muted">–</td><td class="n">${hm(P.duty)}</td><td class="n">${act?hm(A.duty):"–"}</td></tr>`);
+  }
+  // Extension
+  const extSt=[];
+  if(d.ext){
+    const e=(act?A:P).ext;
+    if(e){ const st1=e.ft>90||e.fdp>180||e.land>1?"bad":"ok";
+      chk.push(`<tr><td>Extension used<span class="rtime">Up to 1:30 flight time, 3:00 FDP and one extra landing for a diversion</span></td><td class="n">3:00</td><td class="n" colspan="2"><span class="fv ${st1}">${hm(e.fdp)} FDP · ${hm(e.ft)} FT${e.land?` · +${e.land} landing`:""}</span></td></tr>`); extSt.push(st1) }
+    const w=fdtlCache&&fdtlCache["wk"+(act?"A":"P")].per.get(d.uid), x28=w&&w.ext28;
+    if(x28){ const st2=x28.ft>240||x28.fdp>480?"bad":(x28.ft>=216||x28.fdp>=432)?"warn":"ok";
+      chk.push(`<tr><td>Extensions in 28 days<span class="rtime">At most 4:00 flight time and 8:00 FDP</span></td><td class="n">8:00</td><td class="n" colspan="2"><span class="fv ${st2}">${hm(x28.fdp)} FDP · ${hm(x28.ft)} FT</span></td></tr>`); extSt.push(st2) } }
+  // Step 2: weekly-rest cycle, consecutive nights, Note 3 frequency, early mornings
+  const all2=fdtlCache, wP=all2&&all2.wkP.per.get(d.uid), wA=all2&&all2.wkA.per.get(d.uid);
+  const cyc=[];   // statuses for the overall chip
+  if(wP){
+    const pair=(fP,fA)=>`<td class="n">${fP(wP)}</td>`+(act&&wA?`<td class="n">${fA(wA)}</td>`:`<td class="n muted">–</td>`);
+    const vc=(st,txt)=>`<span class="fv ${st}">${txt}</span>`;
+    const sinceSt=w=> w.since==null?"na":fdtlStatus(w.since,168*60);
+    if(wP.since==null) chk.push(`<tr><td>Since your last weekly rest<span class="rtime">No weekly rest on record yet (history starts 1 Oct)</span></td><td class="n">168:00</td><td class="n" colspan="2"><span class="fv na">Not checked</span></td></tr>`);
+    else { chk.push(`<tr><td>Since your last weekly rest<span class="rtime">Last one ended ${hhmmZ(wP.prevRest.b)}Z ${esc(DOW(utcDate(wP.prevRest.b)))}; the next must start within 168 h</span></td><td class="n">168:00</td>${pair(w=>vc(sinceSt(w),hm(w.since)),w=>vc(sinceSt(w),hm(w.since)))}</tr>`);
+      cyc.push(sinceSt(wP)); if(act&&wA) cyc.push(sinceSt(wA)) }
+    const nSt=n=>!n?"ok":n.len<=2?"ok":(n.len===3&&n.threes<=1)?"warn":"bad";
+    if(wP.nights||(act&&wA&&wA.nights)){
+      const nTxt=w=>w.nights?vc(nSt(w.nights),w.nights.len):"–";
+      chk.push(`<tr><td>Night duties in a row<span class="rtime">Touching 00:00–06:00 IST; 3 allowed once in 168 h${[wP,wA].some(w=>w&&w.nights&&nSt(w.nights)==="warn")?". This uses the once-in-168 h allowance":""}</span></td><td class="n">2</td>${pair(nTxt,nTxt)}</tr>`);
+      cyc.push(nSt(wP.nights)); if(act&&wA) cyc.push(nSt(wA.nights)) }
+    const n3St=w=>w.n3>4?"bad":"ok";
+    if(wP.n3||(act&&wA&&wA.n3)){
+      const t=w=>w.n3?vc(n3St(w),w.n3):"–";
+      chk.push(`<tr><td>Note 3 duties in 168 h<span class="rtime">In the last 168 h</span></td><td class="n">4</td>${pair(t,t)}</tr>`);
+      cyc.push(n3St(wP)); if(act&&wA) cyc.push(n3St(wA)) }
+    const eSt=w=>w.early>3?"warn":"ok";
+    if(wP.early||(act&&wA&&wA.early)){
+      const t=w=>w.early?vc(eSt(w),w.early):"–";
+      chk.push(`<tr><td>Early-morning reports in a row<span class="rtime">Reporting 00:00–06:00 IST; a 4th needs your consent</span></td><td class="n">3</td>${pair(t,t)}</tr>`);
+      cyc.push(eSt(wP)); if(act&&wA) cyc.push(eSt(wA)) }
+  }
+  const rp=P.rest, ra=A.rest;
+  if(rp){
+    const restCell=r=> r ? `<td class="n"><span class="fv ${r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok"}">${hm(r.avail)}</span></td>` : '<td class="n muted">–</td>';
+    const er=rp.from+rp.req*MIN;
+    chk.push(`<tr><td>Rest before this duty<span class="rtime" style="white-space:normal">${esc(rp.why.join("; "))}${rp.needNight?"; must include a local night":""}</span><span class="rtime" style="white-space:normal">${d.type==="flight"||d.type==="positioning"?`<b>This duty could depart from ${isDomStn(rp.stn)&&intlLead(rp.stn)!==REPORT_DOM?`${hhmmZ(er+REPORT_DOM*MIN)}Z if domestic, ${hhmmZ(er+intlLead(rp.stn)*MIN)}Z if international`:`${hhmmZ(er+(isDomStn(rp.stn)?REPORT_DOM:intlLead(rp.stn))*MIN)}Z`}</b> (report from ${hhmmZ(er)}Z ${esc(DOW(utcDate(er)))})`:`<b>Earliest report ${hhmmZ(er)}Z ${esc(DOW(utcDate(er)))}</b>`}</span></td><td class="n">${hm(rp.req)}</td>${restCell(rp)}${act?restCell(ra):'<td class="n muted">–</td>'}</tr>`);
+  } else chk.push(`<tr><td>Rest before this duty<span class="rtime">No earlier duty on record (history starts 1 Oct)</span></td><td class="n muted">–</td><td class="n" colspan="2"><span class="fv na">Not checked</span></td></tr>`);
+
+  const worst=[...[P,act?A:null].filter(Boolean).flatMap(x=> d.type==="flight"?[x.landings>x.lim.land?"bad":"ok",fdtlStatus(x.ft,x.lim.ft),fdtlStatus(x.fdp,x.lim.fdp),fdtlStatus(x.duty,x.lim.fdp+60)]:d.type==="asby"?[fdtlStatus(x.duty,480)]:[]),
+    ...[rp,act?ra:null].filter(Boolean).map(r=>r.avail+0.01<r.req||!r.nightOk?"bad":r.avail<r.req*1.1?"warn":"ok"), ...cyc.filter(x=>x!=="na"), ...extSt, ...(d.sby&&d.report>d.sby.end+60000?["bad"]:[]), ...chgStatus(d)];
+  const overall=worst.includes("bad")?"bad":worst.includes("warn")?"warn":"ok";
+  const planOnlyBad = act && ["bad"].includes(overall) && ![fdtlStatus(P.fdp,P.lim.fdp),fdtlStatus(P.ft,P.lim.ft),fdtlStatus(P.duty,P.lim.fdp+60)].includes("bad");
+  const notes=[];
+  if(X.night) notes.push(`Night duty: the FDP touches 00:00–06:00 IST, so the limits are 8 h flight time, 10:00 FDP and 2 landings.`);
+  if(X.note3>0) notes.push(`${hm(X.note3)} of this FDP falls in 00:00–01:59 or 05:01–06:00 IST, so the next rest is ${hm(2*X.note3)} longer.`);
+  for(const h of X.halts) if(h.mins>=180) notes.push(`The ${hm(h.mins)} halt at ${esc(h.stn)} is long enough for split duty, which can extend the FDP only with suitable accommodation. Not applied here.`);
+  if(planOnlyBad && !d.ext) notes.push(`Legal as rostered, exceeded on the actual times you entered. If this was due to unforeseen operational circumstances, mark it as an extension below.`);
+  if(d.sby){ const m=X.sbyMins||0;
+    if(d.sby.kind==="airport") notes.push(`Called out from airport standby: its ${hm(m)} counts in full towards FDP and duty, so the FDP starts at the standby.`);
+    else if(X.sbyCut) notes.push(`Called out from home standby after ${hm(m)}: the FDP limit drops by half the standby time, ${hm(X.sbyCut)}.`);
+    else notes.push(`Called out from home standby after ${hm(m)}, within the first 6 h: no standby counts towards FDP or duty.`);
+    if(d.report>d.sby.end+60000) notes.push(`The report is after the standby ended. A call-out's report must fall within the standby period.`); }
+  if(d.nofly) notes.push(`Cancelled after you reported. The next duty needs rest of twice the time from report to release, at least 12 h. Pay still follows your Flight log.`);
+  for(const c of chgFor(d)) notes.push(chgText(c, d.P.report));
+  return `<section class="card duty">
+    <div class="dhead"><div><h2>${esc(typeName)}</h2><p class="sub">${esc(route||d.trn.map(t=>t.code).join(", ")||(d.type==="asby"?`${d.checkinStn||""} ${hhmmZ(P.report)}–${hhmmZ(P.signout)}Z`.trim():""))}</p></div>${chipFor(overall, overall==="ok"?"Legal":overall==="warn"?"Close to a limit":"Limit exceeded")}</div>
+    <div class="tbl"><table class="tl"><thead><tr><th>UTC <button class="refbtn" type="button" data-ref="tl|${esc(d.uid)}" aria-label="Show how to enter times">🔽</button></th><th class="n">Planned</th><th class="n">Actual</th><th class="n">Diff</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
+    <p class="note refx" data-refof="tl|${esc(d.uid)}">${d.secs.some(s=>s.aStart!=null)?"Actual times came from your calendar, which the crew app updates after each flight. ":""}Type actual times in UTC as 14:35 or 1435. Actual times are used for FDTL, and for pay only where a sector is paid on actual block (a diversion, or a sector not on your fixed block list). If Crew Control moved your report before you left home, the revised time is your actual report.</p>
+    <div class="tbl"><table class="chk"><thead><tr><th>Check</th><th class="n">Limit</th><th class="n">Planned</th><th class="n">Actual</th></tr></thead><tbody>${chk.join("")}</tbody></table></div>
+    ${notes.length?`<ul class="fnotes">${notes.map(n=>`<li>${n}</li>`).join("")}</ul>`:""}
+    ${nextPanel(d)}
+    ${d.type==="asby"?(String(d.uid).startsWith("msby|")?"":sbyPick(d.uid,"airport"))+callPick(d.uid):""}
+    ${String(d.uid).startsWith("msby|")?"":rmBtn(d.uid, d.date, typeName+(route?" "+route:""))}
+    ${d.secs.length?`<div class="flags">
+      <label class="chk"><input type="checkbox" data-flag="nofly" data-uid="${esc(d.uid)}"${d.nofly?" checked":""}> Cancelled after I reported (no flying)</label>
+      ${d.type==="flight"&&(d.ext||overall==="bad")?`<label class="chk"><input type="checkbox" data-flag="ext" data-uid="${esc(d.uid)}"${d.ext?" checked":""}> Extended (unforeseen operational circumstances)</label>`:""}
+    </div>`:""}
+  </section>`;
+}
+// The crew app sometimes exports a standby as a bare check-in/check-out; let the pilot say which kind it was
+function sbyPick(uid, val){
+  return `<div class="btns sbypick"><span class="muted">Your calendar shows this as a check-in and check-out only.</span>
+    <label class="f">Standby type<select class="in" data-sby="${esc(uid)}"><option value="home"${val==="home"?" selected":""}>Home standby (25% counts)</option><option value="airport"${val==="airport"?" selected":""}>Airport standby (100% counts)</option></select></label></div>`;
+}
+function nextPanel(d){
+  const X=d.hasActual?d.A:d.P, n=X.next; if(!n) return "";
+  const t=ms=>`<b>${hhmmZ(ms)}Z</b><small>${esc(DOW(utcDate(ms)))}</small>`;
+  const dep=(lbl,ms,lead)=>`<div class="dep"><span>${lbl}</span>${t(ms)}<em>Report ${hhmmZ(ms-lead*MIN)}Z, ${hm(lead)} before</em></div>`;
+  const same = n.dom!=null && n.dom===n.intl, k="next|"+d.uid;
+  return `<div class="nextp"><h3>Earliest acceptable departure <button class="refbtn" type="button" data-ref="${esc(k)}" aria-label="Show how this is worked out">🔽</button></h3>
+    <div class="nextg">
+      ${same ? dep("Domestic or international from "+esc(n.stn||""), n.dom, REPORT_DOM)
+        : (n.dom!=null?dep("Domestic from "+esc(n.stn||""), n.dom, REPORT_DOM):"") + dep("International from "+esc(n.stn||""), n.intl, intlLead(n.stn))}
+    </div>
+    <p class="sub refx" data-refof="${esc(k)}">From ${d.hasActual?"your actual":"the planned"} sign-out at ${hhmmZ(X.signout)}Z: ${esc(n.why.join("; "))}. Earliest report ${hhmmZ(n.report)}Z. Training or office duty from ${hhmmZ(n.train)}Z (10 h rest + transport).</p></div>`;
+}
+// A day off from the roster, and whether it sits inside a weekly rest that meets the limits
+function offCard(all, day, off){
+  const d0=Date.parse(day+"T00:00:00Z"), d1=d0+DAY;
+  const wr=all.wkA.rests.find(r=>r.a<d1 && r.b>d0);
+  const NAMES={"W-OFF":"Weekly off","ROFF":"Rest day off","HOFF":"Day off for high hours","LEAVE":"Leave"};
+  const t=ms=>`${hhmmZ(ms)}Z ${esc(DOW(utcDate(ms)))}`;
+  return `<section class="card duty"><div class="dhead"><div><h2>${esc(NAMES[off.code]||"Day off")}</h2><p class="sub">${esc(off.code)} · ${t(off.start)} to ${t(off.end)}</p></div>${wr?chipFor(wr.ok?"ok":"bad", wr.ok?"Weekly rest":"Short rest"):""}</div>
+    ${off.manual?`<div class="btns rmrow"><button class="btn quiet rm" data-markoff="${day}" data-code="">Unmark day off</button></div>`:""}
+    <p class="note">${off.manual?"Marked by you. ":""}${wr ? (wr.ok ? `Part of a valid weekly rest, ${t(wr.a)} to ${t(wr.b)}: ${hm(wr.hrs)} with ${wr.counted} local nights.` : `Inside a ${hm(wr.hrs)} break that does not meet the weekly rest rules (${hm(wr.req)} with 2 local nights).`) : "No duty on this day."}</p></section>`;
+}
+function rmBtn(uid, date, label){
+  return `<div class="btns rmrow"><button class="btn quiet rm" data-hide="${esc(uid)}" data-hd="${esc(date)}" data-hl="${esc(label)}" data-hk="${/^Home standby/.test(label)?"sby":"duty"}">Remove from Duty tab</button></div>`;
+}
+function callPick(uid){
+  const v=(actuals[uid]||{}).called, val=v===true?"yes":v===false?"no":"auto";
+  return `<div class="btns sbypick"><span class="muted">A duty that reports inside the standby is taken as a call-out.</span>
+    <label class="f">Called out<select class="in" data-call="${esc(uid)}"><option value="auto"${val==="auto"?" selected":""}>Automatic</option><option value="yes"${val==="yes"?" selected":""}>Yes, called out</option><option value="no"${val==="no"?" selected":""}>No, not called out</option></select></label></div>`;
+}
+// Roster changes that touch a duty, and how much notice there was
+function chgFor(d){ const a=d.P.report-HR, b=d.P.signout;
+  return rosterChanges.filter(c=>{ const t=c.newStart??c.oldStart; return t>=a && t<=b }) }
+function chgStatus(d){ return chgFor(d).map(c=>chgLevel(c, d.P.report)).filter(x=>x!=="ok") }
+function chgLevel(c, report){ return c.dayOff || (report-c.at)<12*HR ? "warn" : "ok" }
+const WHAT={checkin:"Report",sector:"Sector",training:"Training",standby:"Standby",off:"Day off"};
+function chgText(c, report){
+  const what=WHAT[c.t]||"Duty", tz=t=>`${hhmmZ(t)}Z ${DOW(utcDate(t))}`;
+  const name=c.t==="sector"?(c.s||"").replace(/^[^A-Za-z]*/,""):what;
+  const body = c.kind==="moved" ? `${name} moved from ${tz(c.oldStart)} to ${tz(c.newStart)}`
+    : c.kind==="added" ? `${name} added at ${tz(c.newStart)}` : `${name} removed (was ${tz(c.oldStart)})`;
+  const notice=report!=null?(report-c.at)/MIN:null;
+  const n = notice==null||c.kind==="removed" ? "" : notice<12*60 ? ` Notice ${hm(Math.max(0,notice))}, under 12 h before report, so it needed your consent.` : ` Notice ${hm(notice)} before report.`;
+  const off = c.dayOff ? ` This touched a published day off, which needs your consent.` : "";
+  return `Roster change, in your calendar by ${tz(c.at)}: ${esc(body)}.${n}${off}`;
+}
+function changesCard(day, list){
+  const cs=rosterChanges.filter(c=>utcDate(c.newStart??c.oldStart)===day && !list.some(d=>chgFor(d).includes(c)));
+  if(!cs.length) return "";
+  const lvl=cs.some(c=>c.dayOff)?"warn":"ok";
+  return `<section class="card duty"><div class="dhead"><div><h2>Roster changes</h2><p class="sub">Seen between your pastes</p></div>${chipFor(lvl, lvl==="ok"?"Noted":"Check consent")}</div>
+    <ul class="fnotes">${cs.map(c=>`<li>${chgText(c, c.newStart)}</li>`).join("")}</ul></section>`;
+}
+function haltRow(h){
+  const tag = h.mins>360?"hotel may be provided (over 6 h)":h.mins>150?"lounge with meals (over 2.5 h)":"";
+  return `<tr class="tl-halt"><td colspan="4">Transit halt ${esc(h.stn)} · <b>${hm(h.mins)}</b> · unpaid, counts as duty${tag?` · ${tag}`:""}</td></tr>`;
+}
+const diffTxt=m=>{ m=Math.round(m); return m===0?"0:00":(m>0?"+":"−")+hm(Math.abs(m)) };
+function normHHMM(v){ v=String(v||"").trim(); if(!v) return ""; const m=v.match(/^(\d{1,2}):?(\d{2})$/); if(!m||+m[1]>23||+m[2]>59) return null; return String(+m[1]).padStart(2,"0")+":"+m[2] }
+
+/* ---------- Explanations behind a toggle: 🔽 shows, 🔼 hides ---------- */
+const openRefs=new Set();
+function decorateRefs(){
+  // Check tables: the grey explanation lines under each check go behind a toggle beside its name
+  document.querySelectorAll("#view table.chk tbody tr").forEach(tr=>{
+    const td=tr.cells[0]; if(!td) return; const rs=[...td.querySelectorAll(".rtime")]; if(!rs.length) return;
+    const card=tr.closest(".card"), head=card?((card.querySelector(".dhead h2")||{}).textContent||"")+" "+((card.querySelector(".dhead .sub")||{}).textContent||""):"";
+    const key="chk|"+head.trim()+"|"+(td.firstChild&&td.firstChild.textContent||"").trim();
+    rs.forEach(r=>{ r.classList.add("refx"); r.dataset.refof=key });
+    const b=document.createElement("button"); b.type="button"; b.className="refbtn"; b.dataset.ref=key; td.insertBefore(b, rs[0]);
+  });
+  document.querySelectorAll("#view .refbtn").forEach(b=>setRef(b.dataset.ref, openRefs.has(b.dataset.ref)));
+}
+function setRef(key, open){
+  document.querySelectorAll(".refbtn").forEach(b=>{ if(b.dataset.ref!==key) return; b.textContent=open?"🔼":"🔽"; b.setAttribute("aria-expanded",String(open)); b.setAttribute("aria-label", open?"Hide explanation":"Show explanation") });
+  document.querySelectorAll(".refx").forEach(el=>{ if(el.dataset.refof===key) el.classList.toggle("ref-open", open) });
+}
+
+/* ---------- Rendering ---------- */
+let bannerMsg="";
+function showBanner(m){ bannerMsg=m; renderBanner() }
+function renderBanner(){
+  const el=$("#topBanner"); let html="";
+  if(bannerMsg) html+=`<div class="banner info"><span>${esc(bannerMsg)}</span></div>`;
+  const k=calc(cur);
+  if(!k.hasFixed && tab!=="setup" && !isRecorded(cur)) html+=`<div class="banner"><span>Fixed pay is empty, so gross and net leave it out. Copy the annual figures from your pay letter into Setup.</span><button class="btn ghost" data-go="setup">Open Setup</button></div>`;
+  el.innerHTML=html;
+}
+function renderHeader(){
+  const rk=RANKS[profile.rank]||RANKS.fo;
+  $("#hName").textContent = profile.name || "Pay Tracker";
+  $("#hRole").textContent = [rk.short, profile.fleet, profile.base].filter(Boolean).join(" · ");
+  $("#mLabel").textContent = ymLabel(cur);
+  const k=summary(cur);
+  $("#kBlock").textContent=hm(k.totMin!=null?k.totMin:k.opMin); $("#kGross").textContent=inr(k.gross); $("#kNet").textContent=inr(k.net);
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected", String(b.dataset.tab===tab)));
+}
+
+function recordCard(){
+  const k=summary(cur), r=months[cur].record;
+  const L=(a,b)=>`<div class="line"><span>${a}</span><span class="v">${b}</span></div>`;
+  return `<section class="card">
+    <h2>${esc(ymLabel(cur))} · recorded totals</h2>
+    <p class="sub">Recorded figures, not recalculated. <button class="refbtn" type="button" data-ref="help|recorded" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|recorded">Imported from your Numbers Annual Dashboard. These are the figures you recorded for this month; nothing here is recalculated.</p>
+    <div class="slip" style="grid-template-columns:1fr 1fr"><div><h3>Flying</h3>
+      ${L("Block hours",hm(k.opMin))}${L("Deadhead (SOD) hours",hm(k.dhMin))}${L("Domestic layover nights",k.domNights)}${L("International layover time",k.intlMin?hm(k.intlMin):"None")}
+    </div><div><h3>Pay</h3>
+      ${L("Gross",inr(k.gross))}${L("Net",inr(k.net))}${L("International per diem",usd(k.intlUSD))}
+    </div></div>
+  </section>`;
+}
+
+const byDate=(a,b)=>(a.date||"").localeCompare(b.date||"");
+// A duty dated by its check-in can depart after midnight UTC, so order flights by when they actually leave
+function sortSectors(L){ const ev=new Map(rosterEvents.filter(e=>e.t==="sector").map(e=>[e.uid,e]));
+  const at=r=>{ const e=r.uid&&ev.get(r.uid); if(e) return e.pStart||e.start;
+    let t=Date.parse((r.date||"9999-12-31")+"T"+(/^\d\d:\d\d$/.test(r.dep||"")?r.dep:/^\d\d:\d\d$/.test(r.report||"")?r.report:"23:59")+":00Z");
+    if(r.dep&&r.report&&r.dep<r.report) t+=DAY; return isNaN(t)?Infinity:t };
+  return L.sort((a,b)=>byDate(a,b) || at(a)-at(b)) }
+function sortMonth(d){ sortSectors(d.sectors); d.dom.sort(byDate); d.intl.sort(byDate); if(d.train) d.train.sort(byDate) }
+
+function viewLog(){
+  if(isRecorded(cur)) return recordCard();
+  const d=monthData(cur); sortMonth(d); const k=calc(cur), rev=k.st==="rev";
+  const haltBefore=new Map(); for(const du of (fdtlCache||fdtlAll()).duties){ const X=du.hasActual?du.A:du.P; for(const h of X.halts) haltBefore.set(h.before,{h,date:du.date}) }
+  let plannedTot=0;
+  const rows = d.sectors.map(s=>{
+    const b=(+s.fixed||0)||(+s.actual||0), pb=paidBlock(s);
+    if(s.kind!=="dh"&&s.kind!=="dhx") plannedTot+=b;
+    const hb=haltBefore.get(s.uid||("m|"+s.id));
+    const haltTr = hb ? `<tr class="halt-row"><td colspan="8"><button class="mlink" data-dday="${hb.date}" data-go="duty">Transit halt ${esc(hb.h.stn)} · ${hm(hb.h.mins)}</button> · unpaid, counts as duty${hb.h.mins>150?" · lounge":""}</td></tr>` : "";
+    const lbl = "Planned block", planPaid = pb.how==="planned";
+    // The Fixed Block cell: the list's figure, or the actual block where the policy pays actual. Tinted where it is the paid figure.
+    let fbCell;
+    if(s.kind==="dhx") fbCell=`<td data-l="Fixed block" class="w2 n muted">Unpaid</td>`;
+    else if(s.kind==="dh") fbCell=`<td data-l="Fixed block" class="w2 n muted">–<span class="rtime">SOD on planned</span></td>`;
+    else if(pb.how==="fixed") fbCell=`<td data-l="Fixed block" class="w2 n paidc"><div class="in n paid fbv">${hm(pb.m)}</div>${pb.intl?`<label class="fbtick"><input type="checkbox" id="s-${s.id}-airspace" data-f="airspace"> Airspace affected</label>`:""}</td>`;
+    else if(pb.how==="actual"){ const air=pb.why==="Airspace affected";
+      fbCell=`<td data-l="Actual block" class="w2 paidc"><input class="in n paid" id="s-${s.id}-act" data-f="act" data-hm="1" value="${pb.typed?hm(pb.m):""}" placeholder="${pb.need?"Actual":hm(pb.m)}" inputmode="numeric" aria-label="Actual block">
+        <span class="rtime">${air?"Actual block":esc(pb.why)+": actual"}${pb.src&&!pb.typed?", "+esc(pb.src):""}</span>${pb.need?'<span class="chip warn" title="Paid on actual block. Type it here, or add actual times in the Duty tab. Until then the planned block stands in.">Enter actual</span>':""}${air?`<label class="fbtick"><input type="checkbox" id="s-${s.id}-airspace" data-f="airspace" checked> Airspace affected</label>`:""}</td>` }
+    else fbCell=`<td data-l="Fixed block" class="w2 n muted">–</td>`;
+    return haltTr+`<tr data-id="${s.id}">
+      <td data-l="Date" class="w2"><input class="in" type="date" id="s-${s.id}-date" data-f="date" value="${esc(s.date)}"></td>
+      <td data-l="Flight" class="w2"><input class="in caps" id="s-${s.id}-flt" data-f="flt" value="${esc(s.flt)}" placeholder="XY1237" autocomplete="off">${!s.roster?`<span class="tpair"><label>Report Z<input class="in n" id="s-${s.id}-report" data-f="report" data-tm="1" value="${esc(s.report||"")}" placeholder="auto" inputmode="numeric" aria-label="Report time UTC, optional"></label><label>Dep Z<input class="in n" id="s-${s.id}-dep" data-f="dep" data-tm="1" value="${esc(s.dep||"")}" placeholder="HH:MM" inputmode="numeric" aria-label="Planned departure time UTC"></label></span>${s.dep?"":'<span class="rtime">Add the planned departure to include it in the Duty tab</span>'}`:s.report||s.dep?`<span class="rtime">${s.report?`Report ${esc(s.report)}Z`:""}${s.report&&s.dep?" · ":""}${s.dep?`Dep ${esc(s.dep)}Z`:""}</span>`:""}</td>
+      <td data-l="From"><input class="in caps" id="s-${s.id}-from" data-f="from" value="${esc(s.from)}" placeholder="BOM" maxlength="4" autocomplete="off"></td>
+      <td data-l="To"><input class="in caps" id="s-${s.id}-to" data-f="to" value="${esc(s.to)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
+      <td data-l="Type" class="w2"><select class="in" id="s-${s.id}-kind" data-f="kind">
+        <option value="op"${s.kind==="op"?" selected":""}>Operating</option>
+        <option value="dh"${s.kind==="dh"?" selected":""}>Deadhead (SOD)</option>
+        <option value="dhx"${s.kind==="dhx"?" selected":""}>Deadhead (unpaid)</option>
+        <option value="div"${s.kind==="div"?" selected":""}>Diversion / ferry</option></select></td>
+      <td data-l="${lbl}" class="w2${planPaid&&s.kind!=="dhx"?" paidc":""}"><input class="in n${planPaid&&s.kind!=="dhx"?" paid":""}" id="s-${s.id}-fixed" data-f="fixed" data-hm="1" value="${b?hm(b):""}" placeholder="0:00" inputmode="numeric" aria-label="${lbl}"></td>
+      ${fbCell}
+      <td class="act">${s.example?'<span class="chip ex">Example</span>':""}${s.roster?`<span class="chip${s.edited?"":" rev"}" title="${s.edited?"From roster, edited by you":"From roster"}">${s.edited?"Edited":"Roster"}</span>${s.checkFixed&&!s.edited&&planPaid&&s.kind!=="dhx"?'<span class="chip warn" title="First synced after it flew, so this is the actual block. Type the planned block over it.">Check block</span>':""}`:""}<button class="del" data-del="sectors" aria-label="Delete sector">×<span class="dl"> Remove</span></button></td></tr>`;
+  }).join("");
+  const domRows = d.dom.map(x=>`<tr data-id="${x.id}">
+      <td data-l="Date" class="w2"><input class="in" type="date" id="d-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
+      <td data-l="Station" class="w2"><input class="in caps" id="d-${x.id}-stn" data-f="stn" value="${esc(x.stn)}" placeholder="IXR" maxlength="4" autocomplete="off"></td>
+      <td data-l="Nights"><input class="in n" id="d-${x.id}-nights" data-f="nights" data-num="1" value="${esc(x.nights)}" inputmode="numeric"></td>
+      <td data-l="Amount" class="pay dom-amt">${inr((+x.nights||0)*k.domRate)}${x.example?' <span class="chip ex">Example</span>':""}</td>
+      <td><button class="del" data-del="dom" aria-label="Delete layover">×<span class="dl"> Remove</span></button></td></tr>`).join("");
+  const hasEx = d.sectors.some(s=>s.example)||d.dom.some(s=>s.example);
+  return `${rosterCard()}
+  ${hasEx?`<div class="banner"><span>Rows marked Example are sample data to show how the log works. Replace them with your own sectors.</span><button class="btn ghost" id="clearEx">Remove examples</button></div>`:""}
+  <section class="card">
+    <h2>Sectors</h2>
+    <p class="sub">The tinted time is the one you are paid on. Dates and times in UTC. <button class="refbtn" type="button" data-ref="help|sectors" aria-label="Show more">🔽</button></p>
+    <p class="sub refx" data-refof="help|sectors">Planned Block is the roster's block time. Synced sectors keep it after the crew app rewrites the flight with actual times; those go to the Duty tab. Fixed Block comes from the fixed block list you load in Setup, from that list's start date. A listed sector is paid on its fixed block. A diversion, a sector not on the list, or a listed international sector you tick as airspace affected is paid on actual block: the Duty tab's actual times fill it in, or type it yourself. Before any list applies, pay uses the planned block. Deadheads earn SOD at 65% of the 0 to 40 hour rate on the planned block. Type times as 2:35, 0235 or 2.58.</p>
+    ${d.sectors.length&&!fbLists().length?`<div class="banner"><span>No fixed block list loaded yet, so pay uses the planned block.</span><button class="btn ghost" data-go="setup">Load in Setup</button></div>`:""}
+    ${d.sectors.length? `<div class="tbl"><table class="sec stack"><thead><tr><th>Date</th><th>Flight</th><th>From</th><th>To</th><th>Type</th><th class="n">Planned Block</th><th class="n">Fixed Block</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="5">Payable block${k.dhMin?` <span style="font-weight:500;color:var(--muted)">· plus SOD ${hm(k.dhMin)}</span>`:""}</td><td class="n muted" data-l="Planned">${hm(plannedTot)}</td><td class="pay paidc" data-l="Paid" style="color:var(--green)">${hm(k.opMin)}</td><td></td></tr></tfoot></table></div>`
+    : `<div class="empty"><b>No sectors logged for ${esc(ymLabel(cur))}</b><span>Add each sector from your roster as you fly it. Payable hours, SOD and the tiered flying allowance update as you type.</span><div class="btns"><button class="btn" data-add="sectors">Add first sector</button>${Object.keys(months).some(m=>monthData(m).sectors.length)?"":`<button class="btn quiet" id="loadEx">Show an example month</button>`}</div></div>`}
+    ${d.sectors.length?`<div class="btns"><button class="btn" data-add="sectors">Add sector</button><button class="btn quiet" data-add="sectors" data-copy="1">Repeat last sector</button></div>`:""}
+  </section>
+  <section class="card">
+    <h2>Domestic layovers</h2>
+    <p class="sub">${esc(inr(k.domRate))} per night. <button class="refbtn" type="button" data-ref="help|domlay" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|domlay">${esc(inr(k.domRate))} per night for ${esc(RANKS[k.rank].label)}. International layovers go in the next tab.</p>
+    ${d.dom.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station</th><th class="n">Nights</th><th class="n">Amount</th><th></th></tr></thead><tbody>${domRows}</tbody>
+      <tfoot><tr><td colspan="2">${k.domNights} night${k.domNights===1?"":"s"}</td><td></td><td class="pay">${inr(k.dom)}</td><td></td></tr></tfoot></table></div>`:""}
+    <div class="btns"><button class="btn ${d.dom.length?"":"ghost"}" data-add="dom">Add domestic layover</button></div>
+  </section>
+  <section class="card">
+    <h2>Training</h2>
+    <div class="fleet">
+      <label class="f" for="p-fleetAvg2">Fleet average (hours per month)<input class="in n" id="p-fleetAvg2" data-p="fleetAvg" data-num="1" data-fleet="1" value="${esc(String(profile.fleetAvg||40))}" inputmode="decimal"></label>
+      <div class="fleet-out"><b>${hm(k.trainPerDay*60)}</b><span>per training day</span></div>
+      ${profile.fleetAvgSet?"":`<span class="chip ex">Placeholder</span>`}
+    </div>
+    <p class="sub">Each day adds fleet average ÷ 22 hours.${profile.fleetAvgSet?"":" Fleet average is a placeholder."} <button class="refbtn" type="button" data-ref="help|training" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|training">${profile.fleetAvgSet?"":"40 hours is a conservative placeholder. Enter the published 737 fleet average once you have it; every month's training updates straight away. "}Each training day adds the fleet average ÷ 22 to your hours for the month. It only adds pay once flying plus training passes the guaranteed 40 hours. Training on your roster comes in when you paste it; remove any day that is not paid training.</p>
+    ${d.train.length?`<div class="tbl"><table class="stack"><thead><tr><th>Start date</th><th>Training</th><th class="n">Days</th><th class="n">Hours</th><th></th></tr></thead><tbody>${d.train.map(x=>`<tr data-id="${x.id}">
+      <td data-l="Start date" class="w2"><input class="in" type="date" id="t-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
+      <td data-l="Training" class="w2"><select class="in" id="t-${x.id}-type" data-f="type">${TRAIN_TYPES.map(t=>`<option${x.type===t?" selected":""}>${esc(t)}</option>`).join("")}</select></td>
+      <td data-l="Days"><input class="in n" id="t-${x.id}-days" data-f="days" data-num="1" value="${esc(x.days)}" inputmode="numeric"></td>
+      <td data-l="Hours" class="pay dom-amt">${hm((+x.days||0)*k.trainPerDay*60)}${x.code?`<span class="rtime">Roster code ${esc(x.code)}</span>`:""}</td>
+      <td class="act">${x.roster?`<span class="chip${x.edited?"":" rev"}">${x.edited?"Edited":"Roster"}</span>`:""}<button class="del" data-del="train" aria-label="Delete training">×<span class="dl"> Remove</span></button></td></tr>`).join("")}</tbody>
+      <tfoot><tr><td colspan="4">Flying ${hm(k.opMin)} + training ${hm(k.trainHrs*60)} = ${hm(k.totMin)}<span class="rtime" style="white-space:normal">${k.trainPay>0.5?`Training adds ${inr(k.trainPay)} this month`:`Under 40 hours in total, so training adds no extra pay this month`}</span></td><td></td></tr></tfoot></table></div>`:""}
+    <div class="btns"><button class="btn ${d.train.length?"":"ghost"}" data-add="train">Add training</button></div>
+  </section>`;
+}
+
+function viewIntl(){
+  const d=monthData(cur); sortMonth(d); const k=calc(cur);
+  const rows = k.intlRows.map(x=>`<tr data-id="${x.id}">
+    <td data-l="Date" class="w2"><input class="in" type="date" id="i-${x.id}-date" data-f="date" value="${esc(x.date)}"></td>
+    <td data-l="Station / country" class="w2"><input class="in" list="countries" id="i-${x.id}-country" data-f="country" value="${esc(x.country)}" placeholder="Riyadh, Saudi Arabia" autocomplete="off">${x.country&&!x.c?'<span class="short">Country not found in the rate table</span>':(x.c&&x.c.n.toLowerCase()!==String(x.country).trim().toLowerCase()?`<span class="short" style="color:var(--muted)">Rate for ${esc(x.c.n)}</span>`:"")}</td>
+    <td data-l="Layover hrs"><input class="in n" id="i-${x.id}-mins" data-f="mins" data-hm="1" value="${x.mins?hm(x.mins):""}" placeholder="0:00" inputmode="numeric"></td>
+    <td data-l="Rate/day" class="pay">${x.rate?usd(x.rate):"–"}</td>
+    <td data-l="Days" class="pay">${x.full} + ${Math.round(x.frac*100)}%</td>
+    <td data-l="Payable days" class="pay">${x.days.toFixed(2)}</td>
+    <td data-l="Amount" class="pay pc">${usd(x.amt)}</td>
+    <td><button class="del" data-del="intl" aria-label="Delete layover">×<span class="dl"> Remove</span></button></td></tr>`).join("");
+  return `<section class="card">
+    <h2>International layovers</h2>
+    <p class="sub">Per diem in USD, tax-free. <button class="refbtn" type="button" data-ref="help|intlay" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|intlay">Per diem in USD, at the ${k.p1?"P1 (Commander)":"P2 (First Officer)"} rate for your rank. It is tax-exempt and sits outside CTC, so it never enters gross, tax or take-home. Each full 24 hours counts as a day; the part left over pays 30% up to 6 hours, 70% up to 12 hours and a full day beyond that.</p>
+    ${d.intl.length?`<div class="tbl"><table class="stack"><thead><tr><th>Date</th><th>Station / country</th><th class="n">Hours</th><th class="n">Rate/day</th><th class="n">Full + part</th><th class="n">Days</th><th class="n">USD</th><th></th></tr></thead><tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="6">Tax-exempt, paid separately from salary</td><td class="pay">${usd(k.intlUSD)}</td><td></td></tr></tfoot></table></div>`
+     :`<div class="empty"><b>No international layovers in ${esc(ymLabel(cur))}</b><span>Type the station or country as it appears on your roster. "Muscat, Oman" or just "Oman" both find the rate.</span></div>`}
+    <div class="btns"><button class="btn" data-add="intl">Add international layover</button></div>
+    <datalist id="countries">${FX.map(c=>`<option value="${esc(c.n)}">`).join("")}</datalist>
+  </section>`;
+}
+
+function slip(k){
+  const L=(a,b,sm)=>`<div class="line"><span>${a}${sm?`<span class="sm">${sm}</span>`:""}</span><span class="v">${b}</span></div>`;
+  let earn = k.fixedLines.map(([l,v])=>L(esc(l),inr(v))).join("");
+  if(!k.hasFixed) earn += L("Fixed pay","–","Not entered yet");
+  if(k.trainDays) earn += `<div class="line"><span>Hours this month<span class="sm">Flying ${hm(k.opMin)} + training ${hm(k.trainHrs*60)} (${k.trainDays} day${k.trainDays===1?"":"s"} × ${hm(k.trainPerDay*60)})</span></span><span class="v">${hm(k.totMin)}</span></div>`;
+  earn += k.addLines.map(([lo,hi,h,rate])=>L(`Flying ${lo} to ${hi===Infinity?"+":hi} h`, inr(h*rate), `${hm(h*60)} × ${inr(rate)}`)).join("");
+  if(!k.addLines.length) earn += L("Flying above 40 h", inr(0), `${hm(k.totMin)} payable${k.trainDays?" incl. training":""}, none above 40 h`);
+  earn += L("SOD / deadhead", inr(k.sod), `${hm(k.dhMin)} × ${inr(k.sodRate)}`);
+  earn += L("Domestic layover", inr(k.dom), `${k.domNights} × ${inr(k.domRate)}`);
+
+  earn += `<div class="line tot"><span>Gross</span><span class="v">${inr(k.gross)}</span></div>`;
+  let ded = L("Income tax (TDS)", inr(k.tds), `${profile.regime==="old"?"Old":"New"} regime, this month annualised`);
+  ded += L("Employee PF", inr(k.pfEe), "12% of "+esc(compLabel("basic","Basic")));
+  ded += L("Professional tax", inr(k.pt), "Maharashtra");
+  ded += `<div class="line tot"><span>Deductions</span><span class="v">${inr(k.tds+k.pfEe+k.pt)}</span></div>`;
+  return `<div class="slip"><div><h3>Earnings</h3>${earn}</div><div><h3>Deductions</h3>${ded}
+    <p class="note" style="margin-top:12px">Employer PF and gratuity are part of CTC but are not paid out monthly, so they are left out of gross.</p></div>
+    <div class="netbar"><span>Estimated take-home</span><b class="num">${inr(k.net)}</b>${k.intlUSD?`<span class="extra">Plus ${usd(k.intlUSD)} international layover allowance, tax-exempt and paid separately</span>`:""}</div></div>`;
+}
+
+function payslipCard(k){
+  const p=(months[cur]&&months[cur].paid)||{}, g=+p.gross||0, n=+p.net||0;
+  const fmt=v=>v?Number(v).toLocaleString("en-IN"):"";
+  const paidIn=ymLabel(ymShift(cur,1)).split(" ")[0];
+  const diffCell=(est,act)=>{ if(!act) return `<div class="v" style="color:var(--muted)">–</div>`; const dv=Math.round(act-est); const cls=dv===0?"":dv<0?"down":"up"; return `<div class="v ${cls}">${dv>0?"+":dv<0?"−":""}${inr(Math.abs(dv))}</div>` };
+  // Judge gross and net separately; each gets its own tolerance (₹500 or 0.5%, whichever is larger)
+  const judge=(est,act)=>{ if(!act) return null; const dv=act-est; return Math.abs(dv)<=Math.max(500,est*0.005)?{s:"ok",dv}:{s:dv<0?"low":"high",dv} };
+  const G=judge(k.gross,g), N=judge(k.net,n), mon=esc(ymLabel(cur));
+  const V=(cls,txt)=>`<div class="verdict ${cls}">${txt}</div>`;
+  const abs=v=>inr(Math.abs(v));
+  const checkPay=`Check the sectors, fixed block hours, SOD and layover nights logged for ${mon} against your payslip and roster.`;
+  const checkDed=`Look at the deductions on the payslip: income tax (TDS) is the usual reason, as payroll spreads tax across the year differently from this estimate. Also check PF, professional tax and any other recovery.`;
+  let verdict="";
+  if(G&&N){
+    if(G.s==="ok"&&N.s==="ok") verdict=V("ok","Gross and net both match the estimate.");
+    else if(G.s==="low") verdict=V("bad",`Gross is ${abs(G.dv)} lower than the estimate${N.s!=="ok"?`, and net is ${abs(N.dv)} ${N.dv<0?"lower":"higher"}`:""}. ${checkPay}`);
+    else if(G.s==="high") verdict=V("info",`Gross is ${abs(G.dv)} higher than the estimate${N.s!=="ok"?` and net is ${abs(N.dv)} ${N.dv<0?"lower":"higher"}`:""}. This may be arrears, a reimbursement or an allowance the app does not track.`);
+    else if(N.s==="low") verdict=V("ok","Gross matches the estimate.")+V("warn",`Net is ${abs(N.dv)} lower than the estimate even though gross matches, so the difference is in deductions. ${checkDed}`);
+    else verdict=V("ok","Gross matches the estimate.")+V("info",`Net is ${abs(N.dv)} higher than the estimate, so less was deducted than expected, most likely lower TDS this month.`);
+  } else if(G){
+    verdict = G.s==="ok"?V("ok","Gross matches the estimate. Add the net to check deductions too."):G.s==="low"?V("bad",`Gross is ${abs(G.dv)} lower than the estimate. ${checkPay}`):V("info",`Gross is ${abs(G.dv)} higher than the estimate. This may be arrears, a reimbursement or an allowance the app does not track.`);
+  } else if(N){
+    verdict = N.s==="ok"?V("ok","Net matches the estimate. Add the gross to confirm your flying pay."):V(N.s==="low"?"warn":"info",`Net is ${abs(N.dv)} ${N.s==="low"?"lower":"higher"} than the estimate. Add the gross from the payslip to see whether the difference is in pay or in deductions.`);
+  }
+  return `<section class="card">
+    <h2>Payslip check</h2>
+    <p class="sub">Usually on the ${esc(paidIn)} payslip. <button class="refbtn" type="button" data-ref="help|payslip" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|payslip">Enter what your payslip for ${esc(ymLabel(cur))} shows. Flying allowance for a month is normally paid with the next month's salary, so this is usually the ${esc(paidIn)} payslip.</p>
+    <div class="grid2">
+      <label class="f">Gross on payslip (₹)<input class="in n" id="paid-gross" data-paid="gross" value="${fmt(g)}" placeholder="0" inputmode="numeric"></label>
+      <label class="f">Net paid (₹)<input class="in n" id="paid-net" data-paid="net" value="${fmt(n)}" placeholder="0" inputmode="numeric"></label>
+    </div>
+    ${g||n?`<div class="cmp">
+      <div class="h"></div><div class="h v">Estimate</div><div class="h v">Payslip</div><div class="h v">Difference</div>
+      <div>Gross</div><div class="v">${inr(k.gross)}</div><div class="v">${g?inr(g):"–"}</div>${diffCell(k.gross,g)}
+      <div>Net</div><div class="v">${inr(k.net)}</div><div class="v">${n?inr(n):"–"}</div>${diffCell(k.net,n)}
+    </div>${verdict}
+    <p class="note">Gross off: pay. Net off: tax. <button class="refbtn" type="button" data-ref="help|diff" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|diff">A gross difference points to pay: hours, sectors or allowances. A net difference with gross matching points to deductions, usually tax.</p>`:""}
+  </section>`;
+}
+
+function viewPay(){
+  if(isRecorded(cur)) return recordCard();
+  const k=calc(cur);
+  return `<section class="card">
+      <h2>${esc(ymLabel(cur))} pay</h2>
+      <p class="sub">${esc(RANKS[k.rank].label)} rates ${k.r.map(inr).join(" / ")} per hour across the 0-40, 40-70, 70-80, 80-90 and 90+ bands.</p>
+      ${slip(k)}
+    </section>
+    ${payslipCard(k)}
+    <section class="card">
+      <h2>Tax regime</h2>
+      <p class="sub">Annualised from this month: taxable pay of about ${inr(k.annual)} a year.</p>
+      <div class="cmp" style="grid-template-columns:1fr auto auto">
+        <div class="h"></div><div class="h v">Annual tax</div><div class="h v">Per month</div>
+        <div>New regime${profile.regime==="new"?" (selected)":""}</div><div class="v">${inr(k.taxN)}</div><div class="v">${inr(k.taxN/12)}</div>
+        <div>Old regime${profile.regime==="old"?" (selected)":""}</div><div class="v">${inr(k.taxO)}</div><div class="v">${inr(k.taxO/12)}</div>
+      </div>
+      <p class="note">Old regime uses your Setup deductions. <button class="refbtn" type="button" data-ref="help|oldreg" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|oldreg">The old-regime figure uses the ${inr(profile.oldDeductions)} of deductions entered in Setup (HRA exemption, 80C, 80D, home-loan interest and so on). The revised HRA of 75% of ${esc(compLabel("basic","Basic"))} only lowers tax under the old regime. Confirm the final choice with your CA.</p>
+    </section>`;
+}
+
+function paidCell(x){
+  if(x.k.rec) return `<span style="color:var(--muted)">–</span>`;
+  const p=months[x.ym].paid; if(!p||!p.net) return `<span style="color:var(--muted)">–</span>`;
+  const dv=p.net-x.k.net, cls=Math.abs(dv)<Math.max(500,x.k.net*0.005)?"":dv<0?"down":"up";
+  return `<span class="${cls}">${inr(p.net)}</span>`;
+}
+
+function viewYear(){
+  const [y,m]=cur.split("-").map(Number), fyStart = m>=4?y:y-1;
+  const fy = yearMode==="fy";
+  const yms = Array.from({length:12},(_,i)=>ymShift(fy?fyStart+"-04":y+"-01",i));
+  const data = yms.map(ym=>{ const d=months[ym]; const has = !!d && (hasLog(d)||!!d.record); return {ym, has, k: has?summary(ym):null} });
+  const logged = data.filter(x=>x.has);
+  const sum=f=>logged.reduce((a,x)=>a+f(x.k),0);
+  const max = Math.max(1,...logged.map(x=>x.k.net));
+  const W=720,H=200,pl=8,pr=8,pt=16,pb=4,bw=(W-pl-pr)/12;
+  const sc=v=>(H-pb)-(v/max)*(H-pb-pt);
+  let bars="";
+  data.forEach((x,i)=>{
+    const xx=pl+i*bw;
+    if(x.has){ const top=sc(x.k.net); bars+=`<rect class="bar${x.k.rec?" rec":""}" x="${xx+bw*.18}" y="${top}" width="${bw*.64}" height="${(H-pb)-top}" rx="2"><title>${ymLabel(x.ym)}: ${inr(x.k.net)}</title></rect>` }
+    else bars+=`<rect x="${xx+bw*.18}" y="${H-pb-2}" width="${bw*.64}" height="2" fill="var(--border)"></rect>`;
+  });
+  const revIdx = -1;
+  if(revIdx>0) bars+=`<line x1="${pl+revIdx*bw}" x2="${pl+revIdx*bw}" y1="${pt-6}" y2="${H-pb}" stroke="var(--muted)" stroke-dasharray="3 3"></line><text x="${pl+revIdx*bw+4}" y="${pt}">Revision</text>`;
+  const rows = data.map(x=>`<tr><td><button class="mlink" data-month="${x.ym}" aria-label="Open ${ymLabel(x.ym)}">${ymShort(x.ym)}</button></td>${x.has?`<td class="n">${hm(x.k.opMin)}</td><td class="n">${hm(x.k.dhMin)}</td><td class="n">${x.k.domNights}</td><td class="n">${usd(x.k.intlUSD)}</td><td class="n">${inr(x.k.gross)}</td><td class="n">${x.k.tds==null?"–":inr(x.k.tds)}</td><td class="n">${inr(x.k.net)}</td><td class="n">${paidCell(x)}</td>`:`<td colspan="8" class="none">Nothing logged</td>`}</tr>`).join("");
+  const anyRec = logged.some(x=>x.k.rec);
+  const paidTotal = logged.reduce((a,x)=>a+(!x.k.rec&&months[x.ym].paid?(+months[x.ym].paid.net||0):0),0);
+  return `<section class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <h2>${fy?`FY ${fyStart}-${String(fyStart+1).slice(2)}`:`Calendar year ${y}`}</h2>
+      <div class="btns"><button class="btn ${fy?"quiet":""}" data-ymode="cal" style="padding:5px 12px">Calendar year</button><button class="btn ${fy?"":"quiet"}" data-ymode="fy" style="padding:5px 12px">Financial year</button></div>
+    </div>
+    <p class="sub">${logged.length} of 12 months logged. Bars show take-home${anyRec?"; lighter bars are months recorded in your Numbers dashboard":" (estimated)"}.</p>
+    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Take-home by month">${bars}</svg><div class="xlab">${yms.map(ym=>`<span>${ymShort(ym)}</span>`).join("")}</div></div>
+    <div class="tbl yr"><table><thead><tr><th>Month</th><th class="n">Block</th><th class="n">SOD</th><th class="n">Dom nts</th><th class="n">Intl USD</th><th class="n">Gross</th><th class="n">TDS</th><th class="n">Take-home</th><th class="n">Paid</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td>Total</td><td class="n">${hm(sum(k=>k.opMin))}</td><td class="n">${hm(sum(k=>k.dhMin))}</td><td class="n">${sum(k=>k.domNights)}</td><td class="n">${usd(sum(k=>k.intlUSD))}</td><td class="n">${inr(sum(k=>k.gross))}</td><td class="n">${anyRec?"–":inr(sum(k=>k.tds||0))}</td><td class="n">${inr(sum(k=>k.net))}</td><td class="n">${paidTotal?inr(paidTotal):"–"}</td></tr></tfoot></table></div>
+    <p class="note">TDS is an estimate. <button class="refbtn" type="button" data-ref="help|tds" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|tds">${anyRec?"Recorded months show the gross and net you entered in Numbers, so TDS is not shown for them. ":""}For logged months, TDS is that month's pay annualised, so it will not match payroll exactly when pay swings between months.</p>
+  </section>`;
+}
+
+function pasteHistCard(){
+  if(!rosterHist.length) return "";
+  const t=ms=>new Date(ms+IST_OFF).toISOString().slice(0,16).replace("T"," ");
+  const line=h=> h.historical ? `Older roster: ${h.filled||0} planned times${h.fixed?`, ${h.fixed} fixed blocks`:""}${h.offs?`, ${h.offs} days off`:""} restored`
+    : [h.added?`${h.added} added`:"", h.updated?`${h.updated} updated`:"", h.removed?`${h.removed} removed`:"", h.changes?`${h.changes} duty change${h.changes===1?"":"s"}`:""].filter(Boolean).join(" · ") || "No changes";
+  return `<section class="card">
+    <h2>Paste history</h2>
+    <p class="sub">Newest first, in IST. <button class="refbtn" type="button" data-ref="help|pastes" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|pastes">Each roster paste, newest first, in IST. Planned times are kept from the first paste that shows a flight before it operates, so pasting whenever your roster changes keeps them safe.</p>
+    <div class="tbl"><table class="phist"><tbody>${rosterHist.slice(0,15).map(h=>`<tr><td class="n">${t(h.at)}</td><td>${esc(line(h))}</td></tr>`).join("")}</tbody></table></div>
+  </section>`;
+}
+/* Fixed block lists: read from a fixed block PDF on this device with pdf.js (Mozilla's PDF reader, plain JavaScript
+   that runs in Safari). It is fetched from this site only when you load a PDF, then kept for offline use. */
+let fbPending=null, fbBusy="";
+const fmtDay = d=>new Date(d+"T00:00:00Z").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"});
+function loadScript(src){ return new Promise((ok,bad)=>{ const s=document.createElement("script"); s.src=src; s.onload=ok; s.onerror=()=>bad(new Error("load")); document.head.appendChild(s) }) }
+async function pdfText(buf){
+  if(!window.pdfjsLib) await loadScript("pdfjs/pdf.min.js");
+  const lib=window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc="pdfjs/pdf.worker.min.js";
+  const doc=await lib.getDocument({data:buf}).promise; let out="";
+  for(let i=1;i<=doc.numPages;i++){ const tc=await (await doc.getPage(i)).getTextContent();
+    out+=tc.items.map(it=>it.str+(it.hasEOL?"\n":" ")).join("")+"\n" }
+  return out;
+}
+// "ABC-XYZ 01:30:00": two station codes and a block time. Domestic is everything before Annexure B.
+function parseFixedBlocks(text){
+  const t=text.replace(/ /g," "), cut=t.search(/Annexure\s*B\s*:/i), startA=t.search(/Annexure\s*A\s*:/i);
+  const grab=s=>{ const map={}, clash=[]; const re=/\b([A-Z]{3})\s*[-–]\s*([A-Z]{3})\b\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/g; let m;
+    while((m=re.exec(s))){ const k=m[1]+"-"+m[2], v=Math.round(((+m[3])*60+(+m[4])+(+m[5]||0)/60)*100)/100; if(!(v>0)) continue;   // a few blocks carry seconds; kept exactly
+      if(map[k]!=null && map[k]!==v) clash.push(k); else map[k]=v }
+    return {map, clash} };
+  if(cut<0) return null;
+  const dom=grab(t.slice(Math.max(0,startA),cut)), intl=grab(t.slice(cut));
+  const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  let eff=""; const d=t.match(/ISSUE\s*DATE\s*:?\s*(\d{1,2})-([A-Za-z]{3})-(\d{2,4})/i);
+  if(d&&MON[d[2].toLowerCase()]){ const y=d[3].length===2?"20"+d[3]:d[3]; eff=`${y}-${String(MON[d[2].toLowerCase()]).padStart(2,"0")}-${d[1].padStart(2,"0")}` }
+  return {dom:dom.map, intl:intl.map, clash:[...dom.clash,...intl.clash], eff};
+}
+async function readFixedBlockPdf(file){
+  fbBusy="Reading "+file.name+"…"; fbPending=null; render();
+  try{
+    const parsed=parseFixedBlocks(await pdfText(await file.arrayBuffer()));
+    const n=parsed?Object.keys(parsed.dom).length+Object.keys(parsed.intl).length:0;
+    fbBusy="";
+    if(!parsed||!n){ showBanner("Could not find a fixed block table in that PDF. Nothing was saved."); render(); return }
+    const t=new Date(), today=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-01";
+    fbPending={...parsed, eff:parsed.eff||today, name:file.name.replace(/\.pdf$/i,"")};
+  }catch(e){ fbBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
+  render();
+}
+function fbTable(map){ return `<div class="tbl"><table><thead><tr><th>Sector</th><th class="n">Block</th></tr></thead><tbody>${Object.keys(map).sort().map(k=>`<tr><td>${esc(k.replace("-"," → "))}</td><td class="n">${hm(map[k])}</td></tr>`).join("")}</tbody></table></div>` }
+function fbCard(){
+  const L=[...fbLists()].sort((a,b)=>b.eff.localeCompare(a.eff)), n=o=>Object.keys(o).length;
+  const sample=o=>Object.keys(o).slice(0,4).map(k=>`${esc(k)} ${hm(o[k])}`).join(", ");
+  const rows=L.map((l,i)=>{ const next=L[i-1];
+    return `<tr><td>${esc(fmtDay(l.eff))}${next?` to ${esc(fmtDay(next.eff))}`:" onwards"}<span class="rtime">${esc(l.name||"Fixed block list")}</span></td><td class="n">${n(l.dom)}</td><td class="n">${n(l.intl)}</td>
+      <td class="act"><button class="refbtn" type="button" data-ref="fb|${esc(l.id)}" aria-label="Show the list">🔽</button><button class="del" data-fbdel="${esc(l.id)}" aria-label="Delete list">×<span class="dl"> Remove</span></button></td></tr>` }).join("");
+  const lists=L.map(l=>`<div class="refx fbprev" data-refof="fb|${esc(l.id)}"><b>${esc(fmtDay(l.eff))} list: domestic</b>${fbTable(l.dom)}<b>International</b>${fbTable(l.intl)}</div>`).join("");
+  const P=fbPending;
+  return `<section class="card">
+    <h2>Fixed block lists</h2>
+    <p class="sub">Load each fixed block PDF you receive. <button class="refbtn" type="button" data-ref="help|fb" aria-label="Show more">🔽</button></p>
+    <p class="sub refx" data-refof="help|fb">The PDF is read on this phone and only the sector list is kept, here and in your backups. Each list applies from its start date until a later one takes over. The first load fetches the PDF reader from this site, so it needs internet once.</p>
+    ${L.length?`<div class="tbl"><table><thead><tr><th>Applies</th><th class="n">Domestic</th><th class="n">Intl</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${lists}`:""}
+    ${P?`<div class="fbprev"><b>Found ${n(P.dom)} domestic and ${n(P.intl)} international sectors</b>
+      <span class="rtime">Domestic: ${sample(P.dom)||"none"}. International: ${sample(P.intl)||"none"}.</span>
+      ${P.clash.length?`<p class="note" style="color:var(--orange)">Listed twice with different times, first one kept: ${esc(P.clash.join(", "))}.</p>`:""}
+      ${L.some(l=>l.eff===P.eff)?`<p class="note">A list already starts on this date; saving replaces it.</p>`:""}
+      <label class="f" style="max-width:220px;margin-top:8px">Applies from<input class="in" type="date" id="fbEff" value="${esc(P.eff)}"></label>
+      <div class="btns"><button class="btn" id="fbSave">Save list</button><button class="btn quiet" id="fbCancel">Cancel</button></div></div>`
+    : `<div class="btns">${fbBusy?`<span class="muted">${esc(fbBusy)}</span>`:`<label class="btn${L.length?" quiet":""}" for="fbFile" style="display:inline-flex;align-items:center">Load fixed block PDF</label><input type="file" id="fbFile" accept=".pdf,application/pdf" hidden>`}</div>`}
+  </section>`;
+}
+
+function viewSetup(){
+  const fxRows = COMP.filter(([k])=>compOn(k)).map(([k,l,cash])=>`<tr class="exrow"><td><div class="exname"><input class="in" id="cn-${k}" data-cn="${k}" data-def="${esc(l)}" value="${esc(compLabel(k,l))}" placeholder="${esc(l)}" aria-label="Name for ${esc(l)}" autocomplete="off">${cash?"":'<span><span class="chip">CTC only</span></span>'}</div></td>
+    ${["rev"].map(st=>`<td><div class="examt"><input class="in n" id="fx-${st}-${k}" data-fx="${st}" data-k="${k}" value="${profile.fixed[st][k]?Number(profile.fixed[st][k]).toLocaleString("en-IN"):""}" placeholder="0" inputmode="numeric"><button class="del" data-cdel="${k}" aria-label="Remove ${esc(compLabel(k,l))}">×<span class="dl"> Remove</span></button></div></td>`).join("")}</tr>`).join("");
+  const hiddenN = (profile.compHidden||[]).length;
+  const tot = st=>COMP.reduce((a,[k])=>a+(compOn(k)?(+profile.fixed[st][k]||0):0),0) + (profile.extra||[]).reduce((a,x)=>a+(+x.amt||0),0);
+  const exRows = (profile.extra||[]).map(x=>`<tr class="exrow"><td><div class="exname"><input class="in" id="ex-${x.id}-name" data-ex="${x.id}" data-ef="name" value="${esc(x.name)}" placeholder="Component name" autocomplete="off">
+      <select class="in" id="ex-${x.id}-cash" data-ex="${x.id}" data-ef="cash"><option value="1"${x.cash?" selected":""}>Paid in salary (taxed)</option><option value="0"${x.cash?"":" selected"}>CTC only</option></select></div></td>
+    <td><div class="examt"><input class="in n" id="ex-${x.id}-amt" data-ex="${x.id}" data-ef="amt" value="${x.amt?Number(x.amt).toLocaleString("en-IN"):""}" placeholder="0" inputmode="numeric"><button class="del" data-exdel="${x.id}" aria-label="Remove component">×<span class="dl"> Remove</span></button></div></td></tr>`).join("");
+  return `<section class="card">
+    <h2>Pilot</h2>
+    <div class="grid2">
+      <label class="f">Name<input class="in" id="p-name" data-p="name" value="${esc(profile.name)}" placeholder="Your name"></label>
+      <label class="f">Rank<select id="p-rank" data-p="rank">${Object.entries(RANKS).map(([k,v])=>`<option value="${k}"${profile.rank===k?" selected":""}>${v.label}</option>`).join("")}</select></label>
+      <label class="f">Fleet<input class="in" id="p-fleet" data-p="fleet" value="${esc(profile.fleet)}"></label>
+      <label class="f">Base<input class="in" id="p-base" data-p="base" value="${esc(profile.base)}"></label>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Fixed pay</h2>
+    <p class="sub">Annual figures in rupees, exactly as printed in your pay letter.</p>
+    <div class="tbl"><table class="fx"><thead><tr><th>Component</th><th>Per year</th></tr></thead><tbody>${fxRows}${exRows}</tbody>
+    <tfoot><tr><td>Total fixed pay</td><td class="n">${inr(tot("rev"))}</td></tr></tfoot></table></div>
+    <div class="btns"><button class="btn quiet" id="addExtra">+ Add a component</button>${hiddenN?`<button class="btn quiet" id="restoreComp">Restore removed components (${hiddenN})</button>`:""}</div>
+    <p class="note">Tap a name to rename. <button class="refbtn" type="button" data-ref="help|comps" aria-label="Show more">🔽</button></p><p class="note refx" data-refof="help|comps">Tap a name to rename it; clear it to go back to the original. Remove takes a component out of every total; Restore brings it back with its amount. Add anything your pay letter lists that is not above, as a yearly figure. "Paid in salary" adds a twelfth of it to each month's gross and tax; "CTC only" counts towards your CTC but not your pay.</p>
+  </section>
+  <section class="card">
+    <h2>Tax</h2>
+    <div class="grid2">
+      <label class="f">Tax regime<select id="p-regime" data-p="regime"><option value="new"${profile.regime==="new"?" selected":""}>New regime</option><option value="old"${profile.regime==="old"?" selected":""}>Old regime</option></select></label>
+      <label class="f">Fleet average for training (hours per month)<input class="in n" id="p-fleetAvg" data-p="fleetAvg" data-num="1" data-fleet="1" value="${esc(profile.fleetAvg||40)}" inputmode="decimal"></label>
+      <label class="f">Old-regime deductions per year (₹)<input class="in n" id="p-oldDeductions" data-p="oldDeductions" data-num="1" value="${esc(profile.oldDeductions)}" inputmode="numeric"></label>
+      <label class="f">Domestic layover allowance<select id="p-layoverExempt" data-p="layoverExempt"><option value="0"${!profile.layoverExempt?" selected":""}>Taxed with salary</option><option value="1"${profile.layoverExempt?" selected":""}>Tax-exempt</option></select></label>
+    </div>
+  </section>
+  ${fbCard()}
+  ${pasteHistCard()}
+  <section class="card">
+    <h2>Backup</h2>
+    <p class="sub">Saved on this device only.${(()=>{try{const l=localStorage.getItem(LS_KEY+".lastBackup");return l?` Last backup: ${esc(l)}.`:" No backup yet."}catch(e){return ""}})()} <button class="refbtn" type="button" data-ref="help|backup" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|backup">Everything is saved in this browser on this device and nowhere else. Phone browsers can clear saved data, so download a backup now and then and keep it in Files or iCloud Drive.</p>
+    <div class="btns">
+      <button class="btn" id="backupBtn">Download backup</button>
+      <label class="btn quiet" for="restoreFile" style="display:inline-flex;align-items:center">Restore from file</label>
+      <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+    </div>
+  </section>`;
+}
+
+function render(){
+  renderHeader(); renderBanner();
+  const ae=document.activeElement, aid=ae&&ae.id, sel=ae&&ae.selectionStart;
+  fdtlCache=fdtlAll();
+  const v = {log:viewLog,duty:viewDuty,intl:viewIntl,pay:viewPay,year:viewYear,setup:viewSetup}[tab]();
+  $("#view").innerHTML = v;
+  decorateRefs();
+  const ds=document.getElementById("dstrip"), on=ds&&ds.querySelector(".ds.on");
+  if(on){ const r=on.getBoundingClientRect(), q=ds.getBoundingClientRect(); ds.scrollLeft += (r.left+r.width/2)-(q.left+q.width/2) }
+  if(aid){ const el=document.getElementById(aid); if(el && el!==document.activeElement){ el.focus(); try{ if(sel!=null) el.setSelectionRange(sel,sel) }catch(e){} } }
+}
+
+/* ---------- Events ---------- */
+document.addEventListener("click", e=>{
+  const t=e.target.closest("button"); if(!t) return;
+  if(t.id==="addExtra"){ profile.extra=[...(profile.extra||[]), {id:uid(), name:"", amt:0, cash:true}]; queueProfile(); render();
+    const l=profile.extra[profile.extra.length-1], el=document.getElementById(`ex-${l.id}-name`); if(el) el.focus(); return }
+  if(t.dataset.cdel){ profile.compHidden=[...new Set([...(profile.compHidden||[]), t.dataset.cdel])]; queueProfile(); render(); return }
+  if(t.id==="restoreComp"){ profile.compHidden=[]; queueProfile(); render(); return }
+  if(t.dataset.exdel){ profile.extra=(profile.extra||[]).filter(x=>x.id!==t.dataset.exdel); queueProfile(); render(); return }
+  if(t.dataset.addsby){ const k="msby|"+t.dataset.addsby; if(!actuals[k]) actuals[k]={s:"",e:""}; queueSave(); render(); const el=document.querySelector(`[data-act="${k}"][data-af="s"]`); if(el) el.focus(); return }
+  if(t.dataset.delsby){ delete actuals["msby|"+t.dataset.delsby]; queueSave(); render(); return }
+  if(t.dataset.markoff){ const k="off|"+t.dataset.markoff; if(t.dataset.code) actuals[k]={code:t.dataset.code}; else delete actuals[k]; queueSave(); render(); return }
+  if(t.dataset.hide){ if(!confirm("Remove this from the Duty tab? It stops counting in the FDTL checks. Your Flight log and pay are not changed, and you can restore it from this day.")) return;
+    actuals[t.dataset.hide]={...(actuals[t.dataset.hide]||{}), hide:true, hd:t.dataset.hd, hl:t.dataset.hl, hk:t.dataset.hk||"duty"}; queueSave(); render(); return }
+  if(t.dataset.unhide){ const c2={...(actuals[t.dataset.unhide]||{})}; delete c2.hide; delete c2.hd; delete c2.hl; delete c2.hk;
+    if(Object.keys(c2).length) actuals[t.dataset.unhide]=c2; else delete actuals[t.dataset.unhide]; queueSave(); render(); return }
+  if(t.dataset.ref){ const k=t.dataset.ref, o=!openRefs.has(k); if(o) openRefs.add(k); else openRefs.delete(k); setRef(k,o); return }
+  if(t.dataset.tb){ const k=t.dataset.tb; if(t.dataset.undo) delete actuals[k]; else actuals[k]={tb:true}; queueSave(); render(); return }
+  if(t.dataset.dday!=null && t.dataset.dday!==""){ dutyDay=t.dataset.dday; if(t.dataset.go){ tab="duty"; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){} } render(); if(t.dataset.go) window.scrollTo(0,0); return }
+  if(t.dataset.tab){ bannerMsg=""; tab=t.dataset.tab; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){}; render(); return }
+  if(t.dataset.go){ tab=t.dataset.go; render(); return }
+  if(t.dataset.month){ cur=t.dataset.month; tab="log"; render(); return }
+  if(t.dataset.ymode){ yearMode=t.dataset.ymode; try{localStorage.setItem("crewpaylog.v1.year",yearMode)}catch(_){}; render(); return }
+  if(t.id==="pasteRoster"){ pasteRoster(); return }
+  if(t.id==="rosterGo"){ const ta=document.getElementById("rosterText"); if(ta&&ta.value.trim()) applyRoster(ta.value); return }
+  if(t.id==="backupBtn"){ downloadBackup(); return }
+  if(t.id==="fbCancel"){ fbPending=null; render(); return }
+  if(t.id==="fbSave" && fbPending){ const e=(document.getElementById("fbEff")||{}).value||fbPending.eff;
+    if(!/^\d{4}-\d\d-\d\d$/.test(e)){ showBanner("Choose the date this list applies from."); return }
+    const keep=fbLists().filter(l=>l.eff!==e), lp=fbPending;
+    profile.fbLists=[...keep, {id:uid(), eff:e, name:lp.name, dom:lp.dom, intl:lp.intl, loaded:new Date().toISOString()}];
+    fbPending=null; queueProfile(); showBanner(`Fixed block list saved: ${Object.keys(lp.dom).length} domestic and ${Object.keys(lp.intl).length} international sectors from ${fmtDay(e)}.`); render(); return }
+  if(t.dataset.fbdel){ const l=fbLists().find(x=>x.id===t.dataset.fbdel); if(!l) return;
+    if(!confirm(`Delete the fixed block list starting ${fmtDay(l.eff)}? Sectors it covered go back to the planned block or an earlier list.`)) return;
+    profile.fbLists=fbLists().filter(x=>x!==l); queueProfile(); render(); return }
+  if(t.id==="prevM"){ cur=ymShift(cur,-1); render(); return }
+  if(t.id==="nextM"){ cur=ymShift(cur,1); render(); return }
+  const d=monthData(cur);
+  if(t.dataset.add){
+    const list=t.dataset.add, now=new Date(), today=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+    const date = cur===ymNow()?today:cur+"-01";
+    let row={id:uid(), date};
+    if(list==="sectors"){ const last=d.sectors[d.sectors.length-1];
+      row = t.dataset.copy&&last ? {...last,id:uid(),example:false,from:last.to,to:last.from} : {...row,flt:"",from:last?last.to:(profile.base||""),to:"",kind:"op",fixed:0} }
+    if(list==="dom") row.nights=1;
+    if(list==="intl"){ row.country=""; row.mins=0 }
+    if(list==="train"){ row.type=TRAIN_TYPES[1]; row.days=1 }
+    d[list].push(row); queueMonth(cur); render();
+    const first = document.querySelector(`tr[data-id="${row.id}"] input:not([type=date])`); if(first) first.focus();
+    return;
+  }
+  if(t.dataset.del){ const id=t.closest("tr").dataset.id, gone=d[t.dataset.del].find(r=>r.id===id);
+    if(gone && gone.roster) dismissed=[...dismissed, {key:t.dataset.del, uid:gone.uid||"", date:gone.date, from:gone.from||"", to:gone.to||"", stn:gone.stn||"", type:gone.type||"", label:[gone.date, gone.from&&gone.to?gone.from+"–"+gone.to:(gone.stn||gone.country||gone.type||"")].join(" ")}];
+    d[t.dataset.del]=d[t.dataset.del].filter(r=>r.id!==id); queueMonth(cur); render(); return }
+  if(t.id==="undismiss"){ dismissed=[]; queueSave(); showBanner("Deleted roster rows will come back on your next paste."); render(); return }
+  if(t.id==="clearEx"){ d.sectors=d.sectors.filter(s=>!s.example); d.dom=d.dom.filter(s=>!s.example); queueMonth(cur); render(); return }
+  if(t.id==="loadEx"){
+    const D=n=>cur+"-"+String(n).padStart(2,"0"), b=profile.base||"BOM";
+    d.sectors.push(
+      {id:uid(),date:D(3),flt:"XY1237",from:b,to:"IXR",kind:"op",fixed:155,example:true},
+      {id:uid(),date:D(4),flt:"XY1238",from:"IXR",to:b,kind:"op",fixed:150,example:true},
+      {id:uid(),date:D(9),flt:"XY1101",from:b,to:"HYD",kind:"dh",fixed:85,example:true},
+      {id:uid(),date:D(9),flt:"XY1102",from:"HYD",to:"BLR",kind:"op",fixed:80,example:true});
+    d.dom.push({id:uid(),date:D(3),stn:"IXR",nights:1,example:true});
+    queueMonth(cur); render(); return;
+  }
+});
+document.addEventListener("change", e=>{
+  const el=e.target;
+  if(el.id==="rosterFile"){ const f=el.files&&el.files[0]; if(f){ const r=new FileReader(); r.onload=()=>applyRoster(r.result); r.readAsText(f) } el.value=""; return }
+  if(el.id==="rosterText") return;
+  if(el.id==="fbFile"){ const f=el.files&&el.files[0]; el.value=""; if(f) readFixedBlockPdf(f); return }
+  if(el.id==="fbEff"){ if(fbPending&&el.value) fbPending.eff=el.value; return }
+  if(el.id==="restoreFile"){ if(el.files&&el.files[0]) restoreBackup(el.files[0]); el.value=""; return }
+  if(el.dataset.p){ let v=el.value;
+    if(el.dataset.num) v=parseFloat(String(v).replace(/,/g,""))||0;
+    if(el.dataset.p==="layoverExempt") v=v==="1";
+    if(el.dataset.fleet){ if(!(v>0)) v=40; profile.fleetAvgSet = true }
+    profile[el.dataset.p]=v; queueProfile(); render(); return }
+  if(el.id==="dutyJump"){ if(el.value){ dutyDay=el.value; render() } return }
+  if(el.dataset.call!=null){ const k=el.dataset.call, c2={...(actuals[k]||{})};
+    if(el.value==="yes") c2.called=true; else if(el.value==="no") c2.called=false; else delete c2.called;
+    if(Object.keys(c2).length) actuals[k]=c2; else delete actuals[k];
+    queueSave(); render(); return }
+  if(el.dataset.flag!=null){ const k=el.dataset.uid, c2={...(actuals[k]||{})};
+    if(el.checked) c2[el.dataset.flag]=true; else delete c2[el.dataset.flag];
+    if(Object.keys(c2).length) actuals[k]=c2; else delete actuals[k];
+    queueSave(); render(); return }
+  if(el.dataset.sby!=null){ const k=el.dataset.sby, c2={...(actuals[k]||{})};
+    if(el.value==="airport") c2.sby="airport"; else delete c2.sby;
+    if(Object.keys(c2).length) actuals[k]=c2; else delete actuals[k];
+    queueSave(); render(); return }
+  if(el.dataset.act!=null){ const v=normHHMM(el.value);
+    if(v===null){ showBanner("Enter times in UTC as 14:35 or 1435."); el.value=""; return }
+    const key=el.dataset.act, f=el.dataset.af; const cur2={...(actuals[key]||{})};
+    if(v) cur2[f]=v; else delete cur2[f];
+    if(Object.keys(cur2).length) actuals[key]=cur2; else delete actuals[key];
+    queueSave(); render(); return }
+  if(el.dataset.paid){ const d=monthData(cur); const v=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0;
+    d.paid={...(d.paid||{}),[el.dataset.paid]:v}; if(!d.paid.gross&&!d.paid.net) delete d.paid; queueMonth(cur); render(); return }
+  if(el.dataset.cn){ const v=el.value.trim(), n={...(profile.compNames||{})}; if(v && v!==el.dataset.def) n[el.dataset.cn]=v; else delete n[el.dataset.cn]; profile.compNames=n; queueProfile(); render(); return }
+  if(el.dataset.ex){ const x=(profile.extra||[]).find(y=>y.id===el.dataset.ex); if(!x) return;
+    const f=el.dataset.ef; if(f==="name") x.name=el.value.trim(); else if(f==="cash") x.cash=el.value==="1"; else x.amt=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0;
+    queueProfile(); render(); return }
+  if(el.dataset.fx){ profile.fixed[el.dataset.fx][el.dataset.k]=parseFloat(String(el.value).replace(/[^\d.]/g,""))||0; queueProfile(); render(); return }
+  const tr=el.closest("tr"); if(!tr||!el.dataset.f) return;
+  const list = el.id[0]==="s"?"sectors":el.id[0]==="d"?"dom":el.id[0]==="t"?"train":"intl";
+  const row = monthData(cur)[list].find(r=>r.id===tr.dataset.id); if(!row) return;
+  let v=el.value;
+  // Pay-only fields: your actual block and the airspace tick survive roster pastes without marking the row edited
+  if(el.dataset.f==="airspace"||el.dataset.f==="act"){ if(el.type==="checkbox") { if(el.checked) row.airspace=true; else delete row.airspace }
+    else { const m=parseHM(v); if(m>0) row.act=m; else delete row.act }
+    queueMonth(cur); render(); return }
+  if(el.dataset.tm){ const t=normHHMM(v); if(t===null){ showBanner("Enter times in UTC as 14:35 or 1435."); el.value=row[el.dataset.f]||""; return } v=t }
+  else if(el.dataset.hm) v=parseHM(v); else if(el.dataset.num) v=parseFloat(v)||0; else if(el.classList.contains("caps")) v=v.toUpperCase().trim();
+  row[el.dataset.f]=v; if(row.example) row.example=false; if(row.roster) row.edited=true;
+  // a sector dated in another month moves there
+  if(el.dataset.f==="date" && v && v.slice(0,7)!==cur){ const tgt=v.slice(0,7); monthData(cur)[list]=monthData(cur)[list].filter(r=>r!==row); monthData(tgt)[list].push(row); queueMonth(tgt) }
+  queueMonth(cur); render();
+});
+document.addEventListener("keydown", e=>{ if(e.key==="Enter" && e.target.matches("input.in")){ e.target.blur(); } });
+
+try{ const t=localStorage.getItem(LS_KEY+".tab"); if(t && ["log","duty","intl","pay","year","setup"].includes(t)) tab=t }catch(e){}
+initStore();
+if("serviceWorker" in navigator && location.protocol==="https:"){
+  window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}) });
+}
+})();
+</script>
+
+</body>
+</html>
