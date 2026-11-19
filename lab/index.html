@@ -268,15 +268,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=57">
-<script src="intro.js?b=57" defer></script>
+<link rel="stylesheet" href="lab.css?b=58">
+<script src="intro.js?b=58" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=57"></script>
-<script src="motion.js?b=57" defer></script>
-<script src="lab.js?b=57"></script>
+<script src="mapdata.js?b=58"></script>
+<script src="motion.js?b=58" defer></script>
+<script src="lab.js?b=58"></script>
 </head>
 <body>
 <div class="wrap">
@@ -303,6 +303,7 @@ try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.t
   <div role="tab" tabindex="0" data-tab="log" class="press hz"><svg viewBox="0 0 24 24"><path d="M2.5 15.5l19-7.2-2-2.3-6.4 2.4L7 4.5 5.4 5.3l3.4 5.2-4.4 1.6-2-1.4-1.1.5 1.5 3.3z"/><path d="M3 20h18"/></svg><span>Flights</span></div>
   <div role="tab" tabindex="0" data-tab="duty" class="press hz"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>Duty</span></div>
   <div role="tab" tabindex="0" data-tab="pay" class="press hz"><svg viewBox="0 0 24 24"><path d="M7 5h10M7 9h10M7 5c4.5 0 6.5 1.6 6.5 4S11.5 13 7 13l7.5 7"/></svg><span>Pay</span></div>
+  <div role="tab" tabindex="0" data-tab="quals" class="press hz"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M8.8 12.2l2.2 2.2 4.4-4.6"/></svg><span>Quals</span></div>
   <div role="tab" tabindex="0" data-tab="more" class="press hz"><svg viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18.5" cy="12" r="1.4"/></svg><span>More</span></div>
 </nav>
 <div class="sheet-wrap" id="sheetWrap" hidden>
@@ -886,7 +887,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=57").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=58").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -1030,7 +1031,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=57");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=58");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1126,7 +1127,7 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=57") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=58") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
@@ -1288,7 +1289,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=57"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=58"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1296,7 +1297,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=57");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=58");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -2125,7 +2126,7 @@ function renderBanner(){
   if(!k.hasFixed && tab!=="setup" && !isRecorded(cur)) html+=`<div class="banner"><span>Fixed pay is empty, so gross and net leave it out. Copy the annual figures from your pay letter into Setup.</span><button class="btn ghost" data-go="setup">Open Setup</button></div>`;
   el.innerHTML=html;
 }
-const TITLES={month:null, log:"Flights", duty:"Duty", pay:"Pay", more:"More", intl:"Intl layovers", year:"Year", setup:"Setup"};
+const TITLES={month:null, log:"Flights", duty:"Duty", pay:"Pay", more:"More", intl:"Intl layovers", year:"Year", setup:"Setup", quals:"Quals"};
 const UNDER_MORE=new Set(["more","intl","year","setup"]);
 function renderHeader(){
   const rk=RANKS[profile.rank]||RANKS.fo;
@@ -2136,6 +2137,7 @@ function renderHeader(){
   $("#backBtn").hidden = !(tab==="intl"||tab==="year"||tab==="setup");
   $("#mbar").hidden = !["month","log","pay","intl"].includes(tab);
   document.querySelectorAll("nav.tabbar [data-tab]").forEach(b=>{ const on = b.dataset.tab===tab || (b.dataset.tab==="more" && UNDER_MORE.has(tab)); b.setAttribute("aria-selected", String(on)) });
+  const qb=document.querySelector('nav.tabbar [data-tab="quals"]'); if(qb){ const a=qualsAlert(); qb.classList.toggle("qdot",!!a); qb.classList.toggle("qbad",a==="bad"); qb.setAttribute("aria-label", a==="bad"?"Quals, something needs attention":a==="warn"?"Quals, something due soon":"Quals") }
 }
 
 function recordCard(){
@@ -2502,7 +2504,7 @@ function openWorld(){
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./world3d.js?b=57").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
+  import("./world3d.js?b=58").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2654,6 +2656,195 @@ function viewMore(){
       <div role="button" tabindex="0" class="item press" id="backupBtn"><span class="ico">⇩</span><span class="grow"><span class="t">Back up now</span><span class="s">Saves a file with all your data</span></span><span class="chev">›</span></div>
     </div>`;
 }
+
+/* ---------- Quals: card validity, recency and Category C aerodromes (lab) ----------
+   Card items come from the competency card PDF, read on this phone with pdf.js. Only each item's name and dates are
+   kept; everything else on the card is ignored and never stored. Every new upload replaces the card data.
+   Recency: 3 takeoffs and 3 landings as PF in the preceding 90 days (aircraft or simulator of the type), and in any
+   30 days an operating sector, or a simulator takeoff and landing as PF. Takeoffs and landings come from the T/O and
+   LDG ticks on the data card, plus any added here. Aerodrome competence lasts 12 months from the last operation. */
+const QW_DEF={qa:60,qr:30,ra:14,rr:7};
+function qualsData(){ const q=(profile.quals&&typeof profile.quals==="object")?profile.quals:{};
+  if(!Array.isArray(q.items)) q.items=[];
+  if(!Array.isArray(q.extra)) q.extra=[];
+  if(!Array.isArray(q.aero)) q.aero=[{icao:"VOCL"},{icao:"VOML"}];
+  q.warn={...QW_DEF,...(q.warn||{})}; profile.quals=q; return q }
+const isoToday=()=>new Date().toISOString().slice(0,10);
+const isoAdd=(d,n)=>{ const t=new Date(d+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+n); return t.toISOString().slice(0,10) };
+const isoAddYear=d=>{ const t=new Date(d+"T00:00:00Z"); t.setUTCFullYear(t.getUTCFullYear()+1); return t.toISOString().slice(0,10) };
+const daysTo=d=>Math.round((Date.parse(d+"T00:00:00Z")-Date.parse(isoToday()+"T00:00:00Z"))/864e5);
+function qStatus(d, amber, red){ if(d==null) return "none"; if(d<0||d<=red) return "bad"; if(d<=amber) return "warn"; return "ok" }
+const qLeft=d=>d==null?"":d<0?`expired ${-d} day${d===-1?"":"s"} ago`:d===0?"last day today":`${d} day${d===1?"":"s"} left`;
+const qChip=(st,txt)=>`<span class="fchip ${st==="ok"||st==="warn"||st==="bad"?st:"qnone"}">${esc(txt)}</span>`;
+
+// sectors that have started (planned departure in the past)
+function flownSectors(){ const now=Date.now(), out=[];
+  for(const ym of Object.keys(months)) for(const s of (months[ym].sectors||[])){ if(!s.date) continue;
+    const t=Date.parse(s.date+"T"+(/^\d\d:\d\d$/.test(s.dep||"")?s.dep:"00:00")+":00Z"); if(t<=now) out.push(s) }
+  return out }
+
+/* ---- recency ---- */
+function recency(){ const q=qualsData(), w=q.warn, today=isoToday(), T=[], Lg=[], ops=[];
+  for(const s of flownSectors()){ const c=cards[cardKey(s)]||{};
+    if(c.rto==="Y") T.push(s.date);
+    if(c.rldg==="Y") Lg.push(s.date);
+    if(s.kind==="op"||s.kind==="div") ops.push(s.date) }
+  for(const x of q.extra){ if(!/^\d{4}-\d\d-\d\d$/.test(x.date||"")||x.date>today) continue;
+    const nt=+x.to||0, nl=+x.ldg||0;
+    for(let i=0;i<nt;i++) T.push(x.date);
+    for(let i=0;i<nl;i++) Lg.push(x.date);
+    if(x.sim ? (nt>0&&nl>0) : (nt>0||nl>0)) ops.push(x.date) }
+  T.sort().reverse(); Lg.sort().reverse(); ops.sort();
+  const from90=isoAdd(today,-90);
+  const u90 = T.length>=3&&Lg.length>=3 ? [isoAdd(T[2],90),isoAdd(Lg[2],90)].sort()[0] : null;
+  const lastOp=ops.length?ops[ops.length-1]:null, u30=lastOp?isoAdd(lastOp,30):null;
+  const d90=u90?daysTo(u90):null, d30=u30?daysTo(u30):null;
+  return {T, Lg, n90T:T.filter(d=>d>=from90).length, n90L:Lg.filter(d=>d>=from90).length,
+    u90, d90, s90:qStatus(d90,w.ra,w.rr), lastOp, u30, d30, s30:qStatus(d30,w.ra,w.rr)} }
+
+/* ---- Category C aerodromes ---- */
+function iataOfIcao(ic){ const m=window.PTICAO; if(!m) return ""; for(const k in m) if(m[k]===ic) return k; return "" }
+function aeroRows(){ const q=qualsData(), w=q.warn, fl=flownSectors().filter(s=>s.kind==="op"||s.kind==="div");
+  apMap();
+  return q.aero.map(a=>{ const ia=iataOfIcao(a.icao); let last=a.last||"", src=a.last?"you":"";
+    if(ia) for(const s of fl) if((s.from===ia||s.to===ia) && s.date>last){ last=s.date; src="log" }
+    const until=last?isoAddYear(last):null, d=until?daysTo(until):null, info=(APX&&ia&&APX.get(ia))||{};
+    return {...a, manual:a.last||"", ia, city:info.city||"", last, src, until, d, st:qStatus(d,w.qa,w.qr)} }) }
+
+/* ---- competency card ---- */
+const QMON={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+function qDate(s){ const m=String(s||"").trim().match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2}|\d{4})$/); if(!m) return null;
+  const mo=QMON[m[2].toUpperCase()]; if(!mo) return null; let y=+m[3]; if(y<100) y+=2000;
+  return y+"-"+String(mo).padStart(2,"0")+"-"+m[1].padStart(2,"0") }
+const Q_ALIAS={IREND:"IR"};
+function qLabel(l){ l=String(l||"").trim(); if(Q_ALIAS[l]) return Q_ALIAS[l];
+  const w=l.split(/\s+/); if(w.length===1) return l==="MEDICAL"?"Medical":l;
+  return w.map((x,i)=>{ const plain=/^[A-Z]{4,}$/.test(x)||/^(AND|OF|THE|WET)$/.test(x); if(!plain) return x; const lo=x.toLowerCase(); return i?lo:lo[0].toUpperCase()+lo.slice(1) }).join(" ") }
+const qGroup=g=>/LICEN|MEDICAL|DOCUMENT/i.test(g)?"Licences and medical":/GROUND/i.test(g)?"Ground training":/SIM/i.test(g)?"Simulator":/LINE/i.test(g)?"Line":g?g[0]+g.slice(1).toLowerCase():"Other";
+// Rows are "serial, item, [number], date, date". Lines with a colon (personal details) are skipped and never kept.
+function parseCompCard(pages){ const items=[]; let group="", cardDate="";
+  for(const its of pages){ const rows=[];
+    for(const it of its){ let r=rows.find(r=>Math.abs(r.y-it.y)<=3); if(!r){ r={y:it.y,c:[]}; rows.push(r) } r.c.push(it) }
+    rows.sort((a,b)=>b.y-a.y);
+    for(const r of rows){ const c=r.c.sort((a,b)=>a.x-b.x).map(x=>x.s), line=c.join(" ");
+      const cm=line.match(/created\s*on\s*:?\s*(\d{1,2}-[A-Za-z]{3}-\d{2,4})/i); if(cm){ cardDate=qDate(cm[1])||""; continue }
+      if(/:/.test(line)) continue;
+      if(c.length>=2 && /^\d{1,2}$/.test(c[0]) && !/\d/.test(c[1])){
+        const rest=c.slice(2), ds=rest.map(qDate).filter(Boolean), na=rest.some(x=>/^N\/?A$/i.test(x));
+        let from=ds.length>=2?ds[0]:"", to=ds.length>=2?ds[1]:(ds[0]||"");
+        if(from&&to&&to<from) to=(+to.slice(0,4)+100)+to.slice(4);   // two-digit years: a validity that ends before it starts is the next century
+        items.push({g:qGroup(group), label:c[1].trim(), from, to, na:na&&!to}); continue }
+      if(c.length===1 && /^[A-Z][A-Z /&-]{2,40}$/.test(c[0]) && !/VALID|SNO/i.test(c[0])) group=c[0].trim() } }
+  return {items, cardDate} }
+let qBusy="";
+async function readCompCard(file){ qBusy="Reading the card…"; render();
+  try{
+    const {items, cardDate}=parseCompCard(await pdfGrid(await file.arrayBuffer()));
+    if(items.filter(i=>i.to).length<3) throw new Error("shape");
+    const q=qualsData();
+    if(q.cardDate && cardDate && cardDate<q.cardDate && !confirm(`This card is dated ${fmtDay(cardDate)}, older than the one loaded (${fmtDay(q.cardDate)}). Replace it anyway?`)){ qBusy=""; render(); return }
+    const key=i=>i.g+"|"+i.label, first=!q.items.length, old=new Map(q.items.map(i=>[key(i),i])), nw=new Map(items.map(i=>[key(i),i])), ch=[];
+    for(const i of items){ const o=old.get(key(i)), L=qLabel(i.label);
+      if(first) continue;
+      if(!o) ch.push(`${L}: added${i.to?`, valid to ${fmtDay(i.to)}`:""}`);
+      else if((o.to||"")!==(i.to||"")) ch.push(i.to?`${L}: valid to ${fmtDay(i.to)}${o.to?` (was ${fmtDay(o.to)})`:""}`:`${L}: no longer dated`) }
+    if(!first) for(const o of q.items) if(!nw.has(key(o))) ch.push(`${qLabel(o.label)}: no longer on the card`);
+    q.items=items; q.cardDate=cardDate; q.loaded=new Date().toISOString(); q.changes=first?null:ch;
+    queueProfile(); qBusy="";
+    showBanner(first?`Card read: ${items.length} items.`:ch.length?`Card updated: ${ch.length} change${ch.length===1?"":"s"}.`:"Card read. Nothing has changed since the last one.");
+    render();
+  }catch(e){ qBusy=""; showBanner("That PDF doesn't look like a competency card. Nothing was changed."); render() }
+}
+// a rostered course that renews an item before it runs out
+const Q_RENEW=[[/GROUND REFRESHER|^SEP$|CRM/,/AGTR|REFRESHER|\bSEP\b|CRM/],[/^DGR$/,/DGR/],[/AVSEC/,/AVSEC/],[/DRILL|DOOR/,/SFD|DRILL|DOOR|WET|SLIDE|SMOKE/],
+  [/^PPC|FSTD|LVTO|CAT-?II/,/PPC|\bSIM|FSTD|LOFT|LVTO|\bPC\b/],[/LINE CHECK/,/LINE CHECK|\bRLC\b|\bLC\b/]];
+function trainingAhead(){ const from=isoAdd(isoToday(),-14), out=[];
+  for(const e of rosterEvents) if(e&&e.t==="training"&&e.start){ const d=new Date(e.start).toISOString().slice(0,10); if(d>=from) out.push({d, txt:[e.desc,e.s].join(" ").toUpperCase()}) }
+  for(const ym of Object.keys(months)) for(const x of (months[ym].train||[])) if(x.date>=from) out.push({d:x.date, txt:String(x.type||"").toUpperCase()});
+  return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0) }
+function itemState(i, ahead, w){
+  if(!i.to) return {...i, st:"none", d:null, txt:i.na?"N/A":"Not held"};
+  const d=daysTo(i.to); if(d>365*40) return {...i, st:"ok", d, txt:"No expiry", forever:true};
+  const st=qStatus(d,w.qa,w.qr), r=Q_RENEW.find(([a])=>a.test(i.label)), rn=st!=="ok"&&r?ahead.find(e=>r[1].test(e.txt)&&e.d<=i.to)||null:null;
+  return {...i, st, d, rn, txt:d<0?"Expired":st==="ok"?"Valid":`${d} day${d===1?"":"s"}`} }
+// worst status for the tab badge; an item with its renewal rostered counts as amber
+function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead(); let worst="";
+  const bump=s=>{ if(s==="bad") worst="bad"; else if(s==="warn"&&worst!=="bad") worst="warn" };
+  for(const i of q.items){ const x=itemState(i,ahead,w); if(!x.forever) bump(x.st==="bad"&&x.rn?"warn":x.st) }
+  const r=recency(); bump(r.s90); bump(r.s30); for(const a of aeroRows()) bump(a.st);
+  return worst }catch(e){ return "" } }
+
+let qIcaoLoad=false;
+function viewQuals(){
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=58").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
+  // due soon: everything amber or red, soonest first
+  const due=[];
+  if(r.s90==="warn"||r.s90==="bad") due.push({n:"Recency: 90 days", d:r.d90, st:r.s90, until:r.u90});
+  if(r.s30==="warn"||r.s30==="bad") due.push({n:"Recency: 30 days", d:r.d30, st:r.s30, until:r.u30});
+  for(const a of ar) if(a.st==="warn"||a.st==="bad") due.push({n:`${a.icao} competence`, d:a.d, st:a.st, until:a.until});
+  for(const i of its) if(!i.forever&&(i.st==="warn"||i.st==="bad")) due.push({n:qLabel(i.label), d:i.d, st:i.st, until:i.to, rn:i.rn});
+  due.sort((a,b)=>a.d-b.d);
+  const dueCard = due.length ? `<section class="card"><h2>Due soon</h2>${due.map(x=>`<div class="qrow"><span class="grow"><span class="t">${esc(x.n)}</span><span class="s">${x.until?`Until ${esc(fmtDay(x.until))} · `:""}${esc(qLeft(x.d))}</span></span><span class="qchips">${qChip(x.st,x.d<0?"Expired":`${x.d} day${x.d===1?"":"s"}`)}${x.rn?`<span class="fchip ok">Course ${esc(fmtDay(x.rn.d).replace(/ \d{4}$/,""))}</span>`:""}</span></div>`).join("")}</section>`
+    : `<section class="card"><h2>Due soon</h2><p class="sub">Nothing runs out in the next ${w.qa} days${q.items.length?"":" that the app knows about. Upload your card below"}.</p></section>`;
+  // recency
+  const recRow=(t,s,st,until,d,body)=>`<div class="qrow"><span class="grow"><span class="t">${t}</span><span class="s">${s}</span></span>${qChip(st, until?(d<0?"Lapsed":`${d} day${d===1?"":"s"}`):"Not enough logged")}</div><p class="qnote">${body}</p>`;
+  const b90 = r.u90 ? `Recent until <b>${esc(fmtDay(r.u90))}</b>, ${esc(qLeft(r.d90))}. ${r.n90T} T/O and ${r.n90L} LDG in the last 90 days.`
+    : `Logged so far: ${r.T.length} T/O and ${r.Lg.length} LDG. Tick T/O and LDG on the data card, or add earlier ones below.`;
+  const b30 = r.u30 ? `Last operated or sim ${esc(fmtDay(r.lastOp))}. Recent until <b>${esc(fmtDay(r.u30))}</b>, ${esc(qLeft(r.d30))}.` : "No operating sector logged yet.";
+  const exRows = q.extra.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x=>`<div class="qedit">
+      <input class="in" type="date" id="qx-${x.id}-date" data-qx="${x.id}" data-qf="date" value="${esc(x.date||"")}" aria-label="Date">
+      <select class="in" id="qx-${x.id}-sim" data-qx="${x.id}" data-qf="sim" aria-label="Where"><option value="0"${x.sim?"":" selected"}>Aircraft</option><option value="1"${x.sim?" selected":""}>Simulator</option></select>
+      <label class="qn"><small>T/O</small><input class="in n" id="qx-${x.id}-to" data-qx="${x.id}" data-qf="to" value="${+x.to||0}" inputmode="numeric"></label>
+      <label class="qn"><small>LDG</small><input class="in n" id="qx-${x.id}-ldg" data-qx="${x.id}" data-qf="ldg" value="${+x.ldg||0}" inputmode="numeric"></label>
+      <button class="del" data-qxdel="${x.id}" aria-label="Remove">×</button></div>`).join("");
+  const recCard = `<section class="card"><h2>Recency</h2>
+    ${recRow("90 days","3 takeoffs and 3 landings as PF",r.s90,r.u90,r.d90,b90)}
+    ${recRow("30 days","An operating sector, or a sim takeoff and landing as PF",r.s30,r.u30,r.d30,b30)}
+    <h3 class="qgrp">Added by hand</h3>
+    <p class="qnote">For the simulator, or landings from before you used the data card.</p>
+    ${exRows}<div class="btns"><button class="btn quiet" data-qxadd="1">Add takeoffs and landings</button></div></section>`;
+  // aerodromes
+  const aeroCard = `<section class="card"><h2>Category C aerodromes</h2><p class="sub">Competence lasts 12 months from your last operation there.</p>
+    ${ar.map(a=>`<div class="qrow"><span class="grow"><span class="t">${esc(a.icao)}${a.ia?` · ${esc(a.ia)}`:""}${a.city?` <span class="qcity">${esc(a.city)}</span>`:""}</span>
+      <span class="s">${a.last?`Last operated ${esc(fmtDay(a.last))}${a.src==="log"?" (from your log)":""} · until ${esc(fmtDay(a.until))}`:"No operation logged yet. Enter your last one."}</span></span>${qChip(a.st,a.until?(a.d<0?"Lapsed":`${a.d} day${a.d===1?"":"s"}`):"Unknown")}</div>
+      <div class="qaedit"><label class="f">Last operated (if not in the log)<input class="in" type="date" id="qa-${esc(a.icao)}" data-qalast="${esc(a.icao)}" value="${esc(a.manual)}"></label><button class="del" data-qadel="${esc(a.icao)}" aria-label="Stop tracking ${esc(a.icao)}">×</button></div>`).join("")}
+    <div class="qadd"><input class="in caps" id="qAeroNew" placeholder="ICAO" maxlength="4" autocomplete="off" autocapitalize="characters" aria-label="ICAO code"><button class="btn quiet" id="qAeroAdd">Add aerodrome</button></div></section>`;
+  // card
+  const groups=[]; for(const i of its){ let g=groups.find(x=>x.g===i.g); if(!g){ g={g:i.g, L:[]}; groups.push(g) } g.L.push(i) }
+  const upload = qBusy ? `<span class="muted">${esc(qBusy)}</span>` : `<label class="btn${q.items.length?" quiet":""}" for="qualsPdf" style="display:inline-flex;align-items:center">${q.items.length?"Upload a newer card":"Upload card PDF"}</label><input type="file" id="qualsPdf" accept=".pdf,application/pdf" hidden>`;
+  const chg = q.changes&&q.changes.length ? `<div class="banner"><span><b>Changes from the last upload</b><ul class="qchg">${q.changes.map(c=>`<li>${esc(c)}</li>`).join("")}</ul></span><button class="btn ghost" data-qchgclear="1">Done</button></div>` : "";
+  const cardCard = `<section class="card"><h2>Competency card</h2>
+    <p class="sub">${q.items.length?`Card dated ${esc(q.cardDate?fmtDay(q.cardDate):"unknown")}${q.loaded?` · read ${esc(fmtDay(q.loaded.slice(0,10)))}`:""}.`:"Upload the card PDF. Only each item's name and dates are kept, on this phone."} Each upload replaces the card data.</p>
+    ${chg}<div class="btns">${upload}</div>
+    ${groups.map(g=>`<h3 class="qgrp">${esc(g.g)}</h3>${g.L.map(i=>`<div class="qrow"><span class="grow"><span class="t">${esc(qLabel(i.label))}</span><span class="s">${i.to?(i.forever?`Valid to ${esc(fmtDay(i.to))}`:`Valid to ${esc(fmtDay(i.to))}${i.from?` · from ${esc(fmtDay(i.from))}`:""}`):i.na?"Not applicable":"No date on the card"}</span></span>
+      <span class="qchips">${qChip(i.st,i.txt)}${i.rn?`<span class="fchip ok">Course ${esc(fmtDay(i.rn.d).replace(/ \d{4}$/,""))}</span>`:""}</span></div>`).join("")}`).join("")}</section>`;
+  const foot = `<p class="qnote qfoot">Amber at ${w.qa} days and red at ${w.qr} for the card and aerodromes; ${w.ra} and ${w.rr} for recency. <button class="qset" data-tab="setup">Change in Setup</button></p>`;
+  return dueCard+recCard+aeroCard+cardCard+foot;
+}
+function qualsSetupCard(){ const w=qualsData().warn, f=(k,l)=>`<label class="f">${l}<input class="in n" id="qw-${k}" data-qw="${k}" value="${w[k]}" inputmode="numeric"></label>`;
+  return `<section class="card"><h2>Quals warnings</h2><p class="sub">Days before something runs out when the Quals tab turns amber, then red.</p>
+    <div class="grid2">${f("qa","Card and aerodromes, amber")}${f("qr","Card and aerodromes, red")}${f("ra","Recency, amber")}${f("rr","Recency, red")}</div></section>` }
+function qualsClick(t){
+  if(t.dataset.qxadd!=null){ qualsData().extra.push({id:uid(), date:isoToday(), sim:false, to:1, ldg:1}); queueProfile(); render(); return true }
+  if(t.dataset.qxdel){ const Q=qualsData(); Q.extra=Q.extra.filter(x=>x.id!==t.dataset.qxdel); queueProfile(); render(); return true }
+  if(t.dataset.qadel){ if(!confirm(`Stop tracking ${t.dataset.qadel}?`)) return true; const Q=qualsData(); Q.aero=Q.aero.filter(a=>a.icao!==t.dataset.qadel); queueProfile(); render(); return true }
+  if(t.id==="qAeroAdd"){ qAeroAdd(); return true }
+  if(t.dataset.qchgclear!=null){ qualsData().changes=null; queueProfile(); render(); return true }
+  return false }
+function qAeroAdd(){ const el=document.getElementById("qAeroNew"), v=(el&&el.value||"").toUpperCase().trim();
+  if(!/^[A-Z]{4}$/.test(v)){ showBanner("Enter the aerodrome's 4-letter ICAO code, like VOCL."); return }
+  const Q=qualsData(); if(!Q.aero.some(a=>a.icao===v)) Q.aero.push({icao:v}); queueProfile(); render() }
+function qualsChange(el){
+  if(el.id==="qualsPdf"){ const f=el.files&&el.files[0]; el.value=""; if(f) readCompCard(f); return true }
+  if(el.id==="qAeroNew"){ if(el.value.trim()) qAeroAdd(); return true }
+  if(el.dataset.qx){ const x=qualsData().extra.find(y=>y.id===el.dataset.qx); if(!x) return true; const f=el.dataset.qf;
+    if(f==="date") x.date=el.value; else if(f==="sim") x.sim=el.value==="1"; else x[f]=Math.max(0,Math.min(20,parseInt(el.value,10)||0));
+    queueProfile(); render(); return true }
+  if(el.dataset.qalast){ const a=qualsData().aero.find(y=>y.icao===el.dataset.qalast); if(a){ if(el.value) a.last=el.value; else delete a.last } queueProfile(); render(); return true }
+  if(el.dataset.qw){ const v=parseInt(el.value,10), Q=qualsData(); if(v>=0&&v<=365) Q.warn[el.dataset.qw]=v; queueProfile(); render(); return true }
+  return false }
+
 
 function viewLog(){
   if(isRecorded(cur)) return recordCard()+viewIntl();
@@ -2964,6 +3155,7 @@ function viewSetup(){
   </section>
   ${fbCard()}
   ${pasteHistCard()}
+  ${qualsSetupCard()}
   <section class="card">
     <h2>Backup</h2>
     <p class="sub">Saved on this device only.${(()=>{try{const l=localStorage.getItem(LS_KEY+".lastBackup");return l?` Last backup: ${esc(l)}.`:" No backup yet."}catch(e){return ""}})()} <button class="refbtn" type="button" data-ref="help|backup" aria-label="Show more">🔽</button></p><p class="sub refx" data-refof="help|backup">Everything is saved in this browser on this device and nowhere else. Phone browsers can clear saved data, so download a backup now and then and keep it in Files or iCloud Drive.</p>
@@ -2996,6 +3188,7 @@ const CARD = [
     [["dep","Departure","c",{ph:"ICAO",max:4}],["arr","Arrival","c",{ph:"ICAO",max:4}],["elev","Elev","n",{u:"ft"}]],
     [["etd","ETD","h",{utc:1}],["atd","ATD","h",{utc:1,act:"off"}],["eta","ETA","h",{utc:1}],["ata","ATA","h",{utc:1,act:"on"}]],
     [["type","Type","ch",{o:["NG","MAX"]}],["role","Role","ch",{o:["PF","PM"]}]],
+    [["rto","T/O","tk",{opt:1}],["rldg","LDG","tk",{opt:1}]],
   ]},
   {sec:"to", title:"Takeoff", rows:[
     [["derate","Derate","ch",{o:["TO","TO-1","TO-2"]}],["clb","Climb","ch",{o:["CLB","CLB-1","CLB-2"]}]],
@@ -3069,7 +3262,7 @@ function cardVal(key, f, auto){ const c=cards[key]||{}; return c[f]!=null&&c[f]!
 const toMin = v=>{ const m=String(v||"").match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null };
 const spanHM = (a,b)=>{ const x=toMin(a), y=toMin(b); if(x==null||y==null) return ""; const d=((y-x)+1440)%1440; return String(Math.floor(d/60)).padStart(2,"0")+":"+String(d%60).padStart(2,"0") };
 function cardProgress(s){ const key=cardKey(s), c=cards[key]; if(!c) return 0;
-  const n=CARD_FIELDS.filter(f=>!(f[3]&&f[3].if)).length, filled=CARD_FIELDS.filter(f=>!(f[3]&&f[3].if)&&c[f[0]]!=null&&c[f[0]]!=="").length;
+  const n=CARD_FIELDS.filter(f=>!(f[3]&&(f[3].if||f[3].opt))).length, filled=CARD_FIELDS.filter(f=>!(f[3]&&(f[3].if||f[3].opt))&&c[f[0]]!=null&&c[f[0]]!=="").length;
   return Math.round(filled/n*100) }
 function cardFieldHTML(f, key, auto, mem){
   const [id,label,type,x={}] = f, c=cards[key]||{};
@@ -3081,12 +3274,13 @@ function cardFieldHTML(f, key, auto, mem){
   const cls=`dc-f dc-${type}${x.shade?" shade":""}${x.red?" red":""}${isAuto?" auto":""}`;
   if(type==="ch"||type==="yn"){ const opts = type==="yn" ? [["Y","Yes"],["N","No"]] : x.o.map(o=>[o,o]);
     return `<div class="${cls}" role="group" aria-label="${esc(label)}">${lab}<span class="dc-seg">${opts.map(([val,t])=>`<button type="button" class="press${v===val?" on":""}" data-cardch="${id}" data-v="${val}" aria-pressed="${v===val}">${t}</button>`).join("")}</span></div>` }
+  if(type==="tk"){ const on=v==="Y"; return `<div class="${cls}" role="group" aria-label="${esc(label)} for recency">${lab}<span class="dc-seg"><button type="button" class="press dc-tick${on?" on":""}" data-cardch="${id}" data-v="Y" aria-pressed="${on}">${on?"✓":"–"}</button></span></div>` }
   if(type==="ta") return `<label class="${cls} wide">${lab}<textarea data-card="${id}" rows="3">${esc(v)}</textarea></label>`;
   const im = type==="n"||type==="h" ? "numeric" : type==="d" ? "decimal" : "text";
   const ph = x.ph || (type==="h"?"HH:MM":"");
   return `<label class="${cls}">${lab}<span class="dc-in"><input data-card="${id}" data-ct="${type}" value="${esc(v)}" placeholder="${esc(ph)}" inputmode="${im}"${type==="c"?' autocapitalize="characters"':""}${x.max?` maxlength="${x.max}"`:""}${x.calc?" readonly":""}${x.list?` list="dc-${x.list}"`:""} autocomplete="off" spellcheck="false">${x.u?`<em>${esc(x.u)}</em>`:""}</span>${sug}</label>` }
 // ---- section completion: a ring per section that fills as you go and turns into a tick ----
-function secFields(g, key, auto){ const c=cards[key]||{}; return g.rows.flat().filter(f=>{ const x=f[3]||{}; if(x.calc) return false; if(x.if) return (c[x.if]||auto[x.if])==="Y"; return true }) }
+function secFields(g, key, auto){ const c=cards[key]||{}; return g.rows.flat().filter(f=>{ const x=f[3]||{}; if(x.calc||x.opt) return false; if(x.if) return (c[x.if]||auto[x.if])==="Y"; return true }) }
 function secPct(g, key, auto){ const F=secFields(g,key,auto); if(!F.length) return 0; return F.filter(f=>{ const v=cardVal(key,f[0],auto); return v!=null&&v!=="" }).length/F.length }
 const ringSVG=(p,cls="")=>`<svg class="dc-ring ${cls}${p>=1?" done":""}" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" class="bg"/><circle cx="10" cy="10" r="7" class="fg" style="stroke-dashoffset:${(44*(1-p)).toFixed(1)}"/><path d="M6.4 10.3l2.4 2.4 4.8-5" class="tk"/></svg>`;
 // ---- the day's sectors in order, for swiping between cards ----
@@ -3148,7 +3342,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=57") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=58") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
@@ -3423,7 +3617,7 @@ function render(){
   renderHeader(); renderBanner();
   const ae=document.activeElement, aid=ae&&ae.id, sel=ae&&ae.selectionStart;
   fdtlCache=fdtlAll();
-  const v = {month:viewMonth,log:viewLog,duty:viewDuty,intl:viewIntl,pay:viewPay,year:viewYear,setup:viewSetup,more:viewMore}[tab]();
+  const v = {month:viewMonth,log:viewLog,duty:viewDuty,intl:viewIntl,pay:viewPay,year:viewYear,setup:viewSetup,more:viewMore,quals:viewQuals}[tab]();
   const view=$("#view"), moved = !navFrom || navFrom.tab!==tab || navFrom.cur!==cur;
   const dir = navFrom && navFrom.tab===tab && navFrom.cur!==cur ? (cur>navFrom.cur?"fwd":"back") : "";
   view.innerHTML = v;
@@ -3444,6 +3638,7 @@ function render(){
 document.addEventListener("click", e=>{
   if(e.target.closest("[data-sheetclose]") && !e.target.closest("button:not([data-sheetclose])")){ closeSheet(); return }
   const t=e.target.closest("button,[role=button],[role=tab]"); if(!t) return;
+  if(qualsClick(t)) return;
   if(t.dataset.ymbar){ cur=t.dataset.ymbar; tab="month"; render(); return }
   if(t.dataset.world){ openWorld(); return }
   if(t.dataset.wx){ openWx(); return }
@@ -3534,6 +3729,7 @@ document.addEventListener("click", e=>{
 });
 document.addEventListener("change", e=>{
   const el=e.target;
+  if(qualsChange(el)) return;
   if(el.id==="rosterFile"){ const f=el.files&&el.files[0]; if(f){ const r=new FileReader(); r.onload=()=>applyRoster(r.result); r.readAsText(f) } el.value=""; return }
   if(el.id==="rosterText") return;
   if(el.id==="rosterPdf"){ const f=el.files&&el.files[0]; el.value=""; if(f) readRosterPdf(f); return }
@@ -3589,7 +3785,7 @@ document.addEventListener("change", e=>{
 document.addEventListener("keydown", e=>{ if(e.key==="Enter" && e.target.matches("input.in")){ e.target.blur(); } });
 document.addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.matches('[role=button],[role=tab]')){ e.preventDefault(); e.target.click() } });
 
-try{ const t=localStorage.getItem(LS_KEY+".tab"); if(t && ["month","log","duty","intl","pay","year","setup","more"].includes(t)) tab = t==="intl" ? "log" : t }catch(e){}
+try{ const t=localStorage.getItem(LS_KEY+".tab"); if(t && ["month","log","duty","intl","pay","year","setup","more","quals"].includes(t)) tab = t==="intl" ? "log" : t }catch(e){}
 initStore();
 if("serviceWorker" in navigator && location.protocol==="https:"){
   window.addEventListener("load",()=>{ Promise.resolve().catch(()=>{}) });
