@@ -78,7 +78,7 @@ export function adKind(t){
   return {k:"gen"} }
 
 export function parseBriefing(rawLines){
-  const L = clean(rawLines), B = {date:null, dep:null, dest:null, altn:[], route:[], fl:null, winds:{}, notams:[], aup:[], wx:{}, icao:{}};
+  const L = clean(rawLines), B = {date:null, dep:null, dest:null, altn:[], route:[], fl:null, winds:{}, notams:[], aup:[], wx:{}, icao:{}, sects:[]};
   // date of the plan: a line holding only "10NOV26"
   for(const l of L){ const m = l.match(/^(\d{2})([A-Z]{3})(\d{2})$/); if(m && m[2] in MON){ B.date = Date.UTC(2000 + +m[3], MON[m[2]], +m[1]); break } }
   for(const l of L){ const m = l.match(/\bDEP ([A-Z]{4})\/([A-Z]{3})\b.*\bDEST ([A-Z]{4})\/([A-Z]{3})\b/); if(m){ B.dep = m[2]; B.dest = m[4]; B.icao[m[1]] = m[2]; B.icao[m[3]] = m[4]; break } }
@@ -125,7 +125,7 @@ export function parseBriefing(rawLines){
 
   // NOTAMs: "VOMMA3449/26 (05 NOV 26)", then "*05 NOV 2026 01:00-31 JAN 2027 12:30*", then the text
   const idOf = l => l.match(/(?:^|\s)\*?([A-Z]{4}[A-Z]\d{1,4}\/\d{2}|AIC \d{2,5}\/\d{2}) \((\d{2} [A-Z]{3} \d{2})\)$/);
-  const isSect = l => /^[A-Z]{3,4} \/ [A-Z][A-Z ]+$/.test(l) && !/\d/.test(l);
+  const isSect = l => /^[A-Z]{3,4} \/ [A-Z][A-Z ]+$/.test(l) && !/\d/.test(l) && !/^(TAXI|LDG|TKOF|DEP|ARR|ALTN|DEST|ETOPS|EDTO) \//.test(l);   // flight plan headings look alike
   let sect = null, ad = false, cur = null; const seen = new Set();
   const close = () => { if(!cur) return; const n = cur; cur = null; if(seen.has(n.id)) return; seen.add(n.id); build(n) };
   const build = n => {
@@ -157,7 +157,8 @@ export function parseBriefing(rawLines){
   };
   for(const l of L){
     if(l === "AERODROME INFORMATION"){ close(); ad = true; continue }
-    if(isSect(l)){ close(); const m = l.match(/^([A-Z]{3,4}) \/ (.+)$/); sect = ad && m[2].length === 3 ? m[2] : m[1]; continue }
+    if(isSect(l)){ close(); const m = l.match(/^([A-Z]{3,4}) \/ (.+)$/); sect = ad && m[2].length === 3 ? m[2] : m[1];
+      const key = (ad ? "AD:" : "FIR:") + sect; if(!B.sects.includes(key)) B.sects.push(key); continue }   // every place the briefing covers, NIL ones too
     const idm = idOf(l); if(idm){ close(); const title = l.slice(0, idm.index).trim(); cur = {id:idm[1], issued:idm[2], lines:[], title}; continue }
     if(cur){
       // a weather or flight plan block ends the NOTAM area
@@ -170,6 +171,14 @@ export function parseBriefing(rawLines){
   // forecast flying times are not read; the map's time slider covers the whole plan day
   return B;
 }
+
+// a briefing's NOTAM location: the airport, or the FIR section it was listed under
+export const locKey = n => n.ad ? "AD:" + n.ad : "FIR:" + (n.sect || "-");
+
+// observation time of a METAR ("092230Z"), in the month of the briefing date (or the month before, for day numbers after it)
+export function obsTime(metar, ref){
+  const m = (metar || "").match(/^(\d{2})(\d{2})(\d{2})Z/); if(!m || !ref) return null; const d = new Date(ref);
+  let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), +m[1], +m[2], +m[3]); if(t - ref > 20 * 864e5) t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, +m[1], +m[2], +m[3]); return t }
 
 // weather category from a METAR: visibility in metres, lowest broken/overcast layer in feet
 export function wxCat(metar){

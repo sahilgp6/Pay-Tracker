@@ -859,3 +859,23 @@ html.isl-hw #isl{top:11px}   /* home-screen app: grow out of the camera cutout i
 .bm .maplibregl-ctrl-attrib{font-size:10px} .bm .maplibregl-ctrl-bottom-right{bottom:calc(env(safe-area-inset-bottom) + 100px)}
 .mapbrief{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding:11px 13px;border-radius:14px;background:var(--surface2);font-weight:700;font-size:14px;cursor:pointer} .mapbrief small{display:block;font-weight:500;color:var(--muted);font-size:12px}
 html.bm-open #isl{visibility:hidden;pointer-events:none}
+/* one map, two views */
+.bmseg{display:flex;background:rgba(255,255,255,.12);border-radius:12px;padding:3px;flex:none}
+.bmseg [role=tab]{padding:7px 11px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;color:#f4f1ea;opacity:.8}
+.bmseg [aria-selected=true]{background:#e9b949;color:#1b1b1b;opacity:1} .bmseg .dis{opacity:.35;pointer-events:none}
+.bm[data-view=month] .bmup,.bm[data-view=month] .bmtime,.bm[data-view=month] .bmchips,.bm[data-view=month] .bmclock,.bm[data-view=month] .bmcount,.bm[data-view=month] .bmback{display:none}
+.bm[data-view=month] .bmwp,.bm[data-view=month] .bmap,.bm[data-view=month] .bmwind,.bm[data-view=month] .bmaid{display:none!important}
+.bm[data-view=brief] .bmst,.bm[data-view=brief] .bmmonth{display:none}
+.bmmonth{font-size:13px;font-weight:600;opacity:.85;text-align:center;padding:6px 4px 2px}
+.bm[data-view=month] .bmsheet{bottom:calc(env(safe-area-inset-bottom) + 56px)}
+.bmjets{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.bmst{display:flex;align-items:center;gap:5px;cursor:pointer;padding:6px 6px 6px 0;position:relative}
+.bmst i{width:11px;height:11px;border-radius:50%;background:#e9b949;border:2px solid #fff;box-shadow:0 0 0 3px rgba(0,0,0,.25)}
+.bmst.abroad i{background:#7fb3ff} .bmst.home i{width:14px;height:14px}
+.bmst u{position:absolute;left:-3px;top:50%;width:20px;height:20px;margin-top:-10px;border-radius:50%;border:2px solid #e9b949;animation:bmpulse 2.2s ease-out infinite}
+@keyframes bmpulse{from{transform:scale(.6);opacity:.9}to{transform:scale(2);opacity:0}}
+@media (prefers-reduced-motion: reduce){.bmst u{animation:none;opacity:.5}}
+.bmst span{font:800 12px/1 var(--fb,system-ui);color:#fff;background:rgba(10,20,34,.75);padding:3px 6px;border-radius:6px}
+.bmap.stale i{opacity:.55;box-shadow:0 0 0 3px rgba(0,0,0,.25),inset 0 0 0 2px rgba(255,255,255,.5)}
+.bmbub{padding-top:2px} .bmbub .gbh b{font-size:20px}
+@media (max-width:380px){.bmseg [role=tab]{padding:7px 8px;font-size:12.5px} .bmt b{font-size:15px}}

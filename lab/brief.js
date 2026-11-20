@@ -1,10 +1,13 @@
-/* Briefing map (lab). A full-screen 3D globe map (MapLibre, OpenFreeMap tiles) with the day's briefing drawn on it:
-   the planned route, NOTAM areas with their levels and active times, airport weather, winds aloft, and a close-up of
-   each airport with its runway, taxiway and navaid NOTAMs. The PDF is read on the phone and the result kept only in
+/* The map (lab). One full-screen 3D globe (MapLibre, OpenFreeMap tiles) with two views:
+   Month: the month's routes with the 737s flying them; tap a plane, route or airport for the flights behind it.
+   Briefing: the planned route, NOTAM areas with their levels and active times, airport weather, winds aloft, and a
+   close-up of each airport with its runway, taxiway and navaid NOTAMs.
+   Briefings build up by place: each new PDF replaces the NOTAMs and weather for the places it covers (FIR sections and
+   airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat } from "./briefparse.js?b=65";
-import { RWY, ICAO } from "./rwydata.js?b=65";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime } from "./briefparse.js?b=66";
+import { RWY, ICAO } from "./rwydata.js?b=66";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLE = HOST + "/styles/liberty";
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -56,10 +59,30 @@ async function loadLib(){
   return ml;
 }
 
-/* ---------- briefing storage: this phone only, outside backups ---------- */
-async function loadBrief(){ try{ const c = await caches.open(BCACHE), r = await c.match(BKEY); if(!r) return null; const B = await r.json();
-    if(B.date && Date.now() - B.date > 3 * 864e5){ await c.delete(BKEY); return null } return B }catch(e){ return null } }
-async function saveBrief(B){ try{ const c = await caches.open(BCACHE); await c.put(BKEY, new Response(JSON.stringify(B), {headers:{"Content-Type":"application/json"}})) }catch(e){} }
+/* ---------- briefing storage by place: this phone only, outside backups ---------- */
+const SKEY = "./store.json";
+const emptyStore = () => ({v:2, last:null, locs:{}, wx:{}, aup:null});
+async function putStore(S){ try{ const c = await caches.open(BCACHE); await c.put(SKEY, new Response(JSON.stringify(S), {headers:{"Content-Type":"application/json"}})) }catch(e){} }
+function prune(S){ const now = Date.now(); for(const k in S.locs) S.locs[k].notams = S.locs[k].notams.filter(n => n.to == null || n.to >= now - 36e5) }
+async function loadStore(){
+  try{ const c = await caches.open(BCACHE); const r = await c.match(SKEY); let S = r ? await r.json() : null;
+    if(!S){ const old = await c.match(BKEY); if(old){ S = mergeBrief(emptyStore(), await old.json()); await c.delete(BKEY); await putStore(S) } }   // build 65 kept one briefing
+    if(S) prune(S); return S }catch(e){ return null } }
+function mergeBrief(S, nb){
+  const groups = {}; (nb.sects || []).forEach(k => groups[k] = []);
+  for(const n of nb.notams){ if(n.kind === "aup") continue; const k = locKey(n); (groups[k] = groups[k] || []).push(n) }
+  const kept = Object.keys(S.locs).filter(k => !(k in groups)).length;
+  for(const k in groups) S.locs[k] = {date:nb.date, notams:groups[k]};
+  for(const k in nb.wx) S.wx[k] = Object.assign({}, nb.wx[k], {date:nb.date});
+  if(nb.aup && nb.aup.length) S.aup = {date:nb.date, rows:nb.aup};
+  if(nb.route.length || nb.dep) S.last = {date:nb.date, dep:nb.dep, dest:nb.dest, altn:nb.altn, route:nb.route, fl:nb.fl, winds:nb.winds};
+  S.updated = Object.keys(groups).length; S.kept = kept; return S }
+function viewOf(S){
+  if(!S) return null; const L = S.last || {}, seen = new Set(), notams = [];
+  for(const k in S.locs) for(const n of S.locs[k].notams){ if(seen.has(n.id)) continue; seen.add(n.id); n.locDate = S.locs[k].date; notams.push(n) }
+  if(!notams.length && !S.last && !Object.keys(S.wx).length) return null;
+  return {date:L.date || null, dep:L.dep || null, dest:L.dest || null, altn:L.altn || [], route:L.route || [], fl:L.fl || null, winds:L.winds || {},
+    notams, wx:S.wx, aup:S.aup ? S.aup.rows : [], places:Object.keys(S.locs).length} }
 async function dropBrief(){ try{ await caches.delete(BCACHE) }catch(e){} }
 
 /* ---------- PDF to lines ---------- */
@@ -94,6 +117,11 @@ function shapeDist(p, sh){ const k = Math.cos(p[1] * Math.PI / 180);
   if(sh.t === "pt") return gcNm(p, sh.c);
   if(sh.t === "poly" && inPoly(p, sh.p)) return 0;
   let d = 1e9; const P = sh.p; for(let i = 0; i < P.length - 1; i++) d = Math.min(d, segDist(p, P[i], P[i + 1], k)); return d }
+function gcAt(A, B, f){ const r = Math.PI / 180, v = p => [Math.cos(p[1] * r) * Math.cos(p[0] * r), Math.cos(p[1] * r) * Math.sin(p[0] * r), Math.sin(p[1] * r)];
+  const a = v(A), b = v(B), d = Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])); if(d < 1e-9) return A.slice();
+  const ka = Math.sin((1 - f) * d) / Math.sin(d), kb = Math.sin(f * d) / Math.sin(d), x = ka * a[0] + kb * b[0], y = ka * a[1] + kb * b[1], z = ka * a[2] + kb * b[2];
+  return [Math.atan2(y, x) / r, Math.atan2(z, Math.hypot(x, y)) / r] }
+const gcLine = (A, B, n = 48) => Array.from({length:n + 1}, (_, i) => gcAt(A, B, i / n));
 function sampleRoute(pts, step = 5){ const out = []; let s = 0;
   for(let i = 0; i < pts.length - 1; i++){ const a = pts[i], b = pts[i + 1], L = gcNm(a, b), n = Math.max(1, Math.ceil(L / step));
     for(let j = 0; j < n; j++){ const f = j / n; out.push({p:[a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], s:s + L * f}) } s += L }
@@ -125,10 +153,11 @@ function tilePlan(routePts, apts, opt){
 /* ======================================================================================================== */
 export async function openBriefMap(ctx){
   const lib = await loadLib(), apx = ctx.apx, base = ctx.base || "BOM";
-  const o = document.createElement("div"); o.className = "bm"; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Briefing map");
+  const o = document.createElement("div"); o.className = "bm"; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Map");
   o.innerHTML = `<div class="bmtop">
       <div role="button" tabindex="0" class="wclose hz" data-bm="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
-      <div class="bmt"><b>Briefing map</b><span class="bmsub">Loading the map…</span></div>
+      <div class="bmt"><b class="bmtt">Map</b><span class="bmsub">Loading the map…</span></div>
+      <div class="bmseg" role="tablist" aria-label="View"><div role="tab" tabindex="0" data-bm="vmonth">Month</div><div role="tab" tabindex="0" data-bm="vbrief">Briefing</div></div>
       <label class="wclose hz bmup" aria-label="Upload briefing PDF"><input type="file" accept="application/pdf,.pdf" hidden><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></label>
     </div>
     <div class="bmmap"></div>
@@ -136,6 +165,7 @@ export async function openBriefMap(ctx){
     <div role="button" tabindex="0" class="bmpill bmback" data-bm="route" hidden>← Route</div>
     <div class="bmsheet" aria-live="polite"><div class="bmgrab" data-bm="sheet"></div><div class="bmsc"></div></div>
     <div class="bmbar">
+      <div class="bmmonth"></div>
       <div class="bmtime"><input type="range" class="bmslide" aria-label="Time" step="1"><span class="bmtl"></span></div>
       <div class="bmchips">
         <div role="button" tabindex="0" class="bmchip" data-bm="nt">NOTAMs</div>
@@ -148,7 +178,7 @@ export async function openBriefMap(ctx){
     </div>`;
   document.body.appendChild(o); document.documentElement.classList.add("sheet-open", "bm-open"); if(ctx.haptics) ctx.haptics(o);
   const sheet = $(o, ".bmsheet"), sc = $(o, ".bmsc"), slide = $(o, ".bmslide");
-  let lastNt = [], lastRw = [], B = await loadBrief(), T = Date.now(), map = null, markers = [], windM = [], aidM = [], styleOK = false, closed = false, routePts = [], apts = [], zoomAp = null;
+  let lastNt = [], lastRw = [], S = await loadStore(), B = viewOf(S), T = Date.now(), view = null, mMarkers = [], jets = null, map = null, markers = [], windM = [], aidM = [], styleOK = false, closed = false, routePts = [], apts = [], zoomAp = null;
   // Close works from the first moment, even while the map is still loading
   $(o, '[data-bm="close"]').addEventListener("click", e => { e.stopPropagation(); close() });
 
@@ -163,7 +193,7 @@ export async function openBriefMap(ctx){
   const c0 = apx.get(base) || {lon:73, lat:19};
   map = new lib.Map({container:$(o, ".bmmap"), style, center:[c0.lon, c0.lat], zoom:3.6, maxPitch:70, attributionControl:{compact:true}, fadeDuration:0});
   map.on("error", () => {});
-  window.__bm = {map, get B(){ return B }, get route(){ return routePts }, get nt(){ return lastNt }, get rw(){ return lastRw }};
+  window.__bm = {map, get B(){ return B }, get S(){ return S }, get view(){ return view }, get route(){ return routePts }, get nt(){ return lastNt }, get rw(){ return lastRw }, get jets(){ return jets }};
   await new Promise(ok => { if(map.isStyleLoaded()) ok(); else map.once("style.load", ok) });
   if(closed) return;
 
@@ -182,6 +212,85 @@ export async function openBriefMap(ctx){
   if(hasOMT) map.addLayer({id:"bm-twy", type:"line", source:"openmaptiles", "source-layer":"aeroway", minzoom:11, filter:["==", 1, 0],
     paint:{"line-color":"#ff5a45", "line-width":["interpolate", ["linear"], ["zoom"], 12, 2, 16, 9], "line-dasharray":[1.4, .8]}});
 
+  map.addSource("bm-mr", {type:"geojson", data:fc()});
+  map.addLayer({id:"bm-mrc", type:"line", source:"bm-mr", paint:{"line-color":"#0b1626", "line-width":5, "line-opacity":.4}, layout:{"line-cap":"round"}});
+  map.addLayer({id:"bm-mrl", type:"line", source:"bm-mr", filter:["!", ["get", "dh"]], paint:{"line-color":"#e9b949", "line-width":2.4}, layout:{"line-cap":"round"}});
+  map.addLayer({id:"bm-mrd", type:"line", source:"bm-mr", filter:["get", "dh"], paint:{"line-color":"#e9b949", "line-width":2, "line-opacity":.7, "line-dasharray":[2, 1.6]}});
+  const BRIEF_LAYERS = ["bm-ntf", "bm-ntl", "bm-ntp", "bm-rtc", "bm-rtl", "bm-rwf", "bm-rwx"].concat(hasOMT ? ["bm-twy"] : []), MONTH_LAYERS = ["bm-mrc", "bm-mrl", "bm-mrd"];
+  const M = ctx.month && ctx.month.routes && ctx.month.routes.length ? ctx.month : null;
+
+  /* ---------- month view: routes, airports, and the 737s flying them ---------- */
+  function monthSetup(){
+    mMarkers.forEach(m => m.remove()); mMarkers = []; if(!M){ map.getSource("bm-mr").setData(fc()); return }
+    map.getSource("bm-mr").setData(fc(M.routes.map(r => ({type:"Feature", properties:{k:r.k, dh:!!r.dh}, geometry:{type:"LineString", coordinates:gcLine([r.A.lon, r.A.lat], [r.B.lon, r.B.lat])}}))));
+    M.stations.forEach(st => { const e = document.createElement("div"); e.className = "bmst" + (st.home ? " home" : "") + (st.abroad ? " abroad" : "");
+      e.setAttribute("role", "button"); e.tabIndex = 0; e.dataset.bmst = st.code; e.setAttribute("aria-label", st.code + (st.city ? ", " + st.city : ""));
+      e.innerHTML = `<i></i>${st.home ? "<u></u>" : ""}<span>${esc(st.code)}</span>`;
+      mMarkers.push(new lib.Marker({element:e, anchor:"left", offset:[-7, 0]}).setLngLat([st.lon, st.lat]).addTo(map)) });
+  }
+  function fitMonth(anim){ if(!M) return; const P = M.stations.map(s => [s.lon, s.lat]);
+    const b = P.reduce((b, p) => [[Math.min(b[0][0], p[0]), Math.min(b[0][1], p[1])], [Math.max(b[1][0], p[0]), Math.max(b[1][1], p[1])]], [[180, 90], [-180, -90]]);
+    map.fitBounds(b, {padding:{top:130, bottom:150, left:60, right:60}, duration:anim && !ctx.rm() ? 1100 : 0, pitch:0, bearing:0, maxZoom:7}) }
+  async function startJets(){
+    if(!M || closed) return; if(jets){ jets.run(); return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=66")) }catch(e){ return }
+    if(closed) return;
+    const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
+    let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
+    R.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    const scene = new THREE.Scene(), cam = new THREE.OrthographicCamera(0, 1, 0, -1, -3000, 3000);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4658, 1.5)); const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-300, 400, 900); scene.add(sun);
+    const base = build737({detail:false});
+    const planes = M.routes.map((r, i) => { const g = new THREE.Group(), j = base.clone(true);
+      if(r.dh) j.traverse(m => { if(m.isMesh){ m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = .5 } });
+      j.rotation.x = Math.PI / 2 - .32; g.add(j); scene.add(g);
+      const A = [r.A.lon, r.A.lat], B2 = [r.B.lon, r.B.lat], L = gcNm(A, B2), dur = Math.max(6, Math.min(14, L / 70));
+      return {r, g, A, B:B2, dur, off:(i * .37) % 1, cyc:2 * dur + 2, pos:null, from:r.a} });
+    let raf = 0, running = false;
+    const size = () => { const c = map.getContainer(), W = c.clientWidth, H = c.clientHeight; R.setSize(W, H, false); cam.right = W; cam.bottom = -H; cam.updateProjectionMatrix() };
+    size(); map.on("resize", size);
+    function frame(now){
+      if(!running || closed) return; raf = requestAnimationFrame(frame);
+      if(document.hidden) return;
+      const ctr = map.getCenter(), cen = [ctr.lng, ctr.lat], px = 30 * (map.getZoom() > 7 ? 1.25 : 1) / .034;
+      for(const p of planes){
+        let ph = ((now / 1000) + p.off * p.cyc) % p.cyc, f, fwd = true;
+        if(ctx.rm()){ f = .5 } else if(ph < p.dur){ f = ph / p.dur } else if(ph < p.dur + 1){ f = 1 } else if(ph < 2 * p.dur + 1){ f = 1 - (ph - p.dur - 1) / p.dur; fwd = false } else { f = 0; fwd = false }
+        f = f < .5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+        const ll = gcAt(p.A, p.B, f), ahead = gcAt(p.A, p.B, Math.min(1, Math.max(0, f + (fwd ? .01 : -.01))));
+        p.pos = ll; p.from = fwd ? p.r.a : p.r.b;
+        if(gcNm(cen, ll) > 4800){ p.g.visible = false; continue }   // round the back of the globe
+        const a = map.project(ll), b = map.project(ahead); p.g.visible = true;
+        p.g.position.set(a.x, -a.y, 0); p.g.rotation.z = Math.atan2(-(b.y - a.y), b.x - a.x) + Math.PI / 2; p.g.scale.setScalar(px * (p.sel ? 1.3 : 1));
+        p.sx = a.x; p.sy = a.y;
+      }
+      R.render(scene, cam);
+    }
+    jets = {planes, el:cv,
+      run(){ if(running) return; running = true; cv.hidden = false; raf = requestAnimationFrame(frame) },
+      stop(){ running = false; cancelAnimationFrame(raf); cv.hidden = true },
+      hit(x, y){ let best = null, d = 30; for(const p of planes){ if(!p.g.visible || p.sx == null) continue; const q = Math.hypot(p.sx - x, p.sy - y); if(q < d){ d = q; best = p } } return best },
+      select(k){ planes.forEach(p => p.sel = p.r.k === k) },
+      kill(){ this.stop(); try{ R.dispose() }catch(e){} cv.remove() } };
+    if(view === "month") jets.run();
+  }
+  function monthSheet(kind, key, dirFrom){ if(!M || !M.bubble) return; const h = M.bubble(kind, key, dirFrom); if(!h) return;
+    openSheet("month", `<div class="bmbub">${h}</div>`); if(jets) jets.select(kind === "route" ? key : null) }
+
+  /* ---------- switching views ---------- */
+  function setView(v, anim){
+    if(v === "month" && !M) v = "brief"; view = v; o.dataset.view = v;
+    $(o, '[data-bm="vmonth"]').setAttribute("aria-selected", String(v === "month")); $(o, '[data-bm="vbrief"]').setAttribute("aria-selected", String(v === "brief"));
+    $(o, '[data-bm="vmonth"]').classList.toggle("dis", !M);
+    BRIEF_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "brief" ? "visible" : "none"));
+    MONTH_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "month" ? "visible" : "none"));
+    closeSheet(); zoomAp = null;
+    if(v === "month"){ $(o, ".bmtt").textContent = M.label; $(o, ".bmsub").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · tap a plane or airport`;
+      $(o, ".bmmonth").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · ${M.stations.length} airports · drag to spin, pinch to zoom`;
+      $(o, ".bmcount").textContent = M.label; fitMonth(anim); startJets() }
+    else { if(jets) jets.stop(); $(o, ".bmtt").textContent = "Briefing map"; vis(); sub(); count(); if(B) fitRoute(anim); if(!B) openSheet("list", emptyHtml()) }
+  }
+
   /* ---------- briefing to map ---------- */
   function setup(){
     markers.forEach(m => m.remove()); markers = []; zoomAp = null;
@@ -195,12 +304,12 @@ export async function openBriefMap(ctx){
       markers.push(new lib.Marker({element:e, anchor:"left", offset:[-5, 0]}).setLngLat([p.lon, p.lat]).addTo(map)) });
     // airports: weather colour, tap for the close-up
     const codes = [...new Set([B.dep, B.dest, ...(B.altn || []), ...Object.keys(B.wx)].filter(Boolean))];
-    codes.forEach(k => { const a = apx.get(k); if(!a) return; const w = B.wx[k], m = w && (w.metar ? wxCat(w.metar) : w.taf ? wxCat(w.taf) : null);
-      const e = document.createElement("div"); e.className = "bmap" + ([B.dep, B.dest].includes(k) ? " main" : "") + (B.altn && B.altn.includes(k) ? " alt" : "");
+    codes.forEach(k => { const a = apx.get(k); if(!a) return; const w = B.wx[k], m = w && (w.metar ? wxCat(w.metar) : w.taf ? wxCat(w.taf) : null), ob = w && obsTime(w.metar, w.date);
+      const e = document.createElement("div"); e.className = "bmap" + ([B.dep, B.dest].includes(k) ? " main" : "") + (B.altn && B.altn.includes(k) ? " alt" : "") + (!ob || Date.now() - ob > 3 * 36e5 ? " stale" : "");
       e.setAttribute("role", "button"); e.tabIndex = 0; e.dataset.bmap = k; e.setAttribute("aria-label", k + " airport");
       e.innerHTML = `<i style="background:${m ? CATC[m.cat] : "#8a94a6"}"></i><span>${esc(k)}</span>`;
       markers.push(new lib.Marker({element:e, anchor:"left", offset:[-7, 0]}).setLngLat([a.lon, a.lat]).addTo(map)) });
-    winds(); paintTime(true); fitRoute(false);
+    winds(); paintTime(true); if(view === "brief") fitRoute(false);
   }
   function fitRoute(anim){ const P = routePts.concat(apts); if(!P.length) return;
     const b = P.reduce((b, p) => [[Math.min(b[0][0], p[0]), Math.min(b[0][1], p[1])], [Math.max(b[1][0], p[0]), Math.max(b[1][1], p[1])]], [[180, 90], [-180, -90]]);
@@ -213,7 +322,7 @@ export async function openBriefMap(ctx){
         : n.shape.t === "line" ? {type:"LineString", coordinates:n.shape.p} : {type:"Point", coordinates:n.shape.c};
       out.push({type:"Feature", properties:p, geometry:g}) }
     return out }
-  function vis(){ const show = prefs.nt ? "visible" : "none", f = prefs.mine ? ["==", ["get", "mine"], true] : true;
+  function vis(){ if(view === "month") return; const show = prefs.nt ? "visible" : "none", f = prefs.mine ? ["==", ["get", "mine"], true] : true;
     for(const [id, g] of [["bm-ntf", ntF], ["bm-ntl", ntL], ["bm-ntp", ntP]]){ map.setLayoutProperty(id, "visibility", show); map.setFilter(id, f === true ? g : ["all", g, f]) }
     o.classList.toggle("nowx", !prefs.wx); o.classList.toggle("nowind", !prefs.wind);
     $(o, '[data-bm="nt"]').classList.toggle("on", prefs.nt); $(o, '[data-bm="mine"]').classList.toggle("on", prefs.mine); $(o, '[data-bm="wx"]').classList.toggle("on", prefs.wx);
@@ -256,7 +365,7 @@ export async function openBriefMap(ctx){
       windM.push(new lib.Marker({element:e, anchor:"right", offset:[-8, 0]}).setLngLat([p.lon, p.lat]).addTo(map)) } }
 
   /* ---------- time ---------- */
-  function range(){ const s = B && B.date ? B.date : Date.now() - 6 * 36e5 - Date.now() % 9e5; return [s, s + 30 * 36e5] }
+  function range(){ const now = Date.now(), s = B && B.date && now > B.date - 6 * 36e5 && now < B.date + 30 * 36e5 ? B.date : now - 6 * 36e5 - now % 9e5; return [s, s + 30 * 36e5] }
   function paintTime(init){
     const [a, b] = range(); slide.min = 0; slide.max = Math.round((b - a) / 6e5);
     if(init){ T = Math.min(b, Math.max(a, Date.now())); slide.value = Math.round((T - a) / 6e5) }
@@ -264,7 +373,7 @@ export async function openBriefMap(ctx){
     $(o, ".bmclock").textContent = hhmm(T) + (Math.abs(T - Date.now()) < 6e5 ? " · now" : "");
     lastNt = ntFeatures(); map.getSource("bm-nt").setData(fc(lastNt)); adPaint(); vis(); count();
   }
-  function count(){ const el = $(o, ".bmcount");
+  function count(){ const el = $(o, ".bmcount"); if(view === "month") return;
     if(!B){ el.textContent = "No briefing loaded"; return }
     if(zoomAp){ const L = B.notams.filter(n => n.ad === zoomAp), on = L.filter(n => activeAt(n, T)).length; el.textContent = `${zoomAp}: ${on} of ${L.length} NOTAMs in force`; return }
     const S = B.notams.filter(n => n.shape), m = S.filter(n => n.mine), on = m.filter(n => activeAt(n, T)).length;
@@ -284,7 +393,8 @@ export async function openBriefMap(ctx){
   }
   function wxBlock(k){ const w = B && B.wx[k]; if(!w) return `<p class="bmv">No weather for ${esc(k)} in this briefing.</p>`;
     const m = w.metar ? wxCat(w.metar) : w.taf ? wxCat(w.taf) : null;
-    return `${m ? `<div class="bmtags"><span class="bmk" style="color:${CATC[m.cat]};background:${CATC[m.cat]}22">${CATN[m.cat]}${w.metar ? "" : " (forecast)"}</span></div>
+    const ob = obsTime(w.metar, w.date), old = !ob || Date.now() - ob > 3 * 36e5;
+    return `${m ? `<div class="bmtags"><span class="bmk" style="color:${CATC[m.cat]};background:${CATC[m.cat]}22">${CATN[m.cat]}${w.metar ? "" : " (forecast)"}</span>${ob ? `<span class="bmk${old ? " on" : ""}">Observed ${hhmm(ob)} ${dayLbl(ob)}${old ? " · old" : ""}</span>` : ""}</div>
       <div class="bmwx">${m.wind ? `<div><span>Wind</span><b>${m.wind.kt === 0 ? "Calm" : (m.wind.dir === "VRB" ? "Variable" : m.wind.dir + "°") + " " + m.wind.kt + " kt" + (m.wind.g ? " G" + m.wind.g : "")}</b></div>` : ""}
       ${m.vis != null ? `<div><span>Visibility</span><b>${m.vis >= 9999 ? "10 km+" : m.vis.toLocaleString("en-IN") + " m"}</b></div>` : ""}
       <div><span>Ceiling</span><b>${m.ceil != null ? m.ceil.toLocaleString("en-IN") + " ft" : "None"}</b></div>
@@ -293,7 +403,8 @@ export async function openBriefMap(ctx){
   const GROUPS = [["rwy", "Runways"], ["twy", "Taxiways"], ["aid", "Navaids"], ["lgt", "Lighting"], ["dist", "Runway distances"], ["wip", "Works"], ["gen", "Other"]];
   function apSheet(k){
     const a = apx.get(k) || {}, L = B ? B.notams.filter(n => n.ad === k) : [], role = !B ? "" : k === B.dep ? "Departure" : k === B.dest ? "Destination" : (B.altn || []).includes(k) ? "Alternate" : "";
-    openSheet("ap", `<div class="bmn"><h4>${esc(k)} · ${esc(a.city || (B && B.wx[k] && B.wx[k].name) || "")}${role ? `<small>${role}</small>` : ""}</h4>${wxBlock(k)}</div>
+    const from = L.length && L[0].locDate ? `<p class="bmv dim">NOTAMs from the briefing of ${dayLbl(L[0].locDate)}</p>` : "";
+    openSheet("ap", `<div class="bmn"><h4>${esc(k)} · ${esc(a.city || (B && B.wx[k] && B.wx[k].name) || "")}${role ? `<small>${role}</small>` : ""}</h4>${wxBlock(k)}${from}</div>
       ${L.length ? GROUPS.map(([g, t]) => { const G = L.filter(n => (n.adk || {}).k === g); if(!G.length) return "";
         return `<div class="bmgh">${t}</div>` + G.map(n => `<details class="bmd${activeAt(n, T) ? "" : " off"}"><summary><span>${esc(n.text.split("\n")[0].slice(0, 90))}</span>${stateTag(n)}</summary><p class="bmv">${esc(n.id)} · ${validity(n)}</p><pre>${esc(n.text)}</pre></details>`).join("") }).join("") : `<p class="bmv">No airport NOTAMs for ${esc(k)} in this briefing.</p>`}`);
   }
@@ -311,8 +422,9 @@ export async function openBriefMap(ctx){
       ${[B.dep, B.dest, ...(B.altn || [])].filter(Boolean).map(k => `<div role="button" tabindex="0" class="bmrow" data-bmap="${esc(k)}"><i style="background:#8a94a6"></i><span>${esc(k)}<small>${B.notams.filter(n => n.ad === k).length} NOTAMs</small></span><span class="bmk">Zoom in</span></div>`).join("")}
       <details class="bmd"><summary><span>Airspace activations at FL${B.fl || 350} (${aup.length})</span></summary>${aup.map(r => `<p class="bmv${aOn(r) ? "" : " dim"}"><b>${esc(r.id)}</b> ${esc(r.place)} ${r.a}-${r.b}Z ${esc(r.loT)} to ${esc(r.hiT)}</p>`).join("")}<p class="bmv">The briefing gives these as names only, so they cannot be drawn.</p></details>
       <details class="bmd"><summary><span>Other NOTAMs, no area (${other.length})</span></summary>${other.map(n => `<p class="bmv"><b>${esc(n.id)}</b> ${esc(n.sect || "")}</p><pre>${esc(n.text)}</pre>`).join("")}</details>
-      <div role="button" tabindex="0" class="bmbtn ghost" data-bm="drop">Remove this briefing from the phone</div>`) }
-  function emptyHtml(){ return `<div class="bmn"><h4>Add today's briefing</h4><p class="bmv">Tap the upload button at the top and pick the briefing PDF. It is read on this phone: the route, NOTAMs, airport weather and winds are drawn on the map. Nothing is uploaded, and it is kept off your backups.</p>
+      <p class="bmv dim">Holding NOTAMs for ${B.places} places from your briefings. A new briefing replaces the places it covers.</p>
+      <div role="button" tabindex="0" class="bmbtn ghost" data-bm="drop">Remove all briefings from the phone</div>`) }
+  function emptyHtml(){ return `<div class="bmn"><h4>Add today's briefing</h4><p class="bmv">Tap the upload button at the top and pick the briefing PDF. It is read on this phone: the route, NOTAMs, airport weather and winds are drawn on the map. Each new briefing updates the places it covers and keeps the rest. Nothing is uploaded, and it is kept off your backups.</p>
       <label class="bmbtn"><input type="file" accept="application/pdf,.pdf" hidden>Choose briefing PDF</label></div>` }
 
   /* ---------- offline ---------- */
@@ -357,8 +469,10 @@ export async function openBriefMap(ctx){
       const pdf = await ctx.pdfLib(), lines = await pdfLines(pdf, await file.arrayBuffer(), f => { bar.style.width = (f * 100).toFixed(0) + "%"; pt.textContent = `Page ${Math.round(f * 100)}%` });
       const nb = parseBriefing(lines);
       if(!nb.route.length && !nb.notams.length){ openSheet("load", `<div class="bmn"><h4>Nothing found</h4><p class="bmv">This PDF does not look like a briefing: no route and no NOTAMs were found in it.</p></div>`); return }
-      B = nb; await saveBrief(B); setup(); sub();
-      openSheet("load", `<div class="bmn"><h4>Briefing loaded</h4><p class="bmv">${B.dep && B.dest ? `${esc(B.dep)} to ${esc(B.dest)}, ` : ""}${B.route.length} waypoints, ${B.notams.filter(n => n.shape).length} NOTAM areas (${B.notams.filter(n => n.mine).length} near your route), ${B.notams.filter(n => n.ad).length} airport NOTAMs, weather for ${Object.keys(B.wx).length} airports.</p><p class="bmv">Kept on this phone for 3 days, then removed.</p></div>`);
+      S = mergeBrief(S || emptyStore(), nb); await putStore(S); B = viewOf(S);
+      if(view !== "brief") setView("brief", false); setup(); sub();
+      openSheet("load", `<div class="bmn"><h4>Briefing loaded</h4><p class="bmv">${nb.dep && nb.dest ? `${esc(nb.dep)} to ${esc(nb.dest)}, ` : ""}${nb.route.length} waypoints, ${nb.notams.filter(n => n.shape).length} NOTAM areas (${B.notams.filter(n => n.mine).length} near your route), ${nb.notams.filter(n => n.ad).length} airport NOTAMs, weather for ${Object.keys(nb.wx).length} airports.</p>
+        <p class="bmv">Updated ${S.updated} place${S.updated === 1 ? "" : "s"} (FIRs and airports) from this briefing${S.kept ? `; ${S.kept} kept from earlier briefings` : ""}. NOTAMs drop off when they expire.</p></div>`);
     }catch(e){ openSheet("load", `<div class="bmn"><h4>Could not read the PDF</h4><p class="bmv">${esc(e.message || e)}</p></div>`) }
   }
   o.addEventListener("change", e => { const f = e.target.closest('input[type="file"]'); if(f && f.files[0]){ readPdf(f.files[0]); f.value = "" } });
@@ -366,11 +480,14 @@ export async function openBriefMap(ctx){
   /* ---------- airport close-up ---------- */
   function zoomTo(k){ const a = apx.get(k); if(!a) return; zoomAp = k;
     map.flyTo({center:[a.lon, a.lat], zoom:13.4, pitch:45, bearing:0, duration:ctx.rm() ? 0 : 2200, essential:true}); apSheet(k); count() }
-  map.on("zoomend", () => { const z = map.getZoom(); $(o, ".bmback").hidden = z < 9; o.classList.toggle("near", z >= 10.5); o.classList.toggle("far", z < 5);
+  map.on("zoomend", () => { const z = map.getZoom(); $(o, ".bmback").hidden = z < 9 || view === "month"; o.classList.toggle("near", z >= 10.5); o.classList.toggle("far", z < 5);
     if(z < 9 && zoomAp){ zoomAp = null; count() } });
 
   /* ---------- taps ---------- */
   map.on("click", e => {
+    if(view === "month"){ const p = jets && jets.hit(e.point.x, e.point.y); if(p){ monthSheet("route", p.r.k, p.from); return }
+      const r = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], {layers:["bm-mrl", "bm-mrd"]});
+      if(r.length){ monthSheet("route", r[0].properties.k); return } closeSheet(); if(jets) jets.select(null); return }
     if(!B) return; const box = [[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]];
     const rw = map.queryRenderedFeatures(box, {layers:["bm-rwf", "bm-rwx"]}); if(rw.length){ ntSheet([...new Set(rw.map(f => f.properties.id))]); return }
     const f = map.queryRenderedFeatures(box, {layers:["bm-ntf", "bm-ntl", "bm-ntp"]}); if(f.length){ ntSheet([...new Set(f.map(x => x.properties.id))].slice(0, 6)); return }
@@ -378,6 +495,8 @@ export async function openBriefMap(ctx){
   });
   for(const id of ["bm-ntf", "bm-ntp", "bm-rwf"]){ map.on("mouseenter", id, () => map.getCanvas().style.cursor = "pointer"); map.on("mouseleave", id, () => map.getCanvas().style.cursor = "") }
   o.addEventListener("click", e => {
+    if(e.target.closest("[data-sheet]")){ close(); return }   // a flight in the month view: the app opens its sheet once the map has closed
+    const stn = e.target.closest("[data-bmst]"); if(stn){ monthSheet("stn", stn.dataset.bmst); return }
     const ap = e.target.closest("[data-bmap]"); if(ap){ zoomTo(ap.dataset.bmap); return }
     const nn = e.target.closest("[data-bmn]"); if(nn){ const n = B && B.notams.find(x => x.id === nn.dataset.bmn); if(n){ ntSheet([n.id]);
         if(n.shape){ const P = n.shape.t === "circle" ? circlePoly(n.shape.c, n.shape.r, 16) : n.shape.p || [n.shape.c];
@@ -398,14 +517,19 @@ export async function openBriefMap(ctx){
     else if(k === "off") offSheet();
     else if(k === "dl") download();
     else if(k === "dldel"){ caches.delete(MCACHE).then(() => { localStorage.removeItem(DLKEY); offSheet() }) }
-    else if(k === "drop"){ dropBrief().then(() => { B = null; setup(); paintTime(true); sub(); openSheet("list", emptyHtml()) }) }
+    else if(k === "drop"){ dropBrief().then(() => { S = null; B = null; setup(); paintTime(true); sub(); openSheet("list", emptyHtml()) }) }
+    else if(k === "vmonth"){ if(M && view !== "month") setView("month", true) }
+    else if(k === "vbrief"){ if(view !== "brief") setView("brief", true) }
   });
-  o.addEventListener("keydown", e => { if((e.key === "Enter" || e.key === " ") && e.target.matches("[data-bmap],[data-bmn]")){ e.preventDefault(); e.stopPropagation(); e.target.click() } });
+  o.addEventListener("keydown", e => { if((e.key === "Enter" || e.key === " ") && e.target.matches("[data-bmap],[data-bmn],[data-bmst]")){ e.preventDefault(); e.stopPropagation(); e.target.click() } });
 
-  function sub(){ const d = dlInfo(); $(o, ".bmsub").textContent = B ? `${B.dep || "?"} to ${B.dest || "?"}${B.date ? " · " + dayLbl(B.date) : ""}${d ? " · offline map saved" : ""}` : styleOK ? "No briefing yet · tap upload" : "Offline · no saved map here" }
-  function close(){ if(closed) return; closed = true; document.documentElement.classList.remove("sheet-open", "bm-open"); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
+  function sub(){ if(view === "month") return; const d = dlInfo(); $(o, ".bmsub").textContent = B ? `${B.dep || "?"} to ${B.dest || "?"}${B.date ? " · " + dayLbl(B.date) : ""}${d ? " · offline map saved" : ""}` : styleOK ? "No briefing yet · tap upload" : "Offline · no saved map here" }
+  function close(){ if(closed) return; closed = true; document.documentElement.classList.remove("sheet-open", "bm-open"); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
 
-  setup(); paintTime(true); sub();
-  if(!B) openSheet("list", emptyHtml());
+  // opens on the briefing when one is loaded for about now (6 h before its day to the end of the next), else the month
+  const now = Date.now(), fresh = B && B.date && now > B.date - 6 * 36e5 && now < B.date + 48 * 36e5;
+  view = ctx.view || (fresh || !M ? "brief" : "month");
+  monthSetup(); setup(); paintTime(true); setView(view, false);
   return {close, el:o, map};
 }
+export { mergeBrief, viewOf, emptyStore };   // for the tests
