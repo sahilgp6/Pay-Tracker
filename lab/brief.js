@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime } from "./briefparse.js?b=72";
-import { RWY, ICAO } from "./rwydata.js?b=72";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime } from "./briefparse.js?b=73";
+import { RWY, ICAO } from "./rwydata.js?b=73";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -23,7 +23,9 @@ const nmPerDegLat = 60;
 const hhmm = t => { const d = new Date(t); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0") + "Z" };
 const dayLbl = t => new Date(t).toLocaleDateString("en-GB", {timeZone:"UTC", weekday:"short", day:"numeric", month:"short"});
 const ftTxt = (f, raw) => raw ? raw : f == null ? "?" : f === 0 ? "SFC" : f >= 99999 ? "UNL" : f >= 10000 ? "FL" + Math.round(f / 100) : f.toLocaleString("en-IN") + " ft";
-const prefs = (() => { try{ return Object.assign({nt:true, wx:true, mine:true, wind:0, look:"auto"}, JSON.parse(localStorage.getItem(PREFKEY) || "{}")) }catch(e){ return {nt:true, wx:true, mine:true, wind:0, look:"auto"} } })();
+const prefs = (() => { let p; try{ p = Object.assign({nt:true, wx:true, mine:false, wind:0, look:"auto"}, JSON.parse(localStorage.getItem(PREFKEY) || "{}")) }catch(e){ p = {nt:true, wx:true, mine:false, wind:0, look:"auto"} }
+  if(!p.v73){ p.mine = false; p.v73 = 1 }   // build 73: every stored NOTAM stays on the map; "Only my route" is now opt-in
+  return p })();
 const savePrefs = () => { try{ localStorage.setItem(PREFKEY, JSON.stringify(prefs)) }catch(e){} };
 
 /* ---------- map data cache ----------
@@ -63,7 +65,11 @@ async function loadLib(){
 const SKEY = "./store.json";
 const emptyStore = () => ({v:2, last:null, locs:{}, wx:{}, aup:null});
 async function putStore(S){ try{ const c = await caches.open(BCACHE); await c.put(SKEY, new Response(JSON.stringify(S), {headers:{"Content-Type":"application/json"}})) }catch(e){} }
-function prune(S){ const now = Date.now(); for(const k in S.locs) S.locs[k].notams = S.locs[k].notams.filter(n => n.to == null || n.to >= now - 36e5) }
+// a NOTAM goes when its end time passes (permanent ones stay until a briefing for that place drops them); airspace tables at the end of their day
+function prune(S, now = Date.now()){ let n0 = 0, n1 = 0;
+  for(const k in S.locs){ const L = S.locs[k].notams; n0 += L.length; S.locs[k].notams = L.filter(n => n.to == null || n.to > now); n1 += S.locs[k].notams.length }
+  if(S.aup && S.aup.date && now > S.aup.date + 864e5){ S.aup = null; n1-- }
+  return n0 !== n1 }
 async function loadStore(){
   try{ const c = await caches.open(BCACHE); const r = await c.match(SKEY); let S = r ? await r.json() : null;
     if(!S){ const old = await c.match(BKEY); if(old){ S = mergeBrief(emptyStore(), await old.json()); await c.delete(BKEY); await putStore(S) } }   // build 65 kept one briefing
@@ -261,7 +267,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=72")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=73")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -428,11 +434,12 @@ export async function openBriefMap(ctx){
     B.route.slice(1, -1).forEach(p => { const e = document.createElement("div"); e.className = "bmwp"; e.innerHTML = `<i></i><span>${esc(p.n)}</span>`;
       markers.push(new lib.Marker({element:e, anchor:"left", offset:[-5, 0]}).setLngLat([p.lon, p.lat]).addTo(map)) });
     // airports: weather colour, tap for the close-up
-    const codes = [...new Set([B.dep, B.dest, ...(B.altn || []), ...Object.keys(B.wx)].filter(Boolean))];
+    const adN = {}; B.notams.forEach(n => { if(n.ad) adN[n.ad] = (adN[n.ad] || 0) + 1 });
+    const codes = [...new Set([B.dep, B.dest, ...(B.altn || []), ...Object.keys(B.wx), ...Object.keys(adN)].filter(Boolean))];   // every airport with weather or NOTAMs on record
     codes.forEach(k => { const a = apx.get(k); if(!a) return; const w = B.wx[k], m = w && (w.metar ? wxCat(w.metar) : w.taf ? wxCat(w.taf) : null), ob = w && obsTime(w.metar, w.date);
       const e = document.createElement("div"); e.className = "bmap" + ([B.dep, B.dest].includes(k) ? " main" : "") + (B.altn && B.altn.includes(k) ? " alt" : "") + (!ob || Date.now() - ob > 3 * 36e5 ? " stale" : "");
       e.setAttribute("role", "button"); e.tabIndex = 0; e.dataset.bmap = k; e.setAttribute("aria-label", k + " airport");
-      e.innerHTML = `<i style="background:${m ? CATC[m.cat] : "#8a94a6"}"></i><span>${esc(k)}</span>`;
+      e.innerHTML = `<i style="background:${m ? CATC[m.cat] : "#8a94a6"}"></i><span>${esc(k)}${adN[k] ? `<b class="bmnc">${adN[k]}</b>` : ""}</span>`;
       markers.push(new lib.Marker({element:e, anchor:"left", offset:[-7, 0]}).setLngLat([a.lon, a.lat]).addTo(map)) });
     winds(); paintTime(true); if(view === "brief") fitRoute(false);
   }
@@ -655,8 +662,10 @@ export async function openBriefMap(ctx){
   });
   o.addEventListener("keydown", e => { if((e.key === "Enter" || e.key === " ") && e.target.matches("[data-bmap],[data-bmn],[data-bmst]")){ e.preventDefault(); e.stopPropagation(); e.target.click() } });
 
+  // NOTAMs that reach their end time while the map is open go straight away, and the phone's copy is updated
+  var expiry = setInterval(() => { if(closed || !S) return; if(prune(S)){ putStore(S); B = viewOf(S); if(B) markMine(B, routePts, apts); paintTime(false); if(sheet.classList.contains("open") && sheet.dataset.k === "list") listSheet() } }, 60000);   // var, so closing before this line runs is safe
   function sub(){ if(view === "month") return; const d = dlInfo(); $(o, ".bmsub").textContent = B ? `${B.dep || "?"} to ${B.dest || "?"}${B.date ? " · " + dayLbl(B.date) : ""}${d ? " · offline map saved" : ""}` : styleOK ? "No briefing yet · tap upload" : "Offline · no saved map here" }
-  function close(){ if(closed) return; closed = true; removeEventListener("keydown", onEsc); document.documentElement.classList.remove("sheet-open", "bm-open"); mq.removeEventListener && mq.removeEventListener("change", onScheme); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
+  function close(){ if(closed) return; closed = true; clearInterval(expiry); removeEventListener("keydown", onEsc); document.documentElement.classList.remove("sheet-open", "bm-open"); mq.removeEventListener && mq.removeEventListener("change", onScheme); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
 
   // opens on the briefing when one is loaded for about now (6 h before its day to the end of the next), else the month
   const now = Date.now(), fresh = B && B.date && now > B.date - 6 * 36e5 && now < B.date + 48 * 36e5;

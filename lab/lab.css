@@ -890,3 +890,4 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .bmfit svg{stroke:#f4f1ea;fill:none;stroke-width:1.8;width:20px;height:20px}
 .bmst.tagoff{visibility:hidden} .bmst.tagdim{opacity:.1!important;pointer-events:none}
 .bmt b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bmap .bmnc{display:inline-block;margin-left:5px;min-width:16px;padding:1px 4px;border-radius:8px;background:#e9b949;color:#1b1b1b;font-size:10px;text-align:center}
