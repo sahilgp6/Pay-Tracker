@@ -3,15 +3,52 @@
 // there is no signal, so the lab and its briefing map open in the air. Map tiles are saved separately by the map
 // itself. Your data is never cached here: it lives in the browser's local storage on your device.
 
-const CACHE = 'pay-tracker-lab-v1';
+const CACHE = 'pay-tracker-lab-v2';
 const SCOPE = self.registration.scope;               // .../lab/
 const ROOT = new URL('../', SCOPE).href;              // .../ (for the shared PDF reader)
 const PRECACHE = [
-  '', 'index.html', 'lab.css', 'lab.js', 'motion.js', 'mapdata.js', 'tzdata.js', 'globedata.js', 'world3d.js', 'jet737.js',
-  'brief.js', 'briefparse.js', 'rwydata.js',
-  'vendor/maplibre/maplibre-gl.mjs', 'vendor/maplibre/maplibre-gl-worker.mjs', 'vendor/maplibre/maplibre-gl.css',
-  'vendor/gsap/gsap.min.js', 'vendor/gsap/MotionPathPlugin.min.js', 'vendor/gsap/DrawSVGPlugin.min.js', 'vendor/three/three.module.min.js'
-].map(p => SCOPE + p).concat([ROOT + 'pdfjs/pdf.min.js', ROOT + 'pdfjs/pdf.worker.min.js']);
+  '',
+  'brief.js',
+  'briefparse.js',
+  'globedata.js',
+  'index.html',
+  'intro.js',
+  'jet737.js',
+  'lab.css',
+  'lab.js',
+  'manifest.json',
+  'mapdata.js',
+  'motion.js',
+  'rwydata.js',
+  'tzdata.js',
+  'world3d.js',
+  'fonts/b612-mono-latin-400.woff2',
+  'fonts/b612-mono-latin-700.woff2',
+  'fonts/corinthia-latin-400.woff2',
+  'fonts/fraunces-latin-opsz-normal.woff2',
+  'fonts/inter-latin-wght-normal.woff2',
+  'fonts/newsreader-latin-400.woff2',
+  'fonts/newsreader-latin-500.woff2',
+  'intro/wall_log.jpg',
+  'intro/wall_map.jpg',
+  'intro/wall_month.jpg',
+  'intro/wall_more.jpg',
+  'intro/wall_pay.jpg',
+  'vendor/gsap/DrawSVGPlugin.min.js',
+  'vendor/gsap/MotionPathPlugin.min.js',
+  'vendor/gsap/gsap.min.js',
+  'vendor/lenis/lenis.min.js',
+  'vendor/maplibre/maplibre-gl-worker.mjs',
+  'vendor/maplibre/maplibre-gl.css',
+  'vendor/maplibre/maplibre-gl.mjs',
+  'vendor/three/three.module.min.js',
+].map(p => SCOPE + p).concat([
+  'icon-192.png',
+  'icon-512.png',
+  'apple-touch-icon.png',
+  'pdfjs/pdf.min.js',
+  'pdfjs/pdf.worker.min.js',
+].map(p => ROOT + p));
 
 self.addEventListener('install', event => {
   self.skipWaiting();
