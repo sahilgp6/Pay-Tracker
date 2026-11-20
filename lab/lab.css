@@ -879,3 +879,10 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .bmap.stale i{opacity:.55;box-shadow:0 0 0 3px rgba(0,0,0,.25),inset 0 0 0 2px rgba(255,255,255,.5)}
 .bmbub{padding-top:2px} .bmbub .gbh b{font-size:20px}
 @media (max-width:380px){.bmseg [role=tab]{padding:7px 8px;font-size:12.5px} .bmt b{font-size:15px}}
+.bmfol{z-index:4;pointer-events:auto} .bm.following .bmmonth::after{content:" · tap the map to let go"}
+/* map look: auto, light, dark */
+.bmlook{position:absolute;z-index:3;right:14px;top:calc(env(safe-area-inset-top) + 102px);width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(10,20,34,.8);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);cursor:pointer}
+.bmlook svg{width:22px;height:22px;fill:none;stroke:#f4f1ea;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round} .bmlook svg .f{fill:#f4f1ea}
+.bmtoast{position:absolute;z-index:6;left:50%;top:calc(env(safe-area-inset-top) + 150px);transform:translate(-50%,-6px);background:rgba(10,20,34,.9);color:#f4f1ea;font-size:13px;font-weight:700;padding:8px 13px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;white-space:nowrap}
+.bmtoast.on{opacity:1;transform:translate(-50%,0)}
+.bm[data-look=dark] .bmap span,.bm[data-look=dark] .bmst span{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18)}

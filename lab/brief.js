@@ -6,10 +6,10 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime } from "./briefparse.js?b=66";
-import { RWY, ICAO } from "./rwydata.js?b=66";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime } from "./briefparse.js?b=68";
+import { RWY, ICAO } from "./rwydata.js?b=68";
 
-const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLE = HOST + "/styles/liberty";
+const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
 const MAXTILES = 2900;           // OpenFreeMap's offline limit is 3,000 tiles per download
 const COL = {tra:"#b45cff", dng:"#ff5a45", obs:"#f0a640", svy:"#9aa2b0", oth:"#6fa8dc"};
@@ -23,7 +23,7 @@ const nmPerDegLat = 60;
 const hhmm = t => { const d = new Date(t); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0") + "Z" };
 const dayLbl = t => new Date(t).toLocaleDateString("en-GB", {timeZone:"UTC", weekday:"short", day:"numeric", month:"short"});
 const ftTxt = (f, raw) => raw ? raw : f == null ? "?" : f === 0 ? "SFC" : f >= 99999 ? "UNL" : f >= 10000 ? "FL" + Math.round(f / 100) : f.toLocaleString("en-IN") + " ft";
-const prefs = (() => { try{ return Object.assign({nt:true, wx:true, mine:true, wind:0}, JSON.parse(localStorage.getItem(PREFKEY) || "{}")) }catch(e){ return {nt:true, wx:true, mine:true, wind:0} } })();
+const prefs = (() => { try{ return Object.assign({nt:true, wx:true, mine:true, wind:0, look:"auto"}, JSON.parse(localStorage.getItem(PREFKEY) || "{}")) }catch(e){ return {nt:true, wx:true, mine:true, wind:0, look:"auto"} } })();
 const savePrefs = () => { try{ localStorage.setItem(PREFKEY, JSON.stringify(prefs)) }catch(e){} };
 
 /* ---------- map data cache ----------
@@ -163,6 +163,7 @@ export async function openBriefMap(ctx){
     <div class="bmmap"></div>
     <div class="bmpills"><span class="bmpill bmclock"></span><span class="bmpill bmcount"></span></div>
     <div role="button" tabindex="0" class="bmpill bmback" data-bm="route" hidden>← Route</div>
+    <div role="button" tabindex="0" class="bmlook" data-bm="look"></div>
     <div class="bmsheet" aria-live="polite"><div class="bmgrab" data-bm="sheet"></div><div class="bmsc"></div></div>
     <div class="bmbar">
       <div class="bmmonth"></div>
@@ -182,33 +183,41 @@ export async function openBriefMap(ctx){
   // Close works from the first moment, even while the map is still loading
   $(o, '[data-bm="close"]').addEventListener("click", e => { e.stopPropagation(); close() });
 
-  /* ---------- style: OpenFreeMap online or saved; plain coastlines if neither ---------- */
-  let style, rawStyle = null;
-  try{ rawStyle = await (await cget(STYLE, true)).text(); style = JSON.parse(toP(rawStyle)); styleOK = true }
-  catch(e){ const g = await import("./globedata.js"); const rings = s => s.split("|").map(r => r.trim().split(" ").map(p => p.split(",").map(Number)));
-    style = {version:8, sources:{coast:{type:"geojson", data:{type:"FeatureCollection", features:[g.WORLD, g.REGION].map(s => ({type:"Feature", properties:{}, geometry:{type:"MultiLineString", coordinates:rings(s)}}))}}},
-      layers:[{id:"bg", type:"background", paint:{"background-color":"#10213a"}}, {id:"coast", type:"line", source:"coast", paint:{"line-color":"#7d9cc4", "line-width":1}}]} }
+  /* ---------- style: OpenFreeMap light or dark, online or saved; the other look if only that is saved; plain coastlines if neither ---------- */
+  const mq = matchMedia("(prefers-color-scheme: dark)"), raws = {};
+  const wantLook = () => prefs.look === "dark" || (prefs.look === "auto" && mq.matches) ? "dark" : "light";
+  async function getStyle(k){
+    for(const kk of [k, k === "dark" ? "light" : "dark"]){
+      try{ const raw = await (await cget(STYLES[kk], true)).text(); raws[kk] = raw; const st = JSON.parse(toP(raw)); st.projection = {type:"globe"}; return {style:st, kind:kk, ok:true} }catch(e){} }
+    const g = await import("./globedata.js"), rings = s => s.split("|").map(r => r.trim().split(" ").map(p => p.split(",").map(Number))), dk = k === "dark";
+    return {kind:k, ok:false, style:{version:8, projection:{type:"globe"}, sources:{coast:{type:"geojson", data:{type:"FeatureCollection", features:[g.WORLD, g.REGION].map(s => ({type:"Feature", properties:{}, geometry:{type:"MultiLineString", coordinates:rings(s)}}))}}},
+      layers:[{id:"bg", type:"background", paint:{"background-color":dk ? "#0e1a2c" : "#dfe6ee"}}, {id:"coast", type:"line", source:"coast", paint:{"line-color":dk ? "#7d9cc4" : "#5b7593", "line-width":1}}]}} }
+  let look = await getStyle(wantLook()); styleOK = look.ok;
   if(closed) return;
-  style.projection = {type:"globe"};
+  const style = look.style;
   const c0 = apx.get(base) || {lon:73, lat:19};
   map = new lib.Map({container:$(o, ".bmmap"), style, center:[c0.lon, c0.lat], zoom:3.6, maxPitch:70, attributionControl:{compact:true}, fadeDuration:0});
-  map.on("error", () => {});
-  window.__bm = {map, get B(){ return B }, get S(){ return S }, get view(){ return view }, get route(){ return routePts }, get nt(){ return lastNt }, get rw(){ return lastRw }, get jets(){ return jets }};
+  map.on("error", () => {}); o.dataset.look = look.kind;
+  window.__bm = {map, get look(){ return o.dataset.look }, get B(){ return B }, get S(){ return S }, get view(){ return view }, get route(){ return routePts }, get nt(){ return lastNt }, get rw(){ return lastRw }, get jets(){ return jets }};
   await new Promise(ok => { if(map.isStyleLoaded()) ok(); else map.once("style.load", ok) });
   if(closed) return;
 
-  /* ---------- overlay layers ---------- */
+  /* ---------- overlay layers (added again after a change of look) ---------- */
   const fc = f => ({type:"FeatureCollection", features:f || []});
-  map.addSource("bm-nt", {type:"geojson", data:fc()}); map.addSource("bm-rt", {type:"geojson", data:fc()}); map.addSource("bm-rw", {type:"geojson", data:fc()});
   const ntF = ["==", ["geometry-type"], "Polygon"], ntL = ["any", ["==", ["geometry-type"], "Polygon"], ["==", ["geometry-type"], "LineString"]], ntP = ["==", ["geometry-type"], "Point"];
+  let hasOMT = false, BRIEF_LAYERS = [];
+  const MONTH_LAYERS = ["bm-mrc", "bm-mrl", "bm-mrd"];
+  function addOverlays(){
+  const dk = o.dataset.look === "dark";
+  map.addSource("bm-nt", {type:"geojson", data:fc()}); map.addSource("bm-rt", {type:"geojson", data:fc()}); map.addSource("bm-rw", {type:"geojson", data:fc()});
   map.addLayer({id:"bm-ntf", type:"fill", source:"bm-nt", filter:ntF, paint:{"fill-color":["get", "c"], "fill-opacity":["case", ["get", "on"], .26, .06]}});
   map.addLayer({id:"bm-ntl", type:"line", source:"bm-nt", filter:ntL, paint:{"line-color":["get", "c"], "line-width":1.6, "line-opacity":["case", ["get", "on"], .95, .35]}});
   map.addLayer({id:"bm-ntp", type:"circle", source:"bm-nt", filter:ntP, paint:{"circle-color":["get", "c"], "circle-radius":6, "circle-opacity":["case", ["get", "on"], .9, .3], "circle-stroke-color":"#fff", "circle-stroke-width":1}});
-  map.addLayer({id:"bm-rtc", type:"line", source:"bm-rt", paint:{"line-color":"#0b1626", "line-width":5, "line-opacity":.55}, layout:{"line-cap":"round", "line-join":"round"}});
+  map.addLayer({id:"bm-rtc", type:"line", source:"bm-rt", paint:{"line-color":dk ? "#000" : "#0b1626", "line-width":5, "line-opacity":dk ? .7 : .55}, layout:{"line-cap":"round", "line-join":"round"}});
   map.addLayer({id:"bm-rtl", type:"line", source:"bm-rt", paint:{"line-color":"#f6f1e4", "line-width":2.4}, layout:{"line-cap":"round", "line-join":"round"}});
   map.addLayer({id:"bm-rwf", type:"fill", source:"bm-rw", filter:ntF, paint:{"fill-color":"#ff5a45", "fill-opacity":["case", ["get", "on"], .55, .1]}});
   map.addLayer({id:"bm-rwx", type:"line", source:"bm-rw", filter:["==", ["geometry-type"], "LineString"], paint:{"line-color":"#ff5a45", "line-width":["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 5], "line-opacity":["case", ["get", "on"], 1, .2]}});
-  const hasOMT = !!(map.getStyle().sources || {}).openmaptiles;
+  hasOMT = !!(map.getStyle().sources || {}).openmaptiles;
   if(hasOMT) map.addLayer({id:"bm-twy", type:"line", source:"openmaptiles", "source-layer":"aeroway", minzoom:11, filter:["==", 1, 0],
     paint:{"line-color":"#ff5a45", "line-width":["interpolate", ["linear"], ["zoom"], 12, 2, 16, 9], "line-dasharray":[1.4, .8]}});
 
@@ -216,7 +225,9 @@ export async function openBriefMap(ctx){
   map.addLayer({id:"bm-mrc", type:"line", source:"bm-mr", paint:{"line-color":"#0b1626", "line-width":5, "line-opacity":.4}, layout:{"line-cap":"round"}});
   map.addLayer({id:"bm-mrl", type:"line", source:"bm-mr", filter:["!", ["get", "dh"]], paint:{"line-color":"#e9b949", "line-width":2.4}, layout:{"line-cap":"round"}});
   map.addLayer({id:"bm-mrd", type:"line", source:"bm-mr", filter:["get", "dh"], paint:{"line-color":"#e9b949", "line-width":2, "line-opacity":.7, "line-dasharray":[2, 1.6]}});
-  const BRIEF_LAYERS = ["bm-ntf", "bm-ntl", "bm-ntp", "bm-rtc", "bm-rtl", "bm-rwf", "bm-rwx"].concat(hasOMT ? ["bm-twy"] : []), MONTH_LAYERS = ["bm-mrc", "bm-mrl", "bm-mrd"];
+  BRIEF_LAYERS = ["bm-ntf", "bm-ntl", "bm-ntp", "bm-rtc", "bm-rtl", "bm-rwf", "bm-rwx"].concat(hasOMT ? ["bm-twy"] : []);
+  }
+  addOverlays();
   const M = ctx.month && ctx.month.routes && ctx.month.routes.length ? ctx.month : null;
 
   /* ---------- month view: routes, airports, and the 737s flying them ---------- */
@@ -233,7 +244,7 @@ export async function openBriefMap(ctx){
     map.fitBounds(b, {padding:{top:130, bottom:150, left:60, right:60}, duration:anim && !ctx.rm() ? 1100 : 0, pitch:0, bearing:0, maxZoom:7}) }
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=66")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=68")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -241,51 +252,104 @@ export async function openBriefMap(ctx){
     const scene = new THREE.Scene(), cam = new THREE.OrthographicCamera(0, 1, 0, -1, -3000, 3000);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4658, 1.5)); const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-300, 400, 900); scene.add(sun);
     const base = build737({detail:false});
-    const planes = M.routes.map((r, i) => { const g = new THREE.Group(), j = base.clone(true);
+    const planes = M.routes.map((r, i) => { const T = new THREE.Group(), g = new THREE.Group(), j = base.clone(true);
       if(r.dh) j.traverse(m => { if(m.isMesh){ m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = .5 } });
-      j.rotation.x = Math.PI / 2 - .32; g.add(j); scene.add(g);
+      j.rotation.x = Math.PI / 2; g.add(j); T.add(g); scene.add(T);   // T: on screen, tilted with the map; g: heading; j: the jet, nose up the screen
       const A = [r.A.lon, r.A.lat], B2 = [r.B.lon, r.B.lat], L = gcNm(A, B2), dur = Math.max(6, Math.min(14, L / 70));
-      return {r, g, A, B:B2, dur, off:(i * .37) % 1, cyc:2 * dur + 2, pos:null, from:r.a} });
-    let raf = 0, running = false;
+      return {r, T, g, j, A, B:B2, dur, off:(i * .37) % 1, cyc:2 * dur + 2, pos:null, from:r.a} });
+    let raf = 0, running = false, F = null, JD = null;   // F: the plane being followed; JD: the detailed jet
+    const fol = document.createElement("div"); fol.className = "gbubble bmfol"; fol.hidden = true; $(o, ".bmmap").appendChild(fol);
     const size = () => { const c = map.getContainer(), W = c.clientWidth, H = c.clientHeight; R.setSize(W, H, false); cam.right = W; cam.bottom = -H; cam.updateProjectionMatrix() };
     size(); map.on("resize", size);
+    const brgOf = (a, b) => { const r = Math.PI / 180, y = Math.sin((b[0] - a[0]) * r) * Math.cos(b[1] * r), x = Math.cos(a[1] * r) * Math.sin(b[1] * r) - Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos((b[0] - a[0]) * r); return (Math.atan2(y, x) / r + 360) % 360 };
+    const wrap = d => ((d + 540) % 360) - 180, ease = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
     function frame(now){
       if(!running || closed) return; raf = requestAnimationFrame(frame);
       if(document.hidden) return;
-      const ctr = map.getCenter(), cen = [ctr.lng, ctr.lat], px = 30 * (map.getZoom() > 7 ? 1.25 : 1) / .034;
       for(const p of planes){
         let ph = ((now / 1000) + p.off * p.cyc) % p.cyc, f, fwd = true;
         if(ctx.rm()){ f = .5 } else if(ph < p.dur){ f = ph / p.dur } else if(ph < p.dur + 1){ f = 1 } else if(ph < 2 * p.dur + 1){ f = 1 - (ph - p.dur - 1) / p.dur; fwd = false } else { f = 0; fwd = false }
         f = f < .5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
-        const ll = gcAt(p.A, p.B, f), ahead = gcAt(p.A, p.B, Math.min(1, Math.max(0, f + (fwd ? .01 : -.01))));
-        p.pos = ll; p.from = fwd ? p.r.a : p.r.b;
-        if(gcNm(cen, ll) > 4800){ p.g.visible = false; continue }   // round the back of the globe
-        const a = map.project(ll), b = map.project(ahead); p.g.visible = true;
-        p.g.position.set(a.x, -a.y, 0); p.g.rotation.z = Math.atan2(-(b.y - a.y), b.x - a.x) + Math.PI / 2; p.g.scale.setScalar(px * (p.sel ? 1.3 : 1));
-        p.sx = a.x; p.sy = a.y;
+        const f0 = Math.max(0, Math.min(.99, f - .005)), f1 = f0 + .01;
+        p.pos = gcAt(p.A, p.B, f); p.tail = gcAt(p.A, p.B, fwd ? f0 : f1); p.nose = gcAt(p.A, p.B, fwd ? f1 : f0);
+        const from = fwd ? p.r.a : p.r.b; if(p === F && from !== p.from){ p.from = from; fol.innerHTML = M.bubble("route", p.r.k, from) } p.from = from;
       }
+      // the chase camera: flies in behind the plane, then rides along with it
+      if(F){ const brg = brgOf(F.tail, F.nose), k = ctx.rm() ? 1 : ease(Math.min(1, (now - F.t0) / 1800)), s0 = F.cam0;
+        F.brg = k < 1 ? s0.bearing + wrap(brg - s0.bearing) * k : F.brg + wrap(brg - F.brg) * .06;
+        map.jumpTo({center:[s0.lng + wrap(F.pos[0] - s0.lng) * k, s0.lat + (F.pos[1] - s0.lat) * k], zoom:s0.zoom + (6.6 - s0.zoom) * k, pitch:s0.pitch + (60 - s0.pitch) * k, bearing:F.brg}) }
+      const ctr = map.getCenter(), cen = [ctr.lng, ctr.lat], pitch = map.getPitch() * Math.PI / 180, px = 30 * (map.getZoom() > 7 ? 1.25 : 1) / .034;
+      for(const p of planes){
+        if(gcNm(cen, p.pos) > 4800){ p.T.visible = false; continue }   // round the back of the globe
+        const a = map.project(p.pos), t = map.project(p.tail), n = map.project(p.nose), b = {x:a.x + n.x - t.x, y:a.y + n.y - t.y}; p.T.visible = true;   // heading from tail to nose, so it holds while parked
+        p.T.position.set(a.x, -a.y, 0); p.T.rotation.x = -pitch * .85 - .28; p.g.rotation.z = Math.atan2(-(b.y - a.y), b.x - a.x) + Math.PI / 2;
+        p.T.scale.setScalar(px * (p === F ? 3.4 : p.sel ? 1.3 : 1)); p.sx = a.x; p.sy = a.y;
+      }
+      if(F && !fol.hidden) fol.style.transform = `translate(${Math.round(F.sx)}px,${Math.round(F.sy - 46)}px) translate(-50%,-100%)`;
       R.render(scene, cam);
+    }
+    function detail(p, on){
+      if(on){ if(!JD){ JD = build737({detail:true}); JD.rotation.x = Math.PI / 2 } if(p.r.dh) JD.traverse(m => { if(m.isMesh){ m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = .55 } });
+        p.g.add(JD); p.j.visible = false }
+      else if(JD && JD.parent === p.g){ p.g.remove(JD); p.j.visible = true; JD = null }
     }
     jets = {planes, el:cv,
       run(){ if(running) return; running = true; cv.hidden = false; raf = requestAnimationFrame(frame) },
-      stop(){ running = false; cancelAnimationFrame(raf); cv.hidden = true },
-      hit(x, y){ let best = null, d = 30; for(const p of planes){ if(!p.g.visible || p.sx == null) continue; const q = Math.hypot(p.sx - x, p.sy - y); if(q < d){ d = q; best = p } } return best },
+      stop(){ running = false; cancelAnimationFrame(raf); cv.hidden = true; this.unfollow(true) },
+      hit(x, y){ let best = null, d = 30; for(const p of planes){ if(!p.T.visible || p.sx == null) continue; const q = Math.hypot(p.sx - x, p.sy - y); if(q < d){ d = q; best = p } } return best },
       select(k){ planes.forEach(p => p.sel = p.r.k === k) },
-      kill(){ this.stop(); try{ R.dispose() }catch(e){} cv.remove() } };
+      follow(p){ if(F === p) return; if(F) this.unfollow(true); closeSheet(); F = p; p.t0 = performance.now(); const c = map.getCenter();
+        p.cam0 = {lng:c.lng, lat:c.lat, zoom:map.getZoom(), pitch:map.getPitch(), bearing:map.getBearing()}; p.brg = p.cam0.bearing;
+        detail(p, true); fol.innerHTML = M.bubble("route", p.r.k, p.from); fol.hidden = false; if(ctx.haptics) ctx.haptics(fol);
+        if(!ctx.rm()){ fol.classList.remove("pop"); void fol.offsetWidth; fol.classList.add("pop") } o.classList.add("following") },
+      unfollow(quiet){ if(!F) return; detail(F, false); F = null; fol.hidden = true; o.classList.remove("following");
+        if(!quiet){ map.easeTo({pitch:0, bearing:0, duration:ctx.rm() ? 0 : 900}); setTimeout(() => { if(!F && view === "month") fitMonth(true) }, ctx.rm() ? 0 : 950) } },
+      get following(){ return F },
+      kill(){ this.stop(); try{ R.dispose() }catch(e){} cv.remove(); fol.remove() } };
+    // your own pan, pinch or turn lets go of the plane
+    ["dragstart", "zoomstart", "rotatestart", "pitchstart"].forEach(ev => map.on(ev, e => { if(e.originalEvent && F) jets.unfollow(true) }));
     if(view === "month") jets.run();
   }
-  function monthSheet(kind, key, dirFrom){ if(!M || !M.bubble) return; const h = M.bubble(kind, key, dirFrom); if(!h) return;
+  function monthSheet(kind, key, dirFrom){ if(!M || !M.bubble) return; const h = M.bubble(kind, key, dirFrom); if(!h) return; if(jets) jets.unfollow(true);
     openSheet("month", `<div class="bmbub">${h}</div>`); if(jets) jets.select(kind === "route" ? key : null) }
+
+  function layersFor(v){ BRIEF_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "brief" ? "visible" : "none"));
+    MONTH_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "month" ? "visible" : "none")) }
+
+  /* ---------- light and dark ---------- */
+  const LOOKS = {auto:"Auto: follows your phone", light:"Light map", dark:"Dark map"};
+  const ICON = {auto:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" class="f"/></svg>',
+    light:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>',
+    dark:'<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" class="f"/></svg>'};
+  function lookBtn(){ const b = $(o, ".bmlook"); b.innerHTML = ICON[prefs.look]; b.setAttribute("aria-label", "Map look: " + LOOKS[prefs.look]); b.title = LOOKS[prefs.look] }
+  let lookBusy = false;
+  async function applyLook(){
+    lookBtn(); const k = wantLook(); if(k === o.dataset.look || lookBusy) return; lookBusy = true;
+    const nl = await getStyle(k); lookBusy = false; if(closed) return;
+    if(nl.kind === o.dataset.look){ if(!nl.ok || nl.kind !== k) toast(k === "dark" ? "The dark map is not saved on this phone yet" : "The light map is not saved on this phone yet"); return }
+    look = nl; styleOK = styleOK || nl.ok; o.dataset.look = nl.kind;
+    map.once("style.load", () => { addOverlays(); restore() });
+    map.setStyle(nl.style, {diff:false});
+  }
+  // after a new style: put the routes, areas and closures back, as they were
+  function restore(){
+    map.getSource("bm-nt").setData(fc(lastNt)); map.getSource("bm-rw").setData(fc(lastRw));
+    map.getSource("bm-rt").setData(fc(routePts.length > 1 ? [{type:"Feature", properties:{}, geometry:{type:"LineString", coordinates:routePts}}] : []));
+    if(M) map.getSource("bm-mr").setData(fc(M.routes.map(r => ({type:"Feature", properties:{k:r.k, dh:!!r.dh}, geometry:{type:"LineString", coordinates:gcLine([r.A.lon, r.A.lat], [r.B.lon, r.B.lat])}}))));
+    layersFor(view); if(view === "brief"){ vis(); adPaint() } }
+  function toast(t){ let e = $(o, ".bmtoast"); if(!e){ e = document.createElement("div"); e.className = "bmtoast"; e.setAttribute("role", "status"); o.appendChild(e) }
+    e.textContent = t; e.classList.add("on"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("on"), 2600) }
+  const onScheme = () => { if(prefs.look === "auto") applyLook() };
+  mq.addEventListener ? mq.addEventListener("change", onScheme) : mq.addListener(onScheme);
 
   /* ---------- switching views ---------- */
   function setView(v, anim){
     if(v === "month" && !M) v = "brief"; view = v; o.dataset.view = v;
     $(o, '[data-bm="vmonth"]').setAttribute("aria-selected", String(v === "month")); $(o, '[data-bm="vbrief"]').setAttribute("aria-selected", String(v === "brief"));
     $(o, '[data-bm="vmonth"]').classList.toggle("dis", !M);
-    BRIEF_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "brief" ? "visible" : "none"));
-    MONTH_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "month" ? "visible" : "none"));
-    closeSheet(); zoomAp = null;
-    if(v === "month"){ $(o, ".bmtt").textContent = M.label; $(o, ".bmsub").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · tap a plane or airport`;
+    layersFor(v);
+    closeSheet(); zoomAp = null; if(jets) jets.unfollow(true);
+    if(v === "month"){ $(o, ".bmtt").textContent = M.label; $(o, ".bmsub").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · tap a plane to follow it`;
       $(o, ".bmmonth").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · ${M.stations.length} airports · drag to spin, pinch to zoom`;
       $(o, ".bmcount").textContent = M.label; fitMonth(anim); startJets() }
     else { if(jets) jets.stop(); $(o, ".bmtt").textContent = "Briefing map"; vis(); sub(); count(); if(B) fitRoute(anim); if(!B) openSheet("list", emptyHtml()) }
@@ -439,15 +503,18 @@ export async function openBriefMap(ctx){
       ${d ? `<div role="button" tabindex="0" class="bmbtn ghost" data-bm="dldel">Delete the offline map</div>` : ""}</div>`) }
   let dlBusy = false;
   async function download(){
-    if(dlBusy || !rawStyle) return; dlBusy = true; const pt = $(sc, ".bmpt"), bar = $(sc, ".bmprog"), btn = $(sc, '[data-bm="dl"]'); bar.hidden = false; if(btn) btn.classList.add("busy");
+    if(dlBusy || !styleOK) return; dlBusy = true; const pt = $(sc, ".bmpt"), bar = $(sc, ".bmprog"), btn = $(sc, '[data-bm="dl"]'); bar.hidden = false; if(btn) btn.classList.add("busy");
     try{
       const tj = JSON.parse(await (await cget(HOST + "/planet", true)).text()), tpl = tj.tiles[0];
       let set = null; for(const opt of [{cz:10, cr:50, ar:12, zr:4}, {cz:10, cr:30, ar:8, zr:3}, {cz:9, cr:30, ar:6, zr:2}, {cz:9, cr:20, ar:4, zr:1}]){ set = tilePlan(routePts, apts, opt); if(set.size <= MAXTILES) break }
-      const st = JSON.parse(rawStyle), extra = [];
-      const sp = typeof st.sprite === "string" ? [st.sprite] : (st.sprite || []).map(s => s.url); sp.forEach(u => extra.push(u + ".json", u + ".png", u + "@2x.json", u + "@2x.png"));
-      const fonts = new Set(); (st.layers || []).forEach(l => { const f = l.layout && l.layout["text-font"]; if(Array.isArray(f) && f.every(x => typeof x === "string")) fonts.add(f.join(",")) });
-      if(st.glyphs) fonts.forEach(f => ["0-255", "256-511", "8192-8447"].forEach(r => extra.push(st.glyphs.replace("{fontstack}", encodeURIComponent(f)).replace("{range}", r))));
-      const urls = [...set].map(k => { const [z, x, y] = k.split("/"); return tpl.replace("{z}", z).replace("{x}", x).replace("{y}", y) }).concat(extra);
+      // both looks: their styles, sprites and fonts (the tiles are the same)
+      const extra = [];
+      for(const kk of ["light", "dark"]){ let raw = raws[kk]; if(!raw){ try{ raw = raws[kk] = await (await cget(STYLES[kk], true)).text() }catch(e){ continue } }
+        const st = JSON.parse(raw);
+        const sp = typeof st.sprite === "string" ? [st.sprite] : (st.sprite || []).map(s => s.url); sp.forEach(u => extra.push(u + ".json", u + ".png", u + "@2x.json", u + "@2x.png"));
+        const fonts = new Set(); (st.layers || []).forEach(l => { const f = l.layout && l.layout["text-font"]; if(Array.isArray(f) && f.every(x => typeof x === "string")) fonts.add(f.join(",")) });
+        if(st.glyphs) fonts.forEach(f => ["0-255", "256-511", "8192-8447"].forEach(r => extra.push(st.glyphs.replace("{fontstack}", encodeURIComponent(f)).replace("{range}", r)))) }
+      const urls = [...set].map(k => { const [z, x, y] = k.split("/"); return tpl.replace("{z}", z).replace("{x}", x).replace("{y}", y) }).concat([...new Set(extra)]);
       let done = 0, bad = 0, i = 0; const tick = () => { bar.firstChild.style.width = (done / urls.length * 100).toFixed(1) + "%"; pt.textContent = `${done.toLocaleString("en-IN")} of ${urls.length.toLocaleString("en-IN")}${bad ? ` · ${bad} failed` : ""}` };
       try{ navigator.storage && navigator.storage.persist && navigator.storage.persist() }catch(e){}
       await Promise.all([0, 1, 2, 3].map(async () => { while(i < urls.length && !closed){ const u = urls[i++]; try{ await cget(u, false) }catch(e){ bad++ } done++; if(done % 8 === 0) tick() } }));
@@ -485,7 +552,8 @@ export async function openBriefMap(ctx){
 
   /* ---------- taps ---------- */
   map.on("click", e => {
-    if(view === "month"){ const p = jets && jets.hit(e.point.x, e.point.y); if(p){ monthSheet("route", p.r.k, p.from); return }
+    if(view === "month"){ const p = jets && jets.hit(e.point.x, e.point.y); if(p){ jets.follow(p); return }
+      if(jets && jets.following){ jets.unfollow(); return }
       const r = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], {layers:["bm-mrl", "bm-mrd"]});
       if(r.length){ monthSheet("route", r[0].properties.k); return } closeSheet(); if(jets) jets.select(null); return }
     if(!B) return; const box = [[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]];
@@ -518,18 +586,20 @@ export async function openBriefMap(ctx){
     else if(k === "dl") download();
     else if(k === "dldel"){ caches.delete(MCACHE).then(() => { localStorage.removeItem(DLKEY); offSheet() }) }
     else if(k === "drop"){ dropBrief().then(() => { S = null; B = null; setup(); paintTime(true); sub(); openSheet("list", emptyHtml()) }) }
+    else if(k === "look"){ prefs.look = {auto:"light", light:"dark", dark:"auto"}[prefs.look] || "auto"; savePrefs(); applyLook();
+      toast(LOOKS[prefs.look]) }
     else if(k === "vmonth"){ if(M && view !== "month") setView("month", true) }
     else if(k === "vbrief"){ if(view !== "brief") setView("brief", true) }
   });
   o.addEventListener("keydown", e => { if((e.key === "Enter" || e.key === " ") && e.target.matches("[data-bmap],[data-bmn],[data-bmst]")){ e.preventDefault(); e.stopPropagation(); e.target.click() } });
 
   function sub(){ if(view === "month") return; const d = dlInfo(); $(o, ".bmsub").textContent = B ? `${B.dep || "?"} to ${B.dest || "?"}${B.date ? " · " + dayLbl(B.date) : ""}${d ? " · offline map saved" : ""}` : styleOK ? "No briefing yet · tap upload" : "Offline · no saved map here" }
-  function close(){ if(closed) return; closed = true; document.documentElement.classList.remove("sheet-open", "bm-open"); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
+  function close(){ if(closed) return; closed = true; document.documentElement.classList.remove("sheet-open", "bm-open"); mq.removeEventListener && mq.removeEventListener("change", onScheme); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
 
   // opens on the briefing when one is loaded for about now (6 h before its day to the end of the next), else the month
   const now = Date.now(), fresh = B && B.date && now > B.date - 6 * 36e5 && now < B.date + 48 * 36e5;
   view = ctx.view || (fresh || !M ? "brief" : "month");
-  monthSetup(); setup(); paintTime(true); setView(view, false);
+  monthSetup(); setup(); paintTime(true); setView(view, false); lookBtn();
   return {close, el:o, map};
 }
 export { mergeBrief, viewOf, emptyStore };   // for the tests
