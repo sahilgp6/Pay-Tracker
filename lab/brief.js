@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime } from "./briefparse.js?b=68";
-import { RWY, ICAO } from "./rwydata.js?b=68";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime } from "./briefparse.js?b=69";
+import { RWY, ICAO } from "./rwydata.js?b=69";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -158,6 +158,7 @@ export async function openBriefMap(ctx){
       <div role="button" tabindex="0" class="wclose hz" data-bm="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
       <div class="bmt"><b class="bmtt">Map</b><span class="bmsub">Loading the map…</span></div>
       <div class="bmseg" role="tablist" aria-label="View"><div role="tab" tabindex="0" data-bm="vmonth">Month</div><div role="tab" tabindex="0" data-bm="vbrief">Briefing</div></div>
+      <div role="button" tabindex="0" class="wclose hz bmfit" data-bm="fit" aria-label="Back to all routes"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16"/></svg></div>
       <label class="wclose hz bmup" aria-label="Upload briefing PDF"><input type="file" accept="application/pdf,.pdf" hidden><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></label>
     </div>
     <div class="bmmap"></div>
@@ -241,77 +242,134 @@ export async function openBriefMap(ctx){
   }
   function fitMonth(anim){ if(!M) return; const P = M.stations.map(s => [s.lon, s.lat]);
     const b = P.reduce((b, p) => [[Math.min(b[0][0], p[0]), Math.min(b[0][1], p[1])], [Math.max(b[1][0], p[0]), Math.max(b[1][1], p[1])]], [[180, 90], [-180, -90]]);
-    map.fitBounds(b, {padding:{top:130, bottom:150, left:60, right:60}, duration:anim && !ctx.rm() ? 1100 : 0, pitch:0, bearing:0, maxZoom:7}) }
+    const cam = map.cameraForBounds(b, {padding:{top:130, bottom:150, left:60, right:60}, maxZoom:7}); if(!cam) return; overviewZoom = cam.zoom;
+    if(anim === "open" && !ctx.rm()){ map.jumpTo({center:[cam.center.lng + 40, cam.center.lat - 10], zoom:Math.max(1, cam.zoom - 2.2), pitch:0, bearing:0}); map.flyTo({center:cam.center, zoom:cam.zoom, duration:1100, essential:true}); return }
+    map.easeTo({center:cam.center, zoom:cam.zoom, pitch:0, bearing:0, duration:anim && !ctx.rm() ? 1100 : 0}) }
+  /* The 737s, with the old globe's rules (build 64) plus slowing down when selected:
+     - each leg takes 7 to 20 s by distance; out, 1.8 s on the ground at the far end (hidden), back, 1.8 s at home; nose first
+     - quadratic ease along each leg; a random start for each plane
+     - grows out of the runway over the first 30% of the track on the climb, shrinks over the last 30% to nothing at touchdown
+     - same size on screen at any zoom; deadheads as a see-through jet
+     - tap a plane: it slows to about a third of its pace, the detailed 737 is swapped in, the camera flies in low behind it
+       (about 21 degrees above the horizon) with a smoothed heading; drag to swing round it, pinch to move in and out,
+       it stays followed; its route line goes faint and the others fainter; the details bubble floats above it
+     - tap an airport: the camera turns to it, routes through it stay bright and the rest dim, its bubble floats above it
+     - tap empty map: let go, and pull back out to the overview distance where you are
+     - airport tags never pile on each other; while following, tags near the jet fade out of its way
+     - the view flies in on opening; the globe button goes back to all routes; Escape closes */
+  const SLOW = .35, G = 1.8, EL = Math.atan2(.065, .17), FZ = 6.9;   // EL: camera height behind the jet; FZ: follow zoom
+  let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=68")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=69")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
     R.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-    const scene = new THREE.Scene(), cam = new THREE.OrthographicCamera(0, 1, 0, -1, -3000, 3000);
+    const scene = new THREE.Scene(), cam = new THREE.OrthographicCamera(0, 1, 0, -1, -4000, 4000);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4658, 1.5)); const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-300, 400, 900); scene.add(sun);
-    const base = build737({detail:false});
-    const planes = M.routes.map((r, i) => { const T = new THREE.Group(), g = new THREE.Group(), j = base.clone(true);
-      if(r.dh) j.traverse(m => { if(m.isMesh){ m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = .5 } });
+    const ghost = j => { j.traverse(m => { if(m.isMesh){ m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = .55 } }); return j };
+    const base = build737({detail:false}); let baseD = null;
+    const planes = M.routes.map(r => { const T = new THREE.Group(), g = new THREE.Group(), j = base.clone(true); if(r.dh) ghost(j);
       j.rotation.x = Math.PI / 2; g.add(j); T.add(g); scene.add(T);   // T: on screen, tilted with the map; g: heading; j: the jet, nose up the screen
-      const A = [r.A.lon, r.A.lat], B2 = [r.B.lon, r.B.lat], L = gcNm(A, B2), dur = Math.max(6, Math.min(14, L / 70));
-      return {r, T, g, j, A, B:B2, dur, off:(i * .37) % 1, cyc:2 * dur + 2, pos:null, from:r.a} });
-    let raf = 0, running = false, F = null, JD = null;   // F: the plane being followed; JD: the detailed jet
-    const fol = document.createElement("div"); fol.className = "gbubble bmfol"; fol.hidden = true; $(o, ".bmmap").appendChild(fol);
+      const A = [r.A.lon, r.A.lat], B2 = [r.B.lon, r.B.lat], dur = Math.max(7, Math.min(20, gcNm(A, B2) / 3440.065 * 47)), cyc = dur * 2 + G * 2;
+      return {r, T, g, j, A, B:B2, dur, cyc, tt:Math.random() * cyc, rate:1, vis:0, pos:A, from:r.a} });
+    let raf = 0, running = false, F = null, foc = null, last = 0;
+    const orb = {yaw:0, pitch:0, zoom:1};
+    const bub = document.createElement("div"); bub.className = "gbubble bmfol"; bub.hidden = true; $(o, ".bmmap").appendChild(bub);
+    const bp = {x:0, y:0, sx:-1, sy:-1};
     const size = () => { const c = map.getContainer(), W = c.clientWidth, H = c.clientHeight; R.setSize(W, H, false); cam.right = W; cam.bottom = -H; cam.updateProjectionMatrix() };
     size(); map.on("resize", size);
     const brgOf = (a, b) => { const r = Math.PI / 180, y = Math.sin((b[0] - a[0]) * r) * Math.cos(b[1] * r), x = Math.cos(a[1] * r) * Math.sin(b[1] * r) - Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos((b[0] - a[0]) * r); return (Math.atan2(y, x) / r + 360) % 360 };
-    const wrap = d => ((d + 540) % 360) - 180, ease = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    const wrap = d => ((d + 540) % 360) - 180, ease = x => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2, ramp = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x) };
+    const lerpK = (k, dt) => 1 - Math.pow(1 - k, dt * 60);   // a per-frame lerp at 60 fps, the same at any frame rate
+    function showBub(kind, key, from){ bub.innerHTML = M.bubble(kind, key, from); bub.hidden = false; bub.dataset.kind = kind; bp.sx = -1;
+      if(!ctx.rm()){ bub.classList.remove("pop"); void bub.offsetWidth; bub.classList.add("pop") } }
+    function lines(mode, key){   // route line brightness: normal, following one route, or focused on an airport
+      const op = mode === "follow" ? ["case", ["==", ["get", "k"], key], .35, .15] : mode === "stn" ? ["case", ["in", key, ["get", "k"]], 1, .25] : null;
+      map.setPaintProperty("bm-mrl", "line-opacity", op || 1); map.setPaintProperty("bm-mrd", "line-opacity", op || .7); map.setPaintProperty("bm-mrc", "line-opacity", op ? ["*", .4, op] : .4) }
     function frame(now){
       if(!running || closed) return; raf = requestAnimationFrame(frame);
-      if(document.hidden) return;
+      if(document.hidden){ last = now; return }
+      const dt = Math.min(.05, last ? (now - last) / 1000 : 0); last = now;
       for(const p of planes){
-        let ph = ((now / 1000) + p.off * p.cyc) % p.cyc, f, fwd = true;
-        if(ctx.rm()){ f = .5 } else if(ph < p.dur){ f = ph / p.dur } else if(ph < p.dur + 1){ f = 1 } else if(ph < 2 * p.dur + 1){ f = 1 - (ph - p.dur - 1) / p.dur; fwd = false } else { f = 0; fwd = false }
-        f = f < .5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
-        const f0 = Math.max(0, Math.min(.99, f - .005)), f1 = f0 + .01;
-        p.pos = gcAt(p.A, p.B, f); p.tail = gcAt(p.A, p.B, fwd ? f0 : f1); p.nose = gcAt(p.A, p.B, fwd ? f1 : f0);
-        const from = fwd ? p.r.a : p.r.b; if(p === F && from !== p.from){ p.from = from; fol.innerHTML = M.bubble("route", p.r.k, from) } p.from = from;
+        p.rate += ((p === F ? SLOW : 1) - p.rate) * Math.min(1, dt * 2.5);   // eases down to a third when selected, back up when let go
+        p.tt = (p.tt + dt * p.rate) % p.cyc; const tt = ctx.rm() ? p.dur * .5 : p.tt;
+        let t, dir, u = -1;
+        if(tt < p.dur){ u = tt / p.dur; t = ease(u); dir = 1 } else if(tt < p.dur + G){ t = 1; dir = -1 } else if(tt < p.dur * 2 + G){ u = (tt - p.dur - G) / p.dur; t = 1 - ease(u); dir = -1 } else { t = 0; dir = 1 }
+        p.vis = u < 0 ? 0 : Math.pow(ramp(Math.min(t, 1 - t) / .3), .8);
+        const tc = Math.max(.0005, Math.min(.9995, t)), t0 = Math.max(0, tc - .004), t1 = Math.min(1, tc + .004);
+        p.pos = gcAt(p.A, p.B, tc); p.tail = gcAt(p.A, p.B, dir > 0 ? t0 : t1); p.nose = gcAt(p.A, p.B, dir > 0 ? t1 : t0);
+        const from = dir > 0 ? p.r.a : p.r.b; if(p === F && from !== p.from && !bub.hidden) showBub("route", p.r.k, from); p.from = from;
       }
-      // the chase camera: flies in behind the plane, then rides along with it
-      if(F){ const brg = brgOf(F.tail, F.nose), k = ctx.rm() ? 1 : ease(Math.min(1, (now - F.t0) / 1800)), s0 = F.cam0;
-        F.brg = k < 1 ? s0.bearing + wrap(brg - s0.bearing) * k : F.brg + wrap(brg - F.brg) * .06;
-        map.jumpTo({center:[s0.lng + wrap(F.pos[0] - s0.lng) * k, s0.lat + (F.pos[1] - s0.lat) * k], zoom:s0.zoom + (6.6 - s0.zoom) * k, pitch:s0.pitch + (60 - s0.pitch) * k, bearing:F.brg}) }
-      const ctr = map.getCenter(), cen = [ctr.lng, ctr.lat], pitch = map.getPitch() * Math.PI / 180, px = 30 * (map.getZoom() > 7 ? 1.25 : 1) / .034;
+      // follow: low behind the jet, heading smoothed so a turnaround swings round gently; drag and pinch move round it
+      if(F){ const hd = brgOf(F.tail, F.nose); F.sb = F.sb == null ? hd : (F.sb + wrap(hd - F.sb) * lerpK(ctx.rm() ? 1 : .04, dt) + 360) % 360;
+        const k = lerpK(ctx.rm() ? 1 : .08, dt), c = map.getCenter(), el = EL + orb.pitch;
+        const want = {bearing:(F.sb + orb.yaw * 180 / Math.PI + 360) % 360, pitch:Math.max(0, Math.min(70, 90 - el * 180 / Math.PI)), zoom:FZ - Math.log2(orb.zoom)};
+        map.jumpTo({center:[c.lng + wrap(F.pos[0] - c.lng) * k, c.lat + (F.pos[1] - c.lat) * k], zoom:map.getZoom() + (want.zoom - map.getZoom()) * k,
+          pitch:map.getPitch() + (want.pitch - map.getPitch()) * k, bearing:map.getBearing() + wrap(want.bearing - map.getBearing()) * k}) }
+      else if(foc){ const k = lerpK(ctx.rm() ? 1 : .08, dt), c = map.getCenter();
+        map.jumpTo({center:[c.lng + wrap(foc.lon - c.lng) * k, c.lat + (foc.lat - c.lat) * k], zoom:map.getZoom() + (foc.z - map.getZoom()) * k, pitch:map.getPitch() * (1 - k), bearing:map.getBearing() * (1 - k)}) }
+      const ctr = map.getCenter(), cen = [ctr.lng, ctr.lat], pitch = map.getPitch() * Math.PI / 180, z = map.getZoom();
+      const px = 30 / .034, fpx = 230 / .034 / orb.zoom;   // ~30 px on screen at any zoom; the followed jet ~230 px, as close as the old chase view
       for(const p of planes){
-        if(gcNm(cen, p.pos) > 4800){ p.T.visible = false; continue }   // round the back of the globe
-        const a = map.project(p.pos), t = map.project(p.tail), n = map.project(p.nose), b = {x:a.x + n.x - t.x, y:a.y + n.y - t.y}; p.T.visible = true;   // heading from tail to nose, so it holds while parked
-        p.T.position.set(a.x, -a.y, 0); p.T.rotation.x = -pitch * .85 - .28; p.g.rotation.z = Math.atan2(-(b.y - a.y), b.x - a.x) + Math.PI / 2;
-        p.T.scale.setScalar(px * (p === F ? 3.4 : p.sel ? 1.3 : 1)); p.sx = a.x; p.sy = a.y;
+        if(p.vis <= .01 || gcNm(cen, p.pos) > 4800){ p.T.visible = false; p.sx = null; continue }   // on the ground, or round the back of the globe
+        const a = map.project(p.pos), t = map.project(p.tail), n = map.project(p.nose); p.T.visible = true;
+        p.T.position.set(a.x, -a.y, 0); p.T.rotation.x = -pitch * .85 - .28; p.g.rotation.z = Math.atan2(-(n.y - t.y), n.x - t.x) + Math.PI / 2;
+        p.T.scale.setScalar((p === F ? fpx : px) * Math.max(p.vis, .001)); p.sx = a.x; p.sy = a.y;
       }
-      if(F && !fol.hidden) fol.style.transform = `translate(${Math.round(F.sx)}px,${Math.round(F.sy - 46)}px) translate(-50%,-100%)`;
       R.render(scene, cam);
+      // airport tags: none on top of another; while following, those near the jet step out of its way
+      const placed = []; const fx = F && F.sx != null ? [F.sx, F.sy] : null;
+      for(const m of mMarkers){ const ll = m.getLngLat(), q = map.project(ll), e = m.getElement();
+        const clash = placed.some(([x, y]) => Math.abs(x - q.x) < 34 && Math.abs(y - q.y) < 16); let op = clash ? 0 : 1;
+        if(!clash) placed.push([q.x, q.y]); if(fx && Math.abs(q.x - fx[0]) < 80 && Math.abs(q.y - fx[1]) < 70) op = Math.min(op, .1);
+        if(e._op !== op){ e._op = op; e.classList.toggle("tagoff", op === 0); e.classList.toggle("tagdim", op > 0 && op < .5) } }   // classes: MapLibre rewrites marker opacity itself
+      // the bubble eases after its target and only moves for real changes, so it stays steady enough to tap
+      if(!bub.hidden){ let q = null;
+        if(F && F.sx != null) q = {x:F.sx, y:F.sy - 34}; else if(foc){ const s = map.project([foc.lon, foc.lat]); q = {x:s.x, y:s.y - 14} }
+        if(q){ const W = map.getContainer().clientWidth; if(bp.sx < 0){ bp.x = q.x; bp.y = q.y } bp.x += (q.x - bp.x) * .2; bp.y += (q.y - 26 - bp.y) * .2;
+          const bx = Math.round(Math.min(W - 150, Math.max(150, bp.x))), by = Math.round(Math.max(bub.offsetHeight + 70, bp.y));
+          if(Math.abs(bx - bp.sx) > 1.5 || Math.abs(by - bp.sy) > 1.5){ bp.sx = bx; bp.sy = by; bub.style.transform = `translate(${bx}px,${by}px) translate(-50%,-100%)` } } }
     }
     function detail(p, on){
-      if(on){ if(!JD){ JD = build737({detail:true}); JD.rotation.x = Math.PI / 2 } if(p.r.dh) JD.traverse(m => { if(m.isMesh){ m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = .55 } });
-        p.g.add(JD); p.j.visible = false }
-      else if(JD && JD.parent === p.g){ p.g.remove(JD); p.j.visible = true; JD = null }
+      if(on){ if(!baseD) baseD = build737({detail:true}); const d = baseD.clone(true); if(p.r.dh) ghost(d); d.rotation.x = Math.PI / 2; p.g.add(d); p.jd = d; p.j.visible = false }
+      else if(p.jd){ p.g.remove(p.jd); p.jd = null; p.j.visible = true }
     }
+    // while following, your finger moves the camera round the jet instead of the map
+    const handlers = ["dragPan", "dragRotate", "touchZoomRotate", "touchPitch", "scrollZoom", "doubleClickZoom", "keyboard"];
+    const freeMap = on => handlers.forEach(h => { try{ on ? map[h].enable() : map[h].disable() }catch(e){} });
+    const ptrs = new Map(); let st = null, pinch = null; const box = map.getCanvasContainer();
+    box.addEventListener("pointerdown", e => { if(!F) return; ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      if(ptrs.size === 1) st = {x:e.clientX, y:e.clientY, yaw:orb.yaw, pitch:orb.pitch};
+      if(ptrs.size === 2){ const [p, q] = [...ptrs.values()]; pinch = {d:Math.hypot(p.x - q.x, p.y - q.y), zoom:orb.zoom} } });
+    box.addEventListener("pointermove", e => { if(!F || !ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      if(ptrs.size === 2 && pinch){ const [p, q] = [...ptrs.values()]; orb.zoom = Math.max(.45, Math.min(3, pinch.zoom * pinch.d / Math.max(20, Math.hypot(p.x - q.x, p.y - q.y)))); return }
+      if(ptrs.size === 1 && st){ const dx = e.clientX - st.x, dy = e.clientY - st.y; if(Math.hypot(dx, dy) < 10) return;
+        orb.yaw = st.yaw - dx * .008; orb.pitch = Math.max(-.3, Math.min(1.1, st.pitch + dy * .006)) } });
+    const up = e => { ptrs.delete(e.pointerId); if(ptrs.size < 2) pinch = null; if(ptrs.size === 1){ const [p] = [...ptrs.values()]; st = {x:p.x, y:p.y, yaw:orb.yaw, pitch:orb.pitch} } };
+    box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
+    box.addEventListener("wheel", e => { if(!F) return; e.preventDefault(); orb.zoom = Math.max(.45, Math.min(3, orb.zoom * Math.exp(e.deltaY * .0012))) }, {passive:false});
     jets = {planes, el:cv,
-      run(){ if(running) return; running = true; cv.hidden = false; raf = requestAnimationFrame(frame) },
-      stop(){ running = false; cancelAnimationFrame(raf); cv.hidden = true; this.unfollow(true) },
-      hit(x, y){ let best = null, d = 30; for(const p of planes){ if(!p.T.visible || p.sx == null) continue; const q = Math.hypot(p.sx - x, p.sy - y); if(q < d){ d = q; best = p } } return best },
-      select(k){ planes.forEach(p => p.sel = p.r.k === k) },
-      follow(p){ if(F === p) return; if(F) this.unfollow(true); closeSheet(); F = p; p.t0 = performance.now(); const c = map.getCenter();
-        p.cam0 = {lng:c.lng, lat:c.lat, zoom:map.getZoom(), pitch:map.getPitch(), bearing:map.getBearing()}; p.brg = p.cam0.bearing;
-        detail(p, true); fol.innerHTML = M.bubble("route", p.r.k, p.from); fol.hidden = false; if(ctx.haptics) ctx.haptics(fol);
-        if(!ctx.rm()){ fol.classList.remove("pop"); void fol.offsetWidth; fol.classList.add("pop") } o.classList.add("following") },
-      unfollow(quiet){ if(!F) return; detail(F, false); F = null; fol.hidden = true; o.classList.remove("following");
-        if(!quiet){ map.easeTo({pitch:0, bearing:0, duration:ctx.rm() ? 0 : 900}); setTimeout(() => { if(!F && view === "month") fitMonth(true) }, ctx.rm() ? 0 : 950) } },
-      get following(){ return F },
-      kill(){ this.stop(); try{ R.dispose() }catch(e){} cv.remove(); fol.remove() } };
-    // your own pan, pinch or turn lets go of the plane
-    ["dragstart", "zoomstart", "rotatestart", "pitchstart"].forEach(ev => map.on(ev, e => { if(e.originalEvent && F) jets.unfollow(true) }));
+      run(){ if(running) return; running = true; cv.hidden = false; last = 0; raf = requestAnimationFrame(frame) },
+      stop(){ running = false; cancelAnimationFrame(raf); cv.hidden = true; this.release(false) },
+      hit(x, y){ let best = null, d = 30; for(const p of planes){ if(!p.T.visible || p.sx == null || p.vis < .5) continue; const q = Math.hypot(p.sx - x, p.sy - y); if(q < d){ d = q; best = p } } return best },
+      follow(p){ if(F === p) return; if(F) detail(F, false); foc = null; closeSheet(); F = p; F.sb = null; orb.yaw = 0; orb.pitch = 0; orb.zoom = 1;
+        detail(p, true); showBub("route", p.r.k, p.from); lines("follow", p.r.k); freeMap(false); o.classList.add("following"); if(ctx.haptics) ctx.haptics(bub) },
+      focus(code){ const s = M.stations.find(x => x.code === code); if(!s) return; if(F){ detail(F, false); F = null; freeMap(true) }
+        closeSheet(); foc = {lon:s.lon, lat:s.lat, z:Math.max(map.getZoom(), overviewZoom + .6)}; showBub("stn", code); lines("stn", code); o.classList.remove("following");
+        setTimeout(() => { foc && (foc.z = map.getZoom()) }, ctx.rm() ? 0 : 1600) },   // once there, the map is yours to move
+      release(flyOut){ const was = F || foc; if(F) detail(F, false); F = null; foc = null; bub.hidden = true; lines(); freeMap(true); o.classList.remove("following");
+        mMarkers.forEach(m => { const e = m.getElement(); e._op = null; e.classList.remove("tagoff", "tagdim") });
+        if(was && flyOut) map.easeTo({zoom:Math.min(map.getZoom(), overviewZoom), pitch:0, bearing:0, duration:ctx.rm() ? 0 : 700}) },
+      get following(){ return F }, get focused(){ return foc },
+      kill(){ this.stop(); try{ R.dispose() }catch(e){} cv.remove(); bub.remove() } };
+    // panning the map yourself while an airport is focused lets go of it
+    ["dragstart", "zoomstart", "rotatestart", "pitchstart"].forEach(ev => map.on(ev, e => { if(e.originalEvent && foc){ foc = null } }));
     if(view === "month") jets.run();
   }
-  function monthSheet(kind, key, dirFrom){ if(!M || !M.bubble) return; const h = M.bubble(kind, key, dirFrom); if(!h) return; if(jets) jets.unfollow(true);
-    openSheet("month", `<div class="bmbub">${h}</div>`); if(jets) jets.select(kind === "route" ? key : null) }
+  function monthSheet(kind, key, dirFrom){ if(!M || !M.bubble) return; const h = M.bubble(kind, key, dirFrom); if(!h) return; if(jets) jets.release(false);
+    openSheet("month", `<div class="bmbub">${h}</div>`) }
 
   function layersFor(v){ BRIEF_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "brief" ? "visible" : "none"));
     MONTH_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "month" ? "visible" : "none")) }
@@ -348,11 +406,11 @@ export async function openBriefMap(ctx){
     $(o, '[data-bm="vmonth"]').setAttribute("aria-selected", String(v === "month")); $(o, '[data-bm="vbrief"]').setAttribute("aria-selected", String(v === "brief"));
     $(o, '[data-bm="vmonth"]').classList.toggle("dis", !M);
     layersFor(v);
-    closeSheet(); zoomAp = null; if(jets) jets.unfollow(true);
+    closeSheet(); zoomAp = null; if(jets) jets.release(false);
     if(v === "month"){ $(o, ".bmtt").textContent = M.label; $(o, ".bmsub").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · tap a plane to follow it`;
       $(o, ".bmmonth").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · ${M.stations.length} airports · drag to spin, pinch to zoom`;
       $(o, ".bmcount").textContent = M.label; fitMonth(anim); startJets() }
-    else { if(jets) jets.stop(); $(o, ".bmtt").textContent = "Briefing map"; vis(); sub(); count(); if(B) fitRoute(anim); if(!B) openSheet("list", emptyHtml()) }
+    else { if(jets) jets.stop(); $(o, ".bmtt").textContent = "Briefing map"; vis(); sub(); count(); if(B) fitRoute(anim === true); if(!B) openSheet("list", emptyHtml()) }
   }
 
   /* ---------- briefing to map ---------- */
@@ -553,9 +611,9 @@ export async function openBriefMap(ctx){
   /* ---------- taps ---------- */
   map.on("click", e => {
     if(view === "month"){ const p = jets && jets.hit(e.point.x, e.point.y); if(p){ jets.follow(p); return }
-      if(jets && jets.following){ jets.unfollow(); return }
+      if(jets && (jets.following || jets.focused)){ jets.release(true); return }
       const r = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], {layers:["bm-mrl", "bm-mrd"]});
-      if(r.length){ monthSheet("route", r[0].properties.k); return } closeSheet(); if(jets) jets.select(null); return }
+      if(r.length){ monthSheet("route", r[0].properties.k); return } closeSheet(); return }
     if(!B) return; const box = [[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]];
     const rw = map.queryRenderedFeatures(box, {layers:["bm-rwf", "bm-rwx"]}); if(rw.length){ ntSheet([...new Set(rw.map(f => f.properties.id))]); return }
     const f = map.queryRenderedFeatures(box, {layers:["bm-ntf", "bm-ntl", "bm-ntp"]}); if(f.length){ ntSheet([...new Set(f.map(x => x.properties.id))].slice(0, 6)); return }
@@ -564,7 +622,7 @@ export async function openBriefMap(ctx){
   for(const id of ["bm-ntf", "bm-ntp", "bm-rwf"]){ map.on("mouseenter", id, () => map.getCanvas().style.cursor = "pointer"); map.on("mouseleave", id, () => map.getCanvas().style.cursor = "") }
   o.addEventListener("click", e => {
     if(e.target.closest("[data-sheet]")){ close(); return }   // a flight in the month view: the app opens its sheet once the map has closed
-    const stn = e.target.closest("[data-bmst]"); if(stn){ monthSheet("stn", stn.dataset.bmst); return }
+    const stn = e.target.closest("[data-bmst]"); if(stn){ if(jets) jets.focus(stn.dataset.bmst); else monthSheet("stn", stn.dataset.bmst); return }
     const ap = e.target.closest("[data-bmap]"); if(ap){ zoomTo(ap.dataset.bmap); return }
     const nn = e.target.closest("[data-bmn]"); if(nn){ const n = B && B.notams.find(x => x.id === nn.dataset.bmn); if(n){ ntSheet([n.id]);
         if(n.shape){ const P = n.shape.t === "circle" ? circlePoly(n.shape.c, n.shape.r, 16) : n.shape.p || [n.shape.c];
@@ -586,6 +644,7 @@ export async function openBriefMap(ctx){
     else if(k === "dl") download();
     else if(k === "dldel"){ caches.delete(MCACHE).then(() => { localStorage.removeItem(DLKEY); offSheet() }) }
     else if(k === "drop"){ dropBrief().then(() => { S = null; B = null; setup(); paintTime(true); sub(); openSheet("list", emptyHtml()) }) }
+    else if(k === "fit"){ if(jets) jets.release(false); closeSheet(); fitMonth(true) }
     else if(k === "look"){ prefs.look = {auto:"light", light:"dark", dark:"auto"}[prefs.look] || "auto"; savePrefs(); applyLook();
       toast(LOOKS[prefs.look]) }
     else if(k === "vmonth"){ if(M && view !== "month") setView("month", true) }
@@ -594,12 +653,14 @@ export async function openBriefMap(ctx){
   o.addEventListener("keydown", e => { if((e.key === "Enter" || e.key === " ") && e.target.matches("[data-bmap],[data-bmn],[data-bmst]")){ e.preventDefault(); e.stopPropagation(); e.target.click() } });
 
   function sub(){ if(view === "month") return; const d = dlInfo(); $(o, ".bmsub").textContent = B ? `${B.dep || "?"} to ${B.dest || "?"}${B.date ? " · " + dayLbl(B.date) : ""}${d ? " · offline map saved" : ""}` : styleOK ? "No briefing yet · tap upload" : "Offline · no saved map here" }
-  function close(){ if(closed) return; closed = true; document.documentElement.classList.remove("sheet-open", "bm-open"); mq.removeEventListener && mq.removeEventListener("change", onScheme); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
+  function close(){ if(closed) return; closed = true; removeEventListener("keydown", onEsc); document.documentElement.classList.remove("sheet-open", "bm-open"); mq.removeEventListener && mq.removeEventListener("change", onScheme); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
 
   // opens on the briefing when one is loaded for about now (6 h before its day to the end of the next), else the month
   const now = Date.now(), fresh = B && B.date && now > B.date - 6 * 36e5 && now < B.date + 48 * 36e5;
   view = ctx.view || (fresh || !M ? "brief" : "month");
-  monthSetup(); setup(); paintTime(true); setView(view, false); lookBtn();
+  monthSetup(); setup(); paintTime(true); setView(view, "open"); lookBtn();
+  function onEsc(e){ if(e.key === "Escape" && !document.querySelector("#sheetWrap:not([hidden])")) close() }   // hoisted, so closing early is safe
+  addEventListener("keydown", onEsc);
   return {close, el:o, map};
 }
 export { mergeBrief, viewOf, emptyStore };   // for the tests
