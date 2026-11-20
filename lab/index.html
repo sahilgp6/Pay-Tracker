@@ -2,6 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>/* lab start-up probe: shows any error on screen, and says so if the app hasn't drawn after 10 s */
+(function(){ var E=[], box=null;
+  function show(t){ try{ if(!box){ box=document.createElement("pre"); box.id="labErr";
+      box.style.cssText="position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 8px);z-index:99999;margin:0;padding:12px;max-height:60vh;overflow:auto;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;background:#7f1d1d;color:#fff;border-radius:12px;-webkit-user-select:text;user-select:text";
+      (document.body||document.documentElement).appendChild(box) }
+    box.textContent="Lab problem (screenshot this):\n"+t+"\n\n"+navigator.userAgent }catch(e){} }
+  addEventListener("error",function(e){ E.push((e.message||"error")+" @ "+String(e.filename||"").split("/").pop()+":"+e.lineno+":"+e.colno); show(E.join("\n")) },true);
+  addEventListener("unhandledrejection",function(e){ var r=e.reason; E.push("Promise: "+(r&&(r.stack||r.message)||r)); show(E.join("\n")) });
+  setTimeout(function(){ var v=document.getElementById("view"); if(!v||!v.children.length) show((E.join("\n")||"No error caught.")+"\nThe app did not finish starting.") },10000);
+})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1a3a6b">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -268,15 +278,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=58">
-<script src="intro.js?b=58" defer></script>
+<link rel="stylesheet" href="lab.css?b=59">
+<script src="intro.js?b=59" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=58"></script>
-<script src="motion.js?b=58" defer></script>
-<script src="lab.js?b=58"></script>
+<script src="mapdata.js?b=59"></script>
+<script src="motion.js?b=59" defer></script>
+<script src="lab.js?b=59"></script>
 </head>
 <body>
 <div class="wrap">
@@ -887,7 +897,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=58").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=59").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -1031,7 +1041,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=58");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=59");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1127,7 +1137,7 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=58") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=59") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
@@ -1289,7 +1299,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=58"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=59"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1297,7 +1307,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=58");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=59");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -2504,7 +2514,7 @@ function openWorld(){
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./world3d.js?b=58").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
+  import("./world3d.js?b=59").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2776,7 +2786,7 @@ function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead()
 
 let qIcaoLoad=false;
 function viewQuals(){
-  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=58").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=59").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
   const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
   // due soon: everything amber or red, soonest first
   const due=[];
@@ -3342,7 +3352,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=58") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=59") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
