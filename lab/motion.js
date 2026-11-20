@@ -39,14 +39,19 @@
     if(big) odometer(big);
     const svg = root.querySelector(".hero-arc"); if(!svg) return;
     const path = svg.querySelector(".arc-path"), plane = svg.querySelector(".arc-plane"), dots = svg.querySelectorAll(".arc-dot"), lbl = svg.querySelectorAll(".arc-lbl");
+    // the plane flies along the arc through its SVG transform attribute (Safari places CSS transforms on SVG shapes differently)
+    const L = path.getTotalLength(), at = {f:0, dy:0};
+    const place = ()=>{ const d=at.f*L, p=path.getPointAtLength(d), a=path.getPointAtLength(Math.max(0,d-.5)), b=path.getPointAtLength(Math.min(L,d+.5));
+      plane.setAttribute("transform", `translate(${p.x.toFixed(2)} ${(p.y+at.dy).toFixed(2)}) rotate(${(Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI+90).toFixed(1)})`) };
+    place();
     const tl = gsap.timeline({delay:.25});
     tl.fromTo(dots, {scale:0, transformOrigin:"50% 50%"}, {scale:1, duration:.4, ease:E.pop, stagger:.9})
       .fromTo(lbl, {autoAlpha:0, y:4}, {autoAlpha:1, y:0, duration:.4, ease:E.soft, stagger:.9}, 0)
       .fromTo(path, {drawSVG:"0%"}, {drawSVG:"100%", duration:1.5, ease:"power2.inOut"}, .15)
       .fromTo(plane, {autoAlpha:0}, {autoAlpha:1, duration:.2}, .15)
-      .to(plane, {duration:1.5, ease:"power2.inOut", motionPath:{path:path, align:path, alignOrigin:[.5,.5], autoRotate:90}}, .15)
+      .to(at, {f:1, duration:1.5, ease:"power2.inOut", onUpdate:place}, .15)
       .add(()=>{ // once landed, the plane idles with a slow drift so the card never looks frozen
-        gsap.to(plane, {y:"-=2.5", duration:2.2, ease:"sine.inOut", yoyo:true, repeat:-1});
+        gsap.to(at, {dy:-2.5, duration:2.2, ease:"sine.inOut", yoyo:true, repeat:-1, onUpdate:place});
       });
   }
   let lastOdo=null;

@@ -266,7 +266,6 @@ html.look-a .hero{position:relative;overflow:hidden;isolation:isolate}
 .arc-dot{fill:var(--onfill)} .arc-dot.end{fill:#e2c27f}
 .arc-lbl{font:600 10px var(--f-body);fill:color-mix(in srgb,var(--onfill) 75%,transparent);letter-spacing:.08em}
 .arc-plane path{fill:var(--onfill)}
-.arc-plane{transform:translate(184px,24px) rotate(110deg)}
 .odo{display:inline-block;height:1.05em;overflow:hidden;vertical-align:top;line-height:1.05}
 .odo-col{display:flex;flex-direction:column}
 .odo-col span{height:1.05em;line-height:1.05;text-align:center}

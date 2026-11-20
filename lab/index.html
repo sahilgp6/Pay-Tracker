@@ -278,15 +278,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=63">
-<script src="intro.js?b=63" defer></script>
+<link rel="stylesheet" href="lab.css?b=64">
+<script src="intro.js?b=64" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=63"></script>
-<script src="motion.js?b=63" defer></script>
-<script src="lab.js?b=63"></script>
+<script src="mapdata.js?b=64"></script>
+<script src="motion.js?b=64" defer></script>
+<script src="lab.js?b=64"></script>
 </head>
 <body>
 <div class="wrap">
@@ -899,7 +899,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=63").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=64").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -1048,7 +1048,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=63");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=64");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1144,7 +1144,7 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=63") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=64") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
@@ -1321,7 +1321,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=63"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=64"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1329,7 +1329,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=63");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=64");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -2536,7 +2536,7 @@ function openWorld(){
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./world3d.js?b=63").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
+  import("./world3d.js?b=64").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2652,8 +2652,8 @@ function viewMonth(){
         return `<svg class="hero-arc" viewBox="0 0 200 84" aria-hidden="true">
         <path class="arc-trail" d="M${bx} ${by} Q100 -6 ${fx} ${fy}"/><path class="arc-path" d="M${bx} ${by} Q100 -6 ${fx} ${fy}"/>
         <circle class="arc-dot" cx="${bx}" cy="${by}" r="3.2"/><circle class="arc-dot end" cx="${fx}" cy="${fy}" r="3.2"/>
-        <text x="${bx}" y="${by+16}" class="arc-lbl" text-anchor="middle">${esc(base)}</text>${far?`<text x="${fx}" y="${fy+24}" class="arc-lbl" text-anchor="middle">${esc(far)}</text>`:""}
-        <g class="arc-plane" style="transform:translate(${fx}px,${fy}px) rotate(${west?250:110}deg)"><path d="M0-8c.5 0 .9.4.9 1v4.6l6.6 3.8v1.7L.9 1.1v3.6l2 1.5V7.6L0 6.8l-2.9.8V6.2l2-1.5V1.1l-6.6 2V1.4l6.6-3.8V-7c0-.6.4-1 .9-1z"/></g>
+        <text x="${bx}" y="${by+16}" class="arc-lbl" text-anchor="middle">${esc(base)}</text>${far?`<text x="${fx}" y="${fy+27}" class="arc-lbl" text-anchor="middle">${esc(far)}</text>`:""}
+        <g class="arc-plane" transform="translate(${fx} ${fy}) rotate(${west?250:110})"><path d="M0-8c.5 0 .9.4.9 1v4.6l6.6 3.8v1.7L.9 1.1v3.6l2 1.5V7.6L0 6.8l-2.9.8V6.2l2-1.5V1.1l-6.6 2V1.4l6.6-3.8V-7c0-.6.4-1 .9-1z"/></g>
       </svg>` })()}
       <h2>Estimated take-home</h2>${wxCap()}
       <div class="big num" data-odo="${esc(inr(k.net))}" aria-label="${esc(inr(k.net))}">${inr(k.net)}</div>
@@ -2808,7 +2808,7 @@ function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead()
 
 let qIcaoLoad=false;
 function viewQuals(){
-  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=63").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=64").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
   const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
   // due soon: everything amber or red, soonest first
   const due=[];
@@ -3552,7 +3552,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=63") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=64") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
