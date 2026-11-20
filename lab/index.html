@@ -278,15 +278,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=61">
-<script src="intro.js?b=61" defer></script>
+<link rel="stylesheet" href="lab.css?b=62">
+<script src="intro.js?b=62" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=61"></script>
-<script src="motion.js?b=61" defer></script>
-<script src="lab.js?b=61"></script>
+<script src="mapdata.js?b=62"></script>
+<script src="motion.js?b=62" defer></script>
+<script src="lab.js?b=62"></script>
 </head>
 <body>
 <div class="wrap">
@@ -897,7 +897,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=61").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=62").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -906,14 +906,17 @@ function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return
 let WX={at:0, key:"", data:null, busy:false}, wxIdx=0, wxTimer=null;
 try{ const c=JSON.parse(localStorage.getItem(LS_KEY+".wx")||"null"); if(c&&c.data) WX={...c, busy:false} }catch(e){}
 function wxLegs(){
+  // first: where you are now (where you last landed, or base), at this moment; then, to swipe through, the next flying day
+  // within 36 h: its departure (if more than an hour away) and each landing, at the time you will be there
   const now=Date.now(), arr=x=>x.onA??x.end, D=(fdtlCache&&fdtlCache.duties)||[];
-  for(const d of D){ const secs=(d.secs||[]).filter(x=>arr(x)>=now-45*MIN); if(!secs.length || arr(secs[0])-now>36*HR) continue;
-    const f=secs[0], dep=f.offA??f.start, out=[];
-    if(f.from && dep>=now-5*MIN) out.push({stn:f.from, t:Math.max(dep,now), lands:null, dep, flt:f.flt||""});   // where the day starts, until you push back
-    return out.concat(secs.map(x=>({stn:x.to, t:Math.max(arr(x),now), lands:arr(x), flt:x.flt||""}))) }
-  // nothing coming up: where you are now, which is where you last landed (base if nothing has flown yet)
   let here=null; for(const d of D) for(const x of (d.secs||[])) if(arr(x)<=now && (!here || arr(x)>arr(here))) here=x;
-  return [{stn:here?here.to:(profile.base||"BOM").toUpperCase(), t:now, lands:null}];
+  const out=[{stn:here?here.to:(profile.base||"BOM").toUpperCase(), t:now, lands:null, now:true}];
+  for(const d of D){ const secs=(d.secs||[]).filter(x=>arr(x)>now); if(!secs.length || arr(secs[0])-now>36*HR) continue;
+    const f=secs[0], dep=f.offA??f.start;
+    if(f.from && dep>now+HR) out.push({stn:f.from, t:dep, lands:null, dep, flt:f.flt||""});
+    for(const x of secs) out.push({stn:x.to, t:arr(x), lands:arr(x), flt:x.flt||""});
+    break }
+  return out;
 }
 function sunUp(t, lat, lon){   // is the Sun above the horizon (allowing for twilight glow, -0.8°)
   const rad=Math.PI/180, d=(t-Date.UTC(2000,0,1,12))/DAY, g=(357.529+0.98560028*d)*rad, L=280.459+0.98564736*d;
@@ -1043,7 +1046,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=61");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=62");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1139,20 +1142,22 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=61") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=62") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
 function fmtZ(t){ const d=new Date(t); return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0")+"Z" }
-function wxAria(legs,k){ const w=wxInfo(legs[k]); return `Weather at ${w.stn}${w.ok?`, ${Math.round(w.temp)} degrees, ${w.label}`:""}${legs.length>1?`. Station ${k+1} of ${legs.length}, swipe or use the arrow keys for the others`:""}. Opens METAR and TAF.` }
+function wxAria(legs,k){ const w=wxInfo(legs[k]); return `Weather at ${w.stn}${w.ok?`, ${Math.round(w.temp)} degrees, ${w.label}`:""}${legs.length>1?`. ${k===0?"Now":"Later"}, ${k+1} of ${legs.length}, swipe or use the arrow keys for your next stations`:""}. Opens METAR and TAF.` }
 function wxPaint(){ const el=document.querySelector(".hero .wxcap"); if(!el) return; const legs=wxLegs(), k=wxIdx%legs.length, w=wxInfo(legs[k]);
   el.querySelectorAll(".wxl").forEach(x=>x.remove()); el.insertAdjacentHTML("afterbegin", wxCapText(w)); el.setAttribute("aria-label", wxAria(legs,k));
   el.querySelectorAll(".wxdots i").forEach((d,j)=>d.classList.toggle("on",j===k)); SKY.show(w) }
-function wxCycle(){ clearInterval(wxTimer); if(wxLegs().length<2) return;
-  wxTimer=setInterval(()=>{ const el=document.querySelector(".hero .wxcap"); if(!el){ clearInterval(wxTimer); return } if(document.hidden||Date.now()<wxHold) return;
-    wxIdx++; el.classList.add("wxswap"); setTimeout(()=>{ wxPaint(); el.classList.remove("wxswap") },220) }, 6000) }
-/* Swipe the weather corner left or right (or use the arrow keys) to step through the day's stations.
-   A swipe pauses the automatic turn for 30 s, and does not open the METAR sheet or change the month. */
+function wxCycle(){ clearInterval(wxTimer); let beat=0;
+  wxTimer=setInterval(()=>{ const el=document.querySelector(".hero .wxcap"); if(!el){ clearInterval(wxTimer); return } if(document.hidden) return; beat++;
+    const n=wxLegs().length, k=wxIdx%n;
+    if(k!==0 && Date.now()>=wxHold){ wxIdx=0; el.classList.add("wxswap"); setTimeout(()=>{ wxPaint(); el.classList.remove("wxswap") },220) }   // back to now after 30 s
+    else if(k===0 && beat%12===0) wxPaint() }, 5000) }   // keep "now" current
+/* Swipe the weather corner left or right (or use the arrow keys) to step from now to your next stations.
+   It eases back to now 30 s after the last swipe. A swipe does not open the METAR sheet or change the month. */
 let wxHold=0, wxNoTap=0, wxSw=null;
 function wxStep(dir){ const el=document.querySelector(".hero .wxcap"), n=wxLegs().length; if(!el||n<2) return;
   wxIdx=(((wxIdx+dir)%n)+n)%n; wxHold=Date.now()+30000;
@@ -1314,7 +1319,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=61"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=62"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1322,7 +1327,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=61");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=62");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -2529,7 +2534,7 @@ function openWorld(){
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./world3d.js?b=61").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
+  import("./world3d.js?b=62").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2801,7 +2806,7 @@ function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead()
 
 let qIcaoLoad=false;
 function viewQuals(){
-  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=61").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=62").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
   const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
   // due soon: everything amber or red, soonest first
   const due=[];
@@ -3367,7 +3372,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=61") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=62") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
