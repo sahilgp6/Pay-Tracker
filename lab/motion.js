@@ -213,7 +213,7 @@
   /* ---------- swipe left or right: months on Month, Flights and Pay; days on Duty ---------- */
   (function(){
     let x0=null, y0=null, dx=0, lock=null, el=null;
-    const blocked=t=>t.closest(".dstrip,.fchips,.tbl,input,select,textarea,.sheet,.mapbox,.tabbar,#labbar");
+    const blocked=t=>t.closest(".dstrip,.fchips,.tbl,input,select,textarea,.sheet,.mapbox,.tabbar,#labbar,.wxcap");
     document.addEventListener("touchstart",e=>{ const v=document.getElementById("view"); if(!v||!v.contains(e.target)||blocked(e.target)) return;
       x0=e.touches[0].clientX; y0=e.touches[0].clientY; dx=0; lock=null; el=v },{passive:true});
     document.addEventListener("touchmove",e=>{ if(x0==null) return; const mx=e.touches[0].clientX-x0, my=e.touches[0].clientY-y0;

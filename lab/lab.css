@@ -510,8 +510,12 @@ html.look-a .tile{padding:0;perspective:900px;background:transparent;box-shadow:
 /* the sky behind the take-home figure */
 .hero .wxsky{position:absolute!important;inset:0;width:100%;height:100%;z-index:0!important;pointer-events:none}
 .hero .wxcap{position:absolute;top:14px;right:14px;z-index:2;display:flex;flex-direction:column;align-items:flex-end;gap:1px;border:0;background:none;padding:0;font:inherit;cursor:pointer;
-  color:color-mix(in srgb,var(--onfill,#fff) 82%,transparent);text-align:right;transition:opacity .22s;text-shadow:0 1px 6px rgba(0,0,0,.35)}
+  color:color-mix(in srgb,var(--onfill,#fff) 82%,transparent);text-align:right;transition:opacity .22s,transform .22s;text-shadow:0 1px 6px rgba(0,0,0,.35);touch-action:pan-y;-webkit-user-select:none;user-select:none}
 .hero .wxcap.wxswap{opacity:0}
+/* swipe between stations: out the way you swiped, in from the other side */
+.hero .wxcap::before{content:"";position:absolute;inset:-12px -14px -12px -28px}
+.hero .wxcap.wxout-l{opacity:0;transform:translateX(-16px)}.hero .wxcap.wxout-r{opacity:0;transform:translateX(16px)}
+.hero .wxcap.wxin-r{opacity:0;transform:translateX(16px);transition:none}.hero .wxcap.wxin-l{opacity:0;transform:translateX(-16px);transition:none}
 .hero .wxl{font-size:11px;line-height:1.3;white-space:nowrap}
 .hero .wxl b{font-weight:700;letter-spacing:.05em;color:var(--onfill,#fff)}
 .hero .wxm{opacity:.7;font-size:10px}
