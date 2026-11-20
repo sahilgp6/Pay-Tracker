@@ -748,3 +748,69 @@ html[data-vt="back"]::view-transition-old(root){animation:ptvtr .22s var(--ease-
 .tabbar [data-tab].qdot::after{content:"";position:absolute;top:8px;left:calc(50% + 7px);width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 2px var(--surface)}
 .tabbar [data-tab].qdot.qbad::after{background:var(--red)}
 #dcard .dc-seg button.dc-tick{min-width:52px;font-size:18px}
+
+/* ---------- Island notifications ---------- */
+#isl{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 8px);z-index:9000;width:126px;height:37px;border-radius:22px;background:#000;color:#f4f1ea;overflow:hidden;
+  border:0;padding:0;margin:0;font:600 13px/1.25 var(--f-body,-apple-system,system-ui,sans-serif);text-align:left;cursor:pointer;opacity:0;pointer-events:none;
+  transform:translateX(-50%) scale(.7);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+  transition:width .55s cubic-bezier(.34,1.3,.5,1),height .55s cubic-bezier(.34,1.3,.5,1),border-radius .55s cubic-bezier(.34,1.3,.5,1),transform .45s cubic-bezier(.34,1.3,.5,1),opacity .25s,box-shadow .4s}
+html.isl-hw #isl{top:11px}   /* home-screen app: grow out of the camera cutout itself */
+#isl.on{opacity:1;pointer-events:auto;transform:translateX(-50%);box-shadow:0 8px 22px rgba(0,0,0,.28)}
+#isl.compact{width:min(calc(100vw - 28px),384px);height:38px}
+#isl.mini{width:186px;height:38px}
+#isl.exp{width:min(calc(100vw - 16px),420px);height:var(--h,170px);border-radius:36px;box-shadow:0 16px 36px rgba(0,0,0,.36)}
+#isl .icp,#isl .ixp{position:absolute;left:0;right:0;top:0;opacity:0;transition:opacity .16s;pointer-events:none;z-index:1}
+#isl .icp{height:38px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 14px 0 12px;white-space:nowrap}
+#isl.compact .icp,#isl.mini .icp{opacity:1;transition-delay:.2s}
+#isl.exp .ixp{opacity:1;pointer-events:auto;transition-delay:.22s}
+#isl .il{display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#isl .il>span{color:#f4f1ea}
+#isl .iv{font-variant-numeric:tabular-nums;font-size:13.5px}
+#isl .iico{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#isl .iblu{color:#9cc2f5}#isl .iamb{color:#f0b060}#isl .ired{color:#ff8a75}#isl .iok{color:#7fd4a4}#isl .igold{color:#f3cf7a}
+#isl .ixp{display:flex;flex-direction:column;padding:15px 18px 16px}
+#isl .ih{font:600 19px/1.2 var(--f-num,Georgia,serif)}
+#isl .isub{font-size:12.5px;font-weight:500;color:#b9b4a8;margin:3px 0 9px}
+#isl .iln{display:flex;justify-content:space-between;font-size:13px;font-weight:500;padding:6px 0;border-top:1px solid rgba(255,255,255,.1)}
+#isl .iln>span:last-child{font-variant-numeric:tabular-nums;color:#d8d3c8;white-space:nowrap;padding-left:10px}
+#isl .igo{align-self:flex-start;margin-top:10px;border-radius:999px;padding:10px 15px;font:700 13px var(--f-body,-apple-system,system-ui,sans-serif);background:#f4f1ea;color:#000;cursor:pointer}
+#isl .iprog{height:6px;border-radius:3px;background:rgba(255,255,255,.14);margin:6px 0 4px;overflow:hidden}
+#isl .iprog i{display:block;height:100%;border-radius:3px;background:#7fd4a4}
+#isl .ibar{position:relative;height:8px;border-radius:4px;background:rgba(255,255,255,.14);margin:8px 0 4px}
+#isl .ibar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+#isl .ibar b{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:#f3cf7a;box-shadow:0 0 8px #f3cf7a}
+#isl .ibl{position:relative;height:14px;font-size:11px;font-weight:500;color:#b9b4a8}
+#isl .ibl span{position:absolute;transform:translateX(-50%)}#isl .ibl span:first-child{transform:none}
+/* weather glow: the edge takes the destination's weather; gold for a pay milestone */
+#isl.g-sun{--g1:rgba(255,190,90,.55);--g2:rgba(255,160,50,.42)}
+#isl.g-night{--g1:rgba(190,205,240,.5);--g2:rgba(150,170,230,.34)}
+#isl.g-rain{--g1:rgba(120,175,255,.55);--g2:rgba(80,140,255,.4)}
+#isl.g-storm{--g1:rgba(170,150,255,.6);--g2:rgba(120,100,255,.45)}
+#isl.g-haze{--g1:rgba(220,210,190,.5);--g2:rgba(200,190,170,.32)}
+#isl.g-gold{--g1:rgba(240,200,110,.75);--g2:rgba(230,170,60,.55)}
+#isl.on[class*="g-"]{animation:islglow 3.2s ease-in-out infinite}
+@keyframes islglow{0%,100%{box-shadow:0 0 0 1.5px var(--g1),0 0 14px var(--g2),0 10px 26px rgba(0,0,0,.3)}50%{box-shadow:0 0 0 1.5px var(--g1),0 0 26px var(--g2),0 10px 26px rgba(0,0,0,.3)}}
+#isl .ifx{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .4s}
+#isl.exp .ifx{opacity:1;transition-delay:.25s}
+#isl .ifx.sun{background:radial-gradient(160px 120px at 88% 0%,rgba(255,190,90,.38),transparent 70%);animation:islshim 5s ease-in-out infinite}
+@keyframes islshim{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
+#isl .ifx.rain,#isl .ifx.storm{background:repeating-linear-gradient(105deg,transparent 0 14px,rgba(150,190,255,.2) 14px 15px,transparent 15px 31px);background-size:62px 62px;animation:islrain .7s linear infinite}
+@keyframes islrain{to{background-position:-18px 62px}}
+#isl .ifx.storm::after{content:"";position:absolute;inset:0;background:rgba(210,200,255,.5);opacity:0;animation:islflash 4.6s infinite}
+@keyframes islflash{0%,86%,90%,94%,100%{opacity:0}88%{opacity:.55}92%{opacity:.3}}
+#isl .ifx.haze{background:linear-gradient(90deg,transparent,rgba(230,220,200,.16),transparent) 0 40%/60% 40% no-repeat,linear-gradient(90deg,transparent,rgba(230,220,200,.12),transparent) 0 80%/70% 30% no-repeat;animation:islhaze 9s linear infinite}
+@keyframes islhaze{from{background-position:-60% 40%,140% 80%}to{background-position:160% 40%,-70% 80%}}
+#isl .isw{position:absolute;top:0;bottom:0;left:-40%;width:40%;background:linear-gradient(100deg,transparent,rgba(255,225,150,.55),transparent);pointer-events:none;opacity:0}
+#isl.on.g-gold .isw{animation:islsweep 1.4s .35s cubic-bezier(.16,1,.3,1) 1}
+@keyframes islsweep{0%{opacity:1;transform:translateX(0)}100%{opacity:0;transform:translateX(360%)}}
+.isl-spark{position:fixed;width:5px;height:5px;border-radius:50%;background:#f3cf7a;box-shadow:0 0 6px #f3cf7a;z-index:9001;pointer-events:none}
+.islset{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.islset:last-child{border-bottom:0}
+.islchk{flex:1;display:flex;align-items:center;gap:10px;font-size:14px;min-height:44px}
+.islchk input{width:20px;height:20px;accent-color:var(--accent)}
+@media (prefers-reduced-motion:reduce){
+  #isl{transition:opacity .2s}
+  #isl .icp,#isl .ixp{transition:opacity .2s}
+  #isl.on[class*="g-"]{animation:none;box-shadow:0 0 0 1.5px var(--g1),0 0 18px var(--g2)}
+  #isl .ifx,#isl .ifx::after,#isl.on.g-gold .isw{animation:none}
+}

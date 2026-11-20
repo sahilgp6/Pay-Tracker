@@ -278,15 +278,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=62">
-<script src="intro.js?b=62" defer></script>
+<link rel="stylesheet" href="lab.css?b=63">
+<script src="intro.js?b=63" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=62"></script>
-<script src="motion.js?b=62" defer></script>
-<script src="lab.js?b=62"></script>
+<script src="mapdata.js?b=63"></script>
+<script src="motion.js?b=63" defer></script>
+<script src="lab.js?b=63"></script>
 </head>
 <body>
 <div class="wrap">
@@ -551,6 +551,7 @@ function downloadBackup(){
   document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove()},1000);
   try{ localStorage.setItem(LS_KEY+".lastBackup", stamp) }catch(e){}
   showBanner("Backup downloaded. Keep it somewhere safe, like Files or iCloud Drive.");
+  islPush(islBackupN());
 }
 function restoreBackup(file){
   const r=new FileReader();
@@ -870,6 +871,7 @@ function applyRoster(text){
   const before=rowIds(), st=importRoster(text); showRosterBox=false;
   try{ if(!st.error) localStorage.setItem(LS_KEY+".lastSync", new Date().toISOString()) }catch(e){}
   showBanner(rosterMessage(st)); render(); if(window.PTMotion&&PTMotion.ready()) PTMotion.lit(before);
+  if(!st.error && !st.historical) islPush(islRosterN(st));
 }
 const rowIds=()=>new Set(Object.values(months).flatMap(m=>(m.sectors||[]).map(r=>r.id)));
 let showRosterBox=false;
@@ -897,7 +899,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=62").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=63").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -1046,7 +1048,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=62");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=63");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1142,7 +1144,7 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=62") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=63") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
@@ -1180,7 +1182,7 @@ async function wxFetch(legs){
     stns.forEach((c,k)=>{ const H=j[k]&&j[k].hourly; if(H){ WX.data[c]={time:H.time.map(x=>x*1000), temp:H.temperature_2m, code:H.weather_code, vis:H.visibility, ws:H.wind_speed_10m, wd:H.wind_direction_10m}; WX.got[c]=Date.now() } });
     WX.busy=false; try{ localStorage.setItem(LS_KEY+".wx", JSON.stringify({data:WX.data, got:WX.got})) }catch(e){}
   }catch(e){ WX.busy=false; WX.failAt=Date.now() }
-  wxPaint();
+  wxPaint(); try{ islCheck() }catch(e){}   // the countdown picks up the new forecast
 }
 
 /* ---------- Moon phase for the day, on the take-home card ----------
@@ -1319,7 +1321,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=62"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=63"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1327,7 +1329,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=62");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=63");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -2534,7 +2536,7 @@ function openWorld(){
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./world3d.js?b=62").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
+  import("./world3d.js?b=63").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openGlobe(data))).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap); ld.done() }).catch(()=>{ ld.done(); openWorld2D() });
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2806,7 +2808,7 @@ function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead()
 
 let qIcaoLoad=false;
 function viewQuals(){
-  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=62").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=63").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
   const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
   // due soon: everything amber or red, soonest first
   const due=[];
@@ -2874,6 +2876,183 @@ function qualsChange(el){
   if(el.dataset.qalast){ const a=qualsData().aero.find(y=>y.icao===el.dataset.qalast); if(a){ if(el.value) a.last=el.value; else delete a.last } queueProfile(); render(); return true }
   if(el.dataset.qw){ const v=parseInt(el.value,10), Q=qualsData(); if(v>=0&&v<=365) Q.warn[el.dataset.qw]=v; queueProfile(); render(); return true }
   return false }
+
+
+/* ---------- Island: notifications that grow out of the camera cutout (lab) ----------
+   Only while the app is open. One at a time: a short one (roster change, Quals, rest, pay milestone, backup) shows first,
+   then the report countdown comes back if it is running. Tap to open, tap again or outside to close, swipe up to dismiss,
+   the button inside jumps to the tab. Each kind can be switched off in Setup. Reduce Motion: no morphing, only fades. */
+const ISL_KINDS=[["report","Report countdown, from 3 h before report to off blocks"],["roster","Roster changes after a paste"],["quals","Quals or recency turning amber or red"],["rest","Legal for duty, after sign-out"],["pay","Pay milestones: 40, 70, 80 and 90 hours"],["backup","Backup done"]];
+const islOn=k=>!(profile.island&&profile.island[k]===false);
+const ISL={el:null, cur:null, q:[], timer:null};
+const ISL_ICO={
+  plane:'<svg class="iico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 21l1.5-6.5L5 12V9.5l7 1.8V5.5a1.5 1.5 0 0 1 3 0v5.8l5.5 1.4v2.3L15 14v4l2 1.5V21l-3.2-.9L10.5 21z"/></svg>',
+  cal:'<svg class="iico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>',
+  shield:'<svg class="iico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M12 8v5M12 16v.5"/></svg>',
+  moon:'<svg class="iico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/></svg>',
+  tick:'<svg class="iico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+};
+const islKey=LS_KEY+".island";
+function islMem(){ try{ return JSON.parse(localStorage.getItem(islKey)||"{}")||{} }catch(e){ return {} } }
+function islSave(m){ try{ localStorage.setItem(islKey, JSON.stringify(m)) }catch(e){} }
+const islDay=t=>fmtDay(t).replace(/ \d{4}$/,"");
+function islEl(){
+  if(ISL.el) return ISL.el;
+  const b=document.createElement("button"); b.type="button"; b.id="isl"; b.setAttribute("aria-live","polite");
+  b.innerHTML='<span class="ifx" aria-hidden="true"></span><span class="isw" aria-hidden="true"></span><span class="icp"></span><span class="ixp"></span>';
+  document.body.appendChild(b); ISL.el=b;
+  try{ if(matchMedia("(display-mode: standalone)").matches||navigator.standalone) document.documentElement.classList.add("isl-hw") }catch(e){}
+  let y0=null, sw=false;
+  b.addEventListener("pointerdown",e=>{ y0=e.clientY; sw=false });
+  b.addEventListener("pointermove",e=>{ if(y0!=null && !sw && e.clientY-y0<-22){ sw=true; islDismiss() } });
+  b.addEventListener("pointerup",()=>{ y0=null });
+  b.addEventListener("click",e=>{ e.stopPropagation(); if(sw){ sw=false; return }
+    const g=e.target.closest("[data-isltab]");
+    if(g){ const want=g.dataset.isltab; islClose(); const t=document.querySelector(`.tabbar [data-tab="${want}"]`); if(t) t.click(); return }
+    if(b.classList.contains("exp")) islClose(); else islOpen() });
+  document.addEventListener("click",e=>{ if(ISL.el && ISL.el.classList.contains("exp") && !ISL.el.contains(e.target)) islClose() }, true);
+  return b;
+}
+function islSparks(){
+  if(RM()) return; const b=ISL.el, r=b.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+  for(let i=0;i<16;i++){ const d=document.createElement("i"); d.className="isl-spark"; d.style.left=cx+"px"; d.style.top=cy+"px"; document.body.appendChild(d);
+    const a=(Math.random()-.5)*Math.PI*1.4, dist=40+Math.random()*90, dx=Math.sin(a)*dist*1.6, dy=Math.cos(a)*dist*.8+10;
+    const an=d.animate([{transform:"translate(-50%,-50%) scale(1)",opacity:1},{transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) scale(.3)`,opacity:0}],
+      {duration:900+Math.random()*500,delay:300,easing:"cubic-bezier(.2,.7,.3,1)",fill:"backwards"}); an.onfinish=()=>d.remove(); an.oncancel=()=>d.remove() }
+}
+function islShow(n){
+  const b=islEl(); clearTimeout(ISL.timer); ISL.cur=n;
+  const put=()=>{ if(ISL.cur!==n) return;
+    b.querySelector(".icp").innerHTML=n.cp; b.querySelector(".ixp").innerHTML=n.xp||""; b.style.setProperty("--h",(n.h||170)+"px");
+    b.className="on "+(n.mini?"mini":"compact")+(n.glow?" g-"+n.glow:""); b.querySelector(".ifx").className="ifx"+(n.fx?" "+n.fx:"");
+    b.dataset.kind=n.kind; b.setAttribute("aria-label", n.label+(n.xp?". Tap for details.":""));
+    if(n.kind==="pay") islSparks();
+    if(n.life) ISL.timer=setTimeout(islNext, n.life) };
+  if(b.classList.contains("on")){ b.classList.remove("compact","mini","exp"); setTimeout(put, RM()?40:320) } else put();
+}
+function islHide(){ const b=ISL.el; ISL.cur=null; if(!b) return; clearTimeout(ISL.timer); b.className=""; b.removeAttribute("data-kind"); b.setAttribute("aria-label","") }
+function islNext(){ const n=ISL.q.shift(); if(n) return islShow(n); const p=islReport(); if(p) return islShow(p); islHide() }
+function islPush(n, force){
+  if(!n || (!force && !islOn(n.kind))) return;
+  if(ISL.cur && ISL.cur.life){ ISL.q.push(n); return }   // a short one is showing: wait your turn; the countdown gives way
+  islShow(n);
+}
+function islOpen(){ const b=ISL.el, n=ISL.cur; if(!b||!n||!n.xp) return; clearTimeout(ISL.timer); b.classList.remove("compact","mini"); b.classList.add("exp") }
+function islClose(){ const b=ISL.el, n=ISL.cur; if(!b||!n||!b.classList.contains("exp")) return; b.classList.remove("exp"); b.classList.add(n.mini?"mini":"compact"); if(n.life) ISL.timer=setTimeout(islNext, 4000) }
+function islDismiss(){ const n=ISL.cur; if(!n) return; if(n.kind==="report"){ const m=islMem(); m.repOff=n.id; islSave(m) } islNext() }
+
+// destination weather as a glow colour, and the effect inside the open card
+function islGlow(w){ if(!w||!w.ok) return null; const k=w.kind; if(k==="rain"||k==="snow") return "rain"; if(k==="storm") return "storm"; if(k==="fog"||k==="cloud") return "haze"; return w.night?"night":"sun" }
+
+/* ---- report countdown: from 3 h before report until off blocks of the first sector ---- */
+function islReport(){
+  if(!islOn("report")) return null;
+  const now=Date.now(), D=(fdtlCache&&fdtlCache.duties)||[];
+  for(const d of D){ const secs=d.secs||[]; if(!secs.length) continue; const X=d.hasActual?d.A:d.P, f=secs[0], off=f.offA??f.start;
+    if(now>=off) continue;
+    const rep=X&&X.report; if(rep==null || rep-now>3*HR) return null;
+    const id="r"+off; if(islMem().repOff===id) return null;
+    const before=now<rep, target=before?rep:off, left=Math.max(0,target-now)/MIN, land=f.onA??f.end;
+    const w=wxInfo({stn:f.to, t:land, lands:land}), glow=islGlow(w);
+    const rows=secs.map(x=>`<span class="iln"><span>${esc(x.from)} → ${esc(x.to)}</span><span>${hhmmZ(x.offA??x.start)}Z</span></span>`).join("");
+    const wx=w&&w.ok?`<span class="iln"><span>${esc(f.to)} at landing</span><span>${Math.round(w.temp)}° ${esc(w.label)}</span></span>`:"";
+    const what=before?"Report":"Off blocks";
+    return {kind:"report", id, life:0, glow, fx:glow==="night"?"":glow,
+      h:120+32*(secs.length+(wx?1:0)),
+      cp:`<span class="il iblu">${ISL_ICO.plane}<span>${what} ${hhmmZ(target)}Z</span></span><span class="iv iblu">${hm(left)}</span>`,
+      xp:`<span class="ih">${what} in ${hm(left)}</span><span class="isub">${before?`${hhmmZ(rep)}Z`:"Reported"} · ${secs.length} sector${secs.length===1?"":"s"}</span>${rows}${wx}<span class="igo" role="button" tabindex="0" data-isltab="duty">Open Duty</span>`,
+      label:`${what} at ${hhmmZ(target)} Z, ${hm(left)} to go` };
+  }
+  return null;
+}
+/* ---- the short ones ---- */
+function islRosterN(st){
+  const n=(st.added||0)+(st.updated||0)+(st.removed||0); if(!n) return null;
+  const rows=[["Added",st.added],["Updated",st.updated],["Removed",st.removed]].filter(x=>x[1]).map(([a,b])=>`<span class="iln"><span>${a}</span><span>${b}</span></span>`).join("");
+  return {kind:"roster", life:6500, h:110+32*[st.added,st.updated,st.removed].filter(Boolean).length,
+    cp:`<span class="il">${ISL_ICO.cal}<span>Roster · ${n} change${n===1?"":"s"}</span></span><span class="iv iamb">Synced</span>`,
+    xp:`<span class="ih">Roster updated</span><span class="isub">From the paste you just made</span>${rows}<span class="igo" role="button" tabindex="0" data-isltab="log">Review in Flights</span>`,
+    label:`Roster updated, ${n} change${n===1?"":"s"}` };
+}
+function islQualsN(x){
+  const name=x.rec?x.label:qLabel(x.label), d=x.d, txt=d<0?"Expired":`${d} day${d===1?"":"s"}`, c=x.st==="bad"?"ired":"iamb";
+  return {kind:"quals", life:6500, h:150,
+    cp:`<span class="il ${c}">${ISL_ICO.shield}<span>${esc(name)}</span></span><span class="iv ${c}">${txt}</span>`,
+    xp:`<span class="ih">${esc(name)}${x.to?` · ${esc(islDay(x.to))}`:""}</span><span class="isub">${d<0?"Has run out.":x.st==="bad"?"Inside your red warning.":"Inside your amber warning."}${x.rn?` Course rostered ${esc(islDay(x.rn.d))}.`:""}</span><span class="igo" role="button" tabindex="0" data-isltab="quals">Open Quals</span>`,
+    label:`${name}, ${d<0?"expired":txt+" left"}` };
+}
+function islPayN(H, lvl, rate){
+  const b=[40,70,80,90][lvl-1], fill=Math.min(H,100), gold=(b/fill*100).toFixed(1);
+  return {kind:"pay", life:7000, h:176, glow:"gold",
+    cp:`<span class="il igold">₹<span>Past ${b} hours</span></span><span class="iv igold">${inr(rate)}/h</span>`,
+    xp:`<span class="ih igold">You've passed ${b} hours</span><span class="isub">Every hour from here pays ${inr(rate)} · ${hm(H*60)} so far</span>
+      <span class="ibar"><i style="width:${fill}%;background:linear-gradient(90deg,#9cc2f5 0 ${gold}%,#f3cf7a ${gold}%)"></i><b style="left:${b}%"></b></span>
+      <span class="ibl"><span style="left:0">0</span><span style="left:40%">40</span><span style="left:70%">70</span><span style="left:90%">90</span></span><span class="igo" role="button" tabindex="0" data-isltab="pay">Open Pay</span>`,
+    label:`Pay milestone: past ${b} hours, every hour now pays ${inr(rate)}` };
+}
+function islRest(){
+  const now=Date.now(), all=fdtlCache||fdtlAll(); let last=null;
+  for(const d of all.duties){ const X=d.hasActual?d.A:d.P; if(X.signout<=now) last=d }
+  if(!last) return null; const X=last.hasActual?last.A:last.P, n=X.next; if(!n || n.report<=now) return null;
+  const a=X.signout, b=n.report; if(now-a>18*HR) return null;
+  const pct=Math.max(0,Math.min(100,(now-a)/(b-a)*100)).toFixed(0);
+  return {b, n:{kind:"rest", life:6500, h:156,
+    cp:`<span class="il iok">${ISL_ICO.moon}<span>Legal for duty</span></span><span class="iv iok">${hhmmZ(b)}Z</span>`,
+    xp:`<span class="ih">Legal for duty ${hhmmZ(b)}Z</span><span class="isub">Rest from ${hhmmZ(a)}Z · ${hm((b-now)/MIN)} to go</span><span class="iprog"><i style="width:${pct}%"></i></span><span class="igo" role="button" tabindex="0" data-isltab="duty">Open Duty</span>`,
+    label:`Legal for duty at ${hhmmZ(b)} Z` }};
+}
+const islBackupN=()=>({kind:"backup", mini:true, life:2400, cp:`<span class="il iok">${ISL_ICO.tick}<span>Backup saved</span></span>`, label:"Backup saved"});
+
+/* ---- what to show: run after every render and every 15 s ---- */
+function islCheck(){
+  if(!document.body) return;
+  const m=islMem(); let ch=false;
+  if(islOn("quals")) try{
+    const q=qualsData(), w=q.warn, ahead=trainingAhead(), lv=m.q||{}, R={warn:1,bad:2}; let pick=null;
+    for(const i of q.items){ const x=itemState(i,ahead,w); if(x.forever||!x.to) continue; const key=i.g+"|"+i.label, rank=R[x.st]||0, prev=lv[key]||0;
+      if(rank>prev && (!pick||x.d<pick.d)) pick=x; if(rank!==prev){ lv[key]=rank; ch=true } }
+    const r=recency();
+    for(const [key,st,d,until,name] of [["rec90",r.s90,r.d90,r.u90,"Recency, 90 days"],["rec30",r.s30,r.d30,r.u30,"Recency, 30 days"]]){
+      const rank=R[st]||0, prev=lv[key]||0; if(rank>prev && (!pick||d<pick.d)) pick={label:name, d, to:until, st, rec:true}; if(rank!==prev){ lv[key]=rank; ch=true } }
+    m.q=lv; if(pick) islPush(islQualsN(pick));
+  }catch(e){}
+  if(islOn("pay")) try{
+    const ym=ymNow(), k=calc(ym), H=k.totMin/60, lvl=[40,70,80,90].filter(b=>H>=b).length, p=m.p||{};
+    if(p[ym]==null){ p[ym]=lvl; ch=true }                                   // first look at a month: no fanfare for hours already flown
+    else if(lvl>p[ym]){ p[ym]=lvl; ch=true; if(k.r&&k.r[lvl]!=null) islPush(islPayN(H,lvl,k.r[lvl])) }
+    else if(lvl<p[ym]){ p[ym]=lvl; ch=true }
+    m.p=p;
+  }catch(e){}
+  if(islOn("rest")) try{ const R=islRest(); if(R && m.rest!==R.b){ m.rest=R.b; ch=true; if(!islReport()) islPush(R.n) } }catch(e){}   // the countdown already says it
+  if(ch) islSave(m);
+  if(!ISL.cur){ const p=islReport(); if(p) islShow(p) }
+  else if(ISL.cur.kind==="report"){ const p=islReport(); if(!p) islNext(); else if(p.cp!==ISL.cur.cp||p.xp!==ISL.cur.xp||p.glow!==ISL.cur.glow) islRefresh(p) }
+}
+// update the countdown in place (time, weather, glow) without closing it
+function islRefresh(p){ const b=ISL.el; ISL.cur=p; b.querySelector(".icp").innerHTML=p.cp; b.querySelector(".ixp").innerHTML=p.xp; b.style.setProperty("--h",p.h+"px");
+  b.classList.remove("g-sun","g-night","g-rain","g-storm","g-haze","g-gold"); if(p.glow) b.classList.add("g-"+p.glow); b.querySelector(".ifx").className="ifx"+(p.fx?" "+p.fx:"");
+}
+setInterval(()=>{ if(!document.hidden) islCheck() }, 15000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) islCheck() });
+
+/* ---- Setup: switch each kind on or off, and preview it ---- */
+function islSample(k){
+  if(k==="report") return islReport()||{kind:"report", life:6000, h:184, glow:"rain", fx:"rain",
+    cp:`<span class="il iblu">${ISL_ICO.plane}<span>Report 05:50Z</span></span><span class="iv iblu">2:35</span>`,
+    xp:`<span class="ih">Report in 2:35</span><span class="isub">Preview · 05:50Z · 2 sectors</span><span class="iln"><span>BOM → IXE</span><span>07:20Z</span></span><span class="iln"><span>IXE at landing</span><span>24° Rain</span></span><span class="igo" role="button" tabindex="0" data-isltab="duty">Open Duty</span>`, label:"Preview: report countdown"};
+  if(k==="roster") return islRosterN({added:2, updated:1, removed:0});
+  if(k==="quals") return islQualsN({label:"SEP", d:4, to:isoAdd(isoToday(),4), st:"bad", rn:null});
+  if(k==="rest") return {kind:"rest", life:6000, h:156, cp:`<span class="il iok">${ISL_ICO.moon}<span>Legal for duty</span></span><span class="iv iok">14:30Z</span>`,
+    xp:`<span class="ih">Legal for duty 14:30Z</span><span class="isub">Preview · rest from 02:10Z</span><span class="iprog"><i style="width:62%"></i></span><span class="igo" role="button" tabindex="0" data-isltab="duty">Open Duty</span>`, label:"Preview: legal for duty"};
+  if(k==="pay") return islPayN(54.78, 1, 3300);
+  if(k==="backup") return islBackupN();
+}
+function islSetupCard(){
+  return `<section class="card"><h2>Island notifications</h2><p class="sub">They grow out of the top of the screen while the app is open. Tap one to open it, swipe it up to dismiss.</p>
+    ${ISL_KINDS.map(([k,l])=>`<div class="islset"><label class="islchk"><input type="checkbox" id="isl-${k}" data-islk="${k}"${islOn(k)?" checked":""}><span>${esc(l)}</span></label><button class="btn quiet" data-islprev="${k}">Preview</button></div>`).join("")}</section>`;
+}
+function islChange(el){ if(!el.dataset.islk) return false; profile.island={...(profile.island||{}), [el.dataset.islk]:el.checked}; queueProfile(); if(!el.checked && ISL.cur && ISL.cur.kind===el.dataset.islk) islNext(); return true }
+function islClick(t){ if(!t.dataset.islprev) return false; const n=islSample(t.dataset.islprev); if(n){ ISL.q=[]; islShow(n) } return true }
 
 
 function viewLog(){
@@ -3185,6 +3364,7 @@ function viewSetup(){
   </section>
   ${fbCard()}
   ${pasteHistCard()}
+  ${islSetupCard()}
   ${qualsSetupCard()}
   <section class="card">
     <h2>Backup</h2>
@@ -3372,7 +3552,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=62") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=63") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
@@ -3659,6 +3839,7 @@ function render(){
   renderSheet();
   armHaptics(document);
   decorateRefs();
+  islCheck();
   const ds=document.getElementById("dstrip"), on=ds&&ds.querySelector(".ds.on");
   if(on){ const r=on.getBoundingClientRect(), q=ds.getBoundingClientRect(); ds.scrollLeft += (r.left+r.width/2)-(q.left+q.width/2) }
   if(aid){ const el=document.getElementById(aid); if(el && el!==document.activeElement){ el.focus(); try{ if(sel!=null) el.setSelectionRange(sel,sel) }catch(e){} } }
@@ -3669,6 +3850,7 @@ document.addEventListener("click", e=>{
   if(e.target.closest("[data-sheetclose]") && !e.target.closest("button:not([data-sheetclose])")){ closeSheet(); return }
   const t=e.target.closest("button,[role=button],[role=tab]"); if(!t) return;
   if(qualsClick(t)) return;
+  if(islClick(t)) return;
   if(t.dataset.ymbar){ cur=t.dataset.ymbar; tab="month"; render(); return }
   if(t.dataset.world){ openWorld(); return }
   if(t.dataset.wx){ if(Date.now()<wxNoTap) return; openWx(); return }
@@ -3760,6 +3942,7 @@ document.addEventListener("click", e=>{
 document.addEventListener("change", e=>{
   const el=e.target;
   if(qualsChange(el)) return;
+  if(islChange(el)) return;
   if(el.id==="rosterFile"){ const f=el.files&&el.files[0]; if(f){ const r=new FileReader(); r.onload=()=>applyRoster(r.result); r.readAsText(f) } el.value=""; return }
   if(el.id==="rosterText") return;
   if(el.id==="rosterPdf"){ const f=el.files&&el.files[0]; el.value=""; if(f) readRosterPdf(f); return }
