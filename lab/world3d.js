@@ -5,7 +5,7 @@
    space to pull back out. Reduce Motion: planes hold still and the camera moves without gliding. */
 import * as THREE from "./vendor/three/three.module.min.js";
 import { WORLD, REGION, INDIA } from "./globedata.js";
-import { build737 } from "./jet737.js?b=69";
+import { build737 } from "./jet737.js?b=70";
 
 const RM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const D2R = Math.PI / 180;
