@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=76";
-import { RWY, ICAO } from "./rwydata.js?b=76";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=77";
+import { RWY, ICAO } from "./rwydata.js?b=77";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -233,7 +233,7 @@ export async function openBriefMap(ctx){
   const c0 = apx.get(base) || {lon:73, lat:19};
   map = new lib.Map({container:$(o, ".bmmap"), style, center:[c0.lon, c0.lat], zoom:3.6, maxPitch:70, attributionControl:{compact:true}, fadeDuration:0});
   map.on("error", () => {}); o.dataset.look = look.kind;
-  window.__bm = {map, get look(){ return o.dataset.look }, get B(){ return B }, get S(){ return S }, get view(){ return view }, get route(){ return routePts }, get nt(){ return lastNt }, get rw(){ return lastRw }, get jets(){ return jets }};
+  window.__bm = {map, range:() => range(), get look(){ return o.dataset.look }, get B(){ return B }, get S(){ return S }, get view(){ return view }, get route(){ return routePts }, get nt(){ return lastNt }, get rw(){ return lastRw }, get jets(){ return jets }};
   await new Promise(ok => { if(map.isStyleLoaded()) ok(); else map.once("style.load", ok) });
   if(closed) return;
 
@@ -296,7 +296,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=76")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=77")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -543,9 +543,11 @@ export async function openBriefMap(ctx){
       windM.push(new lib.Marker({element:e, anchor:"right", offset:[-8, 0]}).setLngLat([p.lon, p.lat]).addTo(map)) } }
 
   /* ---------- time ---------- */
-  function range(){ const now = Date.now(), F = B && B.flights || [], d0 = F.length ? Math.min(...F.map(f => f.date || Infinity)) : B && B.date;
-    const s = d0 && now > d0 - 6 * 36e5 && now < d0 + 54 * 36e5 ? d0 : now - 6 * 36e5 - now % 9e5;
-    const end = Math.max(s + 30 * 36e5, ...F.map(f => (f.sta || f.std || 0) + 2 * 36e5)); return [s, end] }
+  // the time bar covers your flying day: an hour before the first departure to an hour after the last arrival of the
+  // selected sector's day; with no flight plan, from an hour ago to twelve hours ahead
+  function range(){ const F = B && B.flights || [], sel = F.find(f => f.key === selKey), D = F.filter(f => f.std && (!sel || f.date === sel.date));
+    if(D.length){ const a = Math.min(...D.map(f => f.std)) - 36e5, b = Math.max(...D.map(f => f.sta || f.std + 3 * 36e5)) + 36e5; return [a - a % 6e5, b] }
+    const now = Date.now(), s0 = now - 36e5 - now % 6e5; return [s0, s0 + 13 * 36e5] }
   function paintTime(init){
     const [a, b] = range(); slide.min = 0; slide.max = Math.round((b - a) / 6e5);
     if(init){ T = Math.min(b, Math.max(a, Date.now())); slide.value = Math.round((T - a) / 6e5) }
