@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=74";
-import { RWY, ICAO } from "./rwydata.js?b=74";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=75";
+import { RWY, ICAO } from "./rwydata.js?b=75";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -64,16 +64,19 @@ async function loadLib(){
 
 /* ---------- briefing storage by place: this phone only, outside backups ---------- */
 const SKEY = "./store.json";
-const emptyStore = () => ({v:2, last:null, locs:{}, wx:{}, aup:null});
+const emptyStore = () => ({v:3, flights:[], locs:{}, wx:{}, aup:null});
 async function putStore(S){ try{ const c = await caches.open(BCACHE); await c.put(SKEY, new Response(JSON.stringify(S), {headers:{"Content-Type":"application/json"}})) }catch(e){} }
 // a NOTAM goes when its end time passes (permanent ones stay until a briefing for that place drops them); airspace tables at the end of their day
 function prune(S, now = Date.now()){ let n0 = 0, n1 = 0;
   for(const k in S.locs){ const L = S.locs[k].notams; n0 += L.length; S.locs[k].notams = L.filter(n => n.to == null || n.to > now); n1 += S.locs[k].notams.length }
   if(S.aup && S.aup.date && now > S.aup.date + 864e5){ S.aup = null; n1-- }
+  // flight plans: kept until two days after their day
+  if(S.flights){ const k = S.flights.length; S.flights = S.flights.filter(f => !f.date || now < f.date + 3 * 864e5); if(S.flights.length !== k) n1-- }
   return n0 !== n1 }
 async function loadStore(){
   try{ const c = await caches.open(BCACHE); const r = await c.match(SKEY); let S = r ? await r.json() : null;
     if(!S){ const old = await c.match(BKEY); if(old){ S = mergeBrief(emptyStore(), await old.json()); await c.delete(BKEY); await putStore(S) } }   // build 65 kept one briefing
+    if(S && !S.flights){ S.flights = S.last ? [Object.assign({key:`${S.last.date}|${S.last.dep}|${S.last.dest}`}, S.last)] : []; delete S.last }   // before build 75: one plan
     if(S) prune(S); return S }catch(e){ return null } }
 function mergeBrief(S, nb){
   const groups = {}; (nb.sects || []).forEach(k => groups[k] = []);
@@ -82,14 +85,17 @@ function mergeBrief(S, nb){
   for(const k in groups) S.locs[k] = {date:nb.date, notams:groups[k]};
   for(const k in nb.wx) S.wx[k] = Object.assign({}, nb.wx[k], {date:nb.date});
   if(nb.aup && nb.aup.length) S.aup = {date:nb.date, rows:nb.aup};
-  if(nb.route.length || nb.dep) S.last = {date:nb.date, dep:nb.dep, dest:nb.dest, altn:nb.altn, route:nb.route, fl:nb.fl, winds:nb.winds};
+  // each flight plan is kept by sector (day, from, to); uploading the same sector again replaces it, other sectors stay
+  S.added = null;
+  if(nb.route.length || nb.dep){ const f = {key:`${nb.date}|${nb.dep}|${nb.dest}`, date:nb.date, dep:nb.dep, dest:nb.dest, altn:nb.altn, route:nb.route, fl:nb.fl, winds:nb.winds, std:nb.std, sta:nb.sta, taxi:nb.taxi};
+    S.flights = (S.flights || []).filter(x => x.key !== f.key); S.flights.push(f); S.flights.sort((a, b) => (a.std || a.date || 0) - (b.std || b.date || 0)); S.added = f.key }
   S.updated = Object.keys(groups).length; S.kept = kept; return S }
 function viewOf(S){
-  if(!S) return null; const L = S.last || {}, seen = new Set(), notams = [];
+  if(!S) return null; const F = S.flights || [], L = F[F.length - 1] || {}, seen = new Set(), notams = [];
   for(const k in S.locs) for(const n of S.locs[k].notams){ if(seen.has(n.id)) continue; seen.add(n.id); n.locDate = S.locs[k].date; if(n.lo == null || n.hi == null) textLimits(n); notams.push(n) }   // briefings read before build 74 get their text limits too
-  if(!notams.length && !S.last && !Object.keys(S.wx).length) return null;
+  if(!notams.length && !F.length && !Object.keys(S.wx).length) return null;
   return {date:L.date || null, dep:L.dep || null, dest:L.dest || null, altn:L.altn || [], route:L.route || [], fl:L.fl || null, winds:L.winds || {},
-    notams, wx:S.wx, aup:S.aup ? S.aup.rows : [], places:Object.keys(S.locs).length} }
+    notams, wx:S.wx, aup:S.aup ? S.aup.rows : [], places:Object.keys(S.locs).length, flights:F, key:L.key || null} }
 async function dropBrief(){ try{ await caches.delete(BCACHE) }catch(e){} }
 
 /* ---------- PDF to lines ---------- */
@@ -135,14 +141,34 @@ function sampleRoute(pts, step = 5){ const out = []; let s = 0;
   if(pts.length) out.push({p:pts[pts.length - 1], s}); return {pts:out, D:s} }
 
 /* which NOTAMs touch this flight: near the route at the level you would be, or near the airports at any level */
-function markMine(B, routePts, apts){
+function markMine(B, routePts, apts, keep){
   const {pts, D} = sampleRoute(routePts), cr = (B.fl || 350) * 100, climb = Math.min(130, D / 2.2), desc = Math.min(120, D / 2.2);
   const alt = s => s < climb ? cr * s / climb : s > D - desc ? cr * (D - s) / desc : cr;
-  for(const n of B.notams){ n.mine = false; if(!n.shape) continue;
+  for(const n of B.notams){ if(!keep) n.mine = false; if(!n.shape || n.mine) continue;
     if(apts.some(a => shapeDist(a, n.shape) <= 25)){ n.mine = true; continue }
     const lo = n.lo == null ? 0 : n.lo, hi = n.hi == null ? 99999 : n.hi;
-    n.mine = pts.some(q => shapeDist(q.p, n.shape) <= 5 && lo <= alt(q.s) + 2000 && hi >= alt(q.s) - 2000) }
+    n.mine = n.mine || pts.some(q => shapeDist(q.p, n.shape) <= 5 && lo <= alt(q.s) + 2000 && hi >= alt(q.s) - 2000) }
 }
+
+/* ---------- where a planned flight is at a time: off blocks at STD, airborne after the taxi time, along the route by each
+   waypoint's elapsed time, on the ground at the destination until STA ---------- */
+function flightAt(f, t){
+  if(!f || !f.std || !f.route || f.route.length < 2) return null;
+  const R = f.route, ct = R.map(p => p.ctm);
+  for(let i = 1; i < ct.length; i++) if(ct[i] == null){ let j = i; while(j < ct.length && ct[j] == null) j++; const a = ct[i - 1] || 0, b = j < ct.length ? ct[j] : a; for(let k = i; k < j; k++) ct[k] = a + (b - a) * (k - i + 1) / (j - i + 1); i = j }
+  const tko = f.std + (f.taxi || 0) * 6e4, land = tko + ct[ct.length - 1] * 6e4, onb = Math.max(f.sta || 0, land + 5 * 6e4);
+  if(t < f.std || t > onb) return null;
+  const first = [R[0].lon, R[0].lat], lastP = [R[R.length - 1].lon, R[R.length - 1].lat];
+  if(t < tko) return {pos:first, brg:brgOf(first, [R[1].lon, R[1].lat]), phase:"taxi out", ground:true};
+  if(t >= land) return {pos:lastP, brg:brgOf([R[R.length - 2].lon, R[R.length - 2].lat], lastP), phase:"landed", ground:true};
+  const m = (t - tko) / 6e4; let i = 0; while(i < ct.length - 2 && m > ct[i + 1]) i++;
+  const k = ct[i + 1] > ct[i] ? (m - ct[i]) / (ct[i + 1] - ct[i]) : 0, a = [R[i].lon, R[i].lat], b = [R[i + 1].lon, R[i + 1].lat];
+  const toc = R.findIndex(p => p.n === "TOC"), tod = R.findIndex(p => p.n === "TOD");
+  const phase = toc >= 0 && i < toc ? "climbing" : tod >= 0 && i >= tod ? "descending" : f.fl ? "FL" + f.fl : "en route";
+  return {pos:[a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k], brg:brgOf(a, b), phase, ground:false, over:k < .5 ? R[i].n : R[i + 1].n}
+}
+function brgOf(a, b){ const r = Math.PI / 180, y = Math.sin((b[0] - a[0]) * r) * Math.cos(b[1] * r), x = Math.cos(a[1] * r) * Math.sin(b[1] * r) - Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos((b[0] - a[0]) * r); return (Math.atan2(y, x) / r + 360) % 360 }
+const secLbl = f => `${f.dep || "?"}–${f.dest || "?"}`;
 
 /* ---------- tiles for the offline download ---------- */
 const tx = (lon, z) => Math.floor((lon + 180) / 360 * 2 ** z);
@@ -175,6 +201,7 @@ export async function openBriefMap(ctx){
     <div class="bmsheet" aria-live="polite"><div class="bmgrab" data-bm="sheet"></div><div class="bmsc"></div></div>
     <div class="bmbar">
       <div class="bmmonth"></div>
+      <div class="bmsecs" role="tablist" aria-label="Sectors"></div>
       <div class="bmtime"><input type="range" class="bmslide" aria-label="Time" step="1"><span class="bmtl"></span></div>
       <div class="bmchips">
         <div role="button" tabindex="0" class="bmchip" data-bm="nt">NOTAMs</div>
@@ -221,8 +248,9 @@ export async function openBriefMap(ctx){
   map.addLayer({id:"bm-ntf", type:"fill", source:"bm-nt", filter:ntF, paint:{"fill-color":["get", "c"], "fill-opacity":["case", ["get", "on"], .26, .06]}});
   map.addLayer({id:"bm-ntl", type:"line", source:"bm-nt", filter:ntL, paint:{"line-color":["get", "c"], "line-width":1.6, "line-opacity":["case", ["get", "on"], .95, .35]}});
   map.addLayer({id:"bm-ntp", type:"circle", source:"bm-nt", filter:ntP, paint:{"circle-color":["get", "c"], "circle-radius":6, "circle-opacity":["case", ["get", "on"], .9, .3], "circle-stroke-color":"#fff", "circle-stroke-width":1}});
-  map.addLayer({id:"bm-rtc", type:"line", source:"bm-rt", paint:{"line-color":dk ? "#000" : "#0b1626", "line-width":5, "line-opacity":dk ? .7 : .55}, layout:{"line-cap":"round", "line-join":"round"}});
-  map.addLayer({id:"bm-rtl", type:"line", source:"bm-rt", paint:{"line-color":"#f6f1e4", "line-width":2.4}, layout:{"line-cap":"round", "line-join":"round"}});
+  map.addLayer({id:"bm-rtc", type:"line", source:"bm-rt", filter:["get", "sel"], paint:{"line-color":dk ? "#000" : "#0b1626", "line-width":5, "line-opacity":dk ? .7 : .55}, layout:{"line-cap":"round", "line-join":"round"}});
+  map.addLayer({id:"bm-rto", type:"line", source:"bm-rt", filter:["!", ["get", "sel"]], paint:{"line-color":"#f6f1e4", "line-width":1.8, "line-opacity":.45, "line-dasharray":[2, 1.5]}, layout:{"line-cap":"round"}});
+  map.addLayer({id:"bm-rtl", type:"line", source:"bm-rt", filter:["get", "sel"], paint:{"line-color":"#f6f1e4", "line-width":2.4}, layout:{"line-cap":"round", "line-join":"round"}});
   map.addLayer({id:"bm-rwf", type:"fill", source:"bm-rw", filter:ntF, paint:{"fill-color":"#ff5a45", "fill-opacity":["case", ["get", "on"], .55, .1]}});
   map.addLayer({id:"bm-rwx", type:"line", source:"bm-rw", filter:["==", ["geometry-type"], "LineString"], paint:{"line-color":"#ff5a45", "line-width":["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 5], "line-opacity":["case", ["get", "on"], 1, .2]}});
   hasOMT = !!(map.getStyle().sources || {}).openmaptiles;
@@ -233,7 +261,7 @@ export async function openBriefMap(ctx){
   map.addLayer({id:"bm-mrc", type:"line", source:"bm-mr", paint:{"line-color":"#0b1626", "line-width":5, "line-opacity":.4}, layout:{"line-cap":"round"}});
   map.addLayer({id:"bm-mrl", type:"line", source:"bm-mr", filter:["!", ["get", "dh"]], paint:{"line-color":"#e9b949", "line-width":2.4}, layout:{"line-cap":"round"}});
   map.addLayer({id:"bm-mrd", type:"line", source:"bm-mr", filter:["get", "dh"], paint:{"line-color":"#e9b949", "line-width":2, "line-opacity":.7, "line-dasharray":[2, 1.6]}});
-  BRIEF_LAYERS = ["bm-ntf", "bm-ntl", "bm-ntp", "bm-rtc", "bm-rtl", "bm-rwf", "bm-rwx"].concat(hasOMT ? ["bm-twy"] : []);
+  BRIEF_LAYERS = ["bm-ntf", "bm-ntl", "bm-ntp", "bm-rtc", "bm-rto", "bm-rtl", "bm-rwf", "bm-rwx"].concat(hasOMT ? ["bm-twy"] : []);
   }
   addOverlays();
   const M = ctx.month && ctx.month.routes && ctx.month.routes.length ? ctx.month : null;
@@ -268,7 +296,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=74")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=75")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -417,20 +445,37 @@ export async function openBriefMap(ctx){
     $(o, '[data-bm="vmonth"]').classList.toggle("dis", !M);
     layersFor(v);
     closeSheet(); zoomAp = null; if(jets) jets.release(false);
-    if(v === "month"){ $(o, ".bmtt").textContent = M.label; $(o, ".bmsub").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · tap a plane to follow it`;
+    if(v === "month"){ if(plane) plane.getElement().hidden = true; $(o, ".bmtt").textContent = M.label; $(o, ".bmsub").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · tap a plane to follow it`;
       $(o, ".bmmonth").textContent = `${M.routes.length} route${M.routes.length === 1 ? "" : "s"} · ${M.stations.length} airports · drag to spin, pinch to zoom`;
       $(o, ".bmcount").textContent = M.label; fitMonth(anim); startJets() }
-    else { if(jets) jets.stop(); $(o, ".bmtt").textContent = "Briefing map"; vis(); sub(); count(); if(B) fitRoute(anim === true); if(!B) openSheet("list", emptyHtml()) }
+    else { if(jets) jets.stop(); drawPlane(); $(o, ".bmtt").textContent = "Briefing map"; vis(); sub(); count(); if(B) fitRoute(anim === true); if(!B) openSheet("list", emptyHtml()) }
   }
+
+  /* ---------- sectors: pick one; its route, waypoints and winds are shown, the others faint ---------- */
+  let selKey = null, plane = null;
+  function pick(key){ if(!B || !B.flights || !B.flights.length){ selKey = null; return }
+    const f = B.flights.find(x => x.key === key) || B.flights.find(x => x.key === selKey) || B.flights[B.flights.length - 1]; selKey = f.key;
+    Object.assign(B, {date:f.date, dep:f.dep, dest:f.dest, altn:f.altn || [], route:f.route || [], fl:f.fl, winds:f.winds || {}}) }
+  function defaultKey(){ if(!B || !B.flights || !B.flights.length) return null; const now = Date.now();
+    const on = B.flights.find(f => f.std && now >= f.std - 2 * 36e5 && now <= (f.sta || f.std + 36e5 * 3));   // the sector you are in, or about to fly
+    const next = B.flights.find(f => f.std && f.std > now && f.std - now < 18 * 36e5);
+    return (on || next || B.flights.find(f => f.key === B.key) || B.flights[B.flights.length - 1]).key }
+  function secs(){ const el = $(o, ".bmsecs"), F = B && B.flights || []; el.hidden = F.length < 2; o.classList.toggle("hassecs", F.length > 1);
+    el.innerHTML = F.map((f, i) => `<div role="tab" tabindex="0" class="bmsec${f.key === selKey ? " on" : ""}" data-bmsec="${esc(f.key)}" aria-selected="${f.key === selKey}"><b>${i + 1}</b> ${esc(secLbl(f))}${f.std ? ` <small>${hhmm(f.std)}</small>` : ""}</div>`).join("") }
 
   /* ---------- briefing to map ---------- */
   function setup(){
     markers.forEach(m => m.remove()); markers = []; zoomAp = null;
     if(!B){ routePts = []; apts = []; map.getSource("bm-rt").setData(fc()); windM.forEach(m => m.remove()); windM = []; return }
-    routePts = B.route.length > 1 ? B.route.map(p => [p.lon, p.lat]) : [B.dep, B.dest].map(k => apx.get(k)).filter(Boolean).map(a => [a.lon, a.lat]);
-    apts = [B.dep, B.dest, ...(B.altn || [])].map(k => apx.get(k)).filter(Boolean).map(a => [a.lon, a.lat]);
-    markMine(B, routePts, apts);
-    map.getSource("bm-rt").setData(fc(routePts.length > 1 ? [{type:"Feature", properties:{}, geometry:{type:"LineString", coordinates:routePts}}] : []));
+    if(B.flights && B.flights.length) pick(selKey || defaultKey());
+    const ptsOf = f => f.route && f.route.length > 1 ? f.route.map(p => [p.lon, p.lat]) : [f.dep, f.dest].map(k => apx.get(k)).filter(Boolean).map(a => [a.lon, a.lat]);
+    const aptsOf = f => [f.dep, f.dest, ...(f.altn || [])].map(k => apx.get(k)).filter(Boolean).map(a => [a.lon, a.lat]);
+    const FL = B.flights && B.flights.length ? B.flights : [B];
+    routePts = ptsOf(B); apts = aptsOf(B);
+    // "my route" is the whole day: every sector's route and airports
+    B.notams.forEach(n => n.mine = false); FL.forEach(f => markMine(Object.assign({}, B, {fl:f.fl}), ptsOf(f), aptsOf(f), true));
+    map.getSource("bm-rt").setData(fc(FL.map(f => { const P = ptsOf(f); return P.length > 1 ? {type:"Feature", properties:{sel:!B.flights || !B.flights.length || f.key === selKey}, geometry:{type:"LineString", coordinates:P}} : null }).filter(Boolean)));
+    secs();
     // waypoints
     B.route.slice(1, -1).forEach(p => { const e = document.createElement("div"); e.className = "bmwp"; e.innerHTML = `<i></i><span>${esc(p.n)}</span>`;
       markers.push(new lib.Marker({element:e, anchor:"left", offset:[-5, 0]}).setLngLat([p.lon, p.lat]).addTo(map)) });
@@ -442,7 +487,7 @@ export async function openBriefMap(ctx){
       e.setAttribute("role", "button"); e.tabIndex = 0; e.dataset.bmap = k; e.setAttribute("aria-label", k + " airport");
       e.innerHTML = `<i style="background:${m ? CATC[m.cat] : "#8a94a6"}"></i><span>${esc(k)}${adN[k] ? `<b class="bmnc">${adN[k]}</b>` : ""}</span>`;
       markers.push(new lib.Marker({element:e, anchor:"left", offset:[-7, 0]}).setLngLat([a.lon, a.lat]).addTo(map)) });
-    winds(); paintTime(true); if(view === "brief") fitRoute(false);
+    winds(); paintTime(false); if(view === "brief") fitRoute(false);   // keeps the time you are on (switching sectors must not jump back to now)
   }
   function fitRoute(anim){ const P = routePts.concat(apts); if(!P.length) return;
     const b = P.reduce((b, p) => [[Math.min(b[0][0], p[0]), Math.min(b[0][1], p[1])], [Math.max(b[1][0], p[0]), Math.max(b[1][1], p[1])]], [[180, 90], [-180, -90]]);
@@ -494,24 +539,36 @@ export async function openBriefMap(ctx){
     for(const p of B.route){ const R = B.winds[p.n] || []; if(!R.length) continue;
       const W = R.reduce((b, w) => Math.abs(w.fl - prefs.wind) < Math.abs(b.fl - prefs.wind) ? w : b, R[0]); if(Math.abs(W.fl - prefs.wind) > 40) continue;   // nearest level in this waypoint's table
       const e = document.createElement("div"); e.className = "bmwind";
-      e.innerHTML = `<svg viewBox="-10 -10 20 20" style="transform:rotate(${(W.dir + 180) % 360}deg)"><path d="M0 8V-7M-4-3 0-8 4-3"/></svg><span>${String(W.dir).padStart(3, "0")}/${W.kt} ${W.t < 0 ? "M" + (-W.t) : "P" + W.t}${W.fl !== prefs.wind ? ` <em>FL${W.fl}</em>` : ""}</span>`;
+      e.innerHTML = `<svg viewBox="-10 -10 20 20" style="transform:rotate(${(W.dir + 180) % 360}deg)"><path d="M0 8V-7M-4-3 0-8 4-3"/></svg><span>${String(W.dir).padStart(3, "0")}/${W.kt} ${W.t < 0 ? "M" + (-W.t) : "P" + W.t}</span>`; if(W.fl !== prefs.wind) e.classList.add("near");   // nearest level in this waypoint's table: shown a little dimmer
       windM.push(new lib.Marker({element:e, anchor:"right", offset:[-8, 0]}).setLngLat([p.lon, p.lat]).addTo(map)) } }
 
   /* ---------- time ---------- */
-  function range(){ const now = Date.now(), s = B && B.date && now > B.date - 6 * 36e5 && now < B.date + 30 * 36e5 ? B.date : now - 6 * 36e5 - now % 9e5; return [s, s + 30 * 36e5] }
+  function range(){ const now = Date.now(), F = B && B.flights || [], d0 = F.length ? Math.min(...F.map(f => f.date || Infinity)) : B && B.date;
+    const s = d0 && now > d0 - 6 * 36e5 && now < d0 + 54 * 36e5 ? d0 : now - 6 * 36e5 - now % 9e5;
+    const end = Math.max(s + 30 * 36e5, ...F.map(f => (f.sta || f.std || 0) + 2 * 36e5)); return [s, end] }
   function paintTime(init){
     const [a, b] = range(); slide.min = 0; slide.max = Math.round((b - a) / 6e5);
     if(init){ T = Math.min(b, Math.max(a, Date.now())); slide.value = Math.round((T - a) / 6e5) }
     $(o, ".bmtl").textContent = hhmm(T) + " · " + dayLbl(T);
-    $(o, ".bmclock").textContent = hhmm(T) + (Math.abs(T - Date.now()) < 6e5 ? " · now" : "");
-    lastNt = ntFeatures(); map.getSource("bm-nt").setData(fc(lastNt)); adPaint(); vis(); count();
+    const fa = planeAt(); $(o, ".bmclock").textContent = hhmm(T) + (fa ? ` · ${fa.f.dep}–${fa.f.dest} ${fa.p.phase}` : Math.abs(T - Date.now()) < 6e5 ? " · now" : "");
+    lastNt = ntFeatures(); map.getSource("bm-nt").setData(fc(lastNt)); adPaint(); vis(); count(); drawPlane();
   }
   function count(){ const el = $(o, ".bmcount"); if(view === "month") return;
     if(!B){ el.textContent = "No briefing loaded"; return }
     if(zoomAp){ const L = B.notams.filter(n => n.ad === zoomAp), on = L.filter(n => activeAt(n, T)).length; el.textContent = `${zoomAp}: ${on} of ${L.length} NOTAMs in force`; return }
     const S = B.notams.filter(n => n.shape), m = S.filter(n => n.mine), on = m.filter(n => activeAt(n, T)).length;
     el.textContent = prefs.mine ? `${on} active on your route · ${m.length} in all` : `${S.filter(n => activeAt(n, T)).length} of ${S.length} areas active` }
-  slide.addEventListener("input", () => { const [a] = range(); T = a + slide.value * 6e5; paintTime(false); if(sheet.classList.contains("open") && sheet.dataset.k === "ap") apSheet(zoomAp) });
+  // which planned sector is flying at time T, and where; scrubbing into another sector switches to it
+  function planeAt(){ const F = B && B.flights || []; for(const f of F){ const p = flightAt(f, T); if(p) return {f, p} } return null }
+  function drawPlane(){ const fa = view === "brief" ? planeAt() : null;
+    if(!fa){ if(plane) plane.getElement().hidden = true; return }
+    if(!plane){ const e = document.createElement("div"); e.className = "bmplane"; e.setAttribute("aria-hidden", "true");
+      e.innerHTML = '<svg viewBox="-12 -12 24 24"><path d="M0-10.5c.9 0 1.4.9 1.4 1.9v5.2l8.6 4.7v2.1l-8.6-2.4v4.9l2.6 1.9v1.7L0 8.6l-4 .9V7.8l2.6-1.9V1L-10 3.4V1.3l8.6-4.7v-5.2c0-1 .5-1.9 1.4-1.9z"/></svg>';
+      plane = new lib.Marker({element:e, rotationAlignment:"map", pitchAlignment:"map"}).setLngLat(fa.p.pos).addTo(map) }
+    plane.getElement().hidden = false; plane.getElement().classList.toggle("gnd", fa.p.ground); plane.setLngLat(fa.p.pos).setRotation(fa.p.brg) }
+  slide.addEventListener("input", () => { const [a] = range(); T = a + slide.value * 6e5;
+    const fa = planeAt(); if(fa && fa.f.key !== selKey){ pick(fa.f.key); setup(); sub() }
+    paintTime(false); if(sheet.classList.contains("open") && sheet.dataset.k === "ap") apSheet(zoomAp) });
 
   /* ---------- sheets ---------- */
   function openSheet(k, html){ sc.innerHTML = html; sheet.dataset.k = k; sheet.classList.add("open"); sheet.classList.toggle("full", k === "list" || k === "load" || k === "off"); sc.scrollTop = 0 }
@@ -558,6 +615,7 @@ export async function openBriefMap(ctx){
     const tnow = (() => { const d = new Date(T); return d.getUTCHours() * 100 + d.getUTCMinutes() })(), aOn = r => +r.a <= tnow && tnow <= +r.b;
     const other = B.notams.filter(n => !n.shape && !n.ad && n.kind !== "aup");
     openSheet("list", `<div class="bmn"><h4>${esc(B.dep || "")}${B.dest ? " to " + esc(B.dest) : ""}<small>${B.date ? dayLbl(B.date) : ""}${B.fl ? " · FL" + B.fl : ""}</small></h4>
+        ${B.flights && B.flights.length > 1 ? `<p class="bmv">${B.flights.length} sectors: ${B.flights.map((f, i) => `${i + 1}. ${esc(secLbl(f))}${f.std ? " " + hhmm(f.std) + "–" + (f.sta ? hhmm(f.sta) : "?") : ""}`).join(" · ")}</p>` : ""}
         <p class="bmv">${B.route.length} waypoints · ${B.notams.length} NOTAMs · ${Object.keys(B.wx).length} airports with weather</p></div>
       <div class="bmgh">Areas ${prefs.mine ? "on your route" : ""} (${S.length})</div>
       ${S.map(n => `<div role="button" tabindex="0" class="bmrow" data-bmn="${esc(n.id)}"><i style="background:${COL[n.kind]}"></i><span>${esc(KIND[n.kind])}<small>${esc(lvl(n))}</small></span>${stateTag(n)}</div>`).join("") || `<p class="bmv">None.</p>`}
@@ -615,10 +673,13 @@ export async function openBriefMap(ctx){
       const pdf = await ctx.pdfLib(), lines = await pdfLines(pdf, await file.arrayBuffer(), f => { bar.style.width = (f * 100).toFixed(0) + "%"; pt.textContent = `Page ${Math.round(f * 100)}%` });
       const nb = parseBriefing(lines);
       if(!nb.route.length && !nb.notams.length){ openSheet("load", `<div class="bmn"><h4>Nothing found</h4><p class="bmv">This PDF does not look like a briefing: no route and no NOTAMs were found in it.</p></div>`); return }
-      S = mergeBrief(S || emptyStore(), nb); await putStore(S); B = viewOf(S);
+      S = mergeBrief(S || emptyStore(), nb); await putStore(S); B = viewOf(S); if(S.added) selKey = S.added;
       if(view !== "brief") setView("brief", false); setup(); sub();
       openSheet("load", `<div class="bmn"><h4>Briefing loaded</h4><p class="bmv">${nb.dep && nb.dest ? `${esc(nb.dep)} to ${esc(nb.dest)}, ` : ""}${nb.route.length} waypoints, ${nb.notams.filter(n => n.shape).length} NOTAM areas (${B.notams.filter(n => n.mine).length} near your route), ${nb.notams.filter(n => n.ad).length} airport NOTAMs, weather for ${Object.keys(nb.wx).length} airports.</p>
-        <p class="bmv">Updated ${S.updated} place${S.updated === 1 ? "" : "s"} (FIRs and airports) from this briefing${S.kept ? `; ${S.kept} kept from earlier briefings` : ""}. NOTAMs drop off when they expire.</p></div>`);
+        <p class="bmv">Updated ${S.updated} place${S.updated === 1 ? "" : "s"} (FIRs and airports) from this briefing${S.kept ? `; ${S.kept} kept from earlier briefings` : ""}. NOTAMs drop off when they expire.</p>
+        ${B.flights.length > 1 ? `<p class="bmv">Flight plans on the phone: ${B.flights.map((f, i) => `${i + 1}. ${esc(secLbl(f))}${f.std ? " " + hhmm(f.std) : ""}`).join(" · ")}. Pick a sector above the time bar for its route and winds.</p>` : ""}
+        ${nb.route.length && nb.std ? "" : nb.route.length ? `<p class="bmv">No departure time in this plan, so the aircraft cannot be placed by time.</p>` : `<p class="bmv">No flight plan in this PDF: its NOTAMs and weather were added, the sectors are unchanged.</p>`}</div>`);
+      if(S.added){ const f = B.flights.find(x => x.key === S.added); if(f && f.std){ const [a, b] = range(); T = Math.min(b, Math.max(a, f.std)); slide.value = Math.round((T - a) / 6e5); paintTime(false) } }
     }catch(e){ openSheet("load", `<div class="bmn"><h4>Could not read the PDF</h4><p class="bmv">${esc(e.message || e)}</p></div>`) }
   }
   o.addEventListener("change", e => { const f = e.target.closest('input[type="file"]'); if(f && f.files[0]){ readPdf(f.files[0]); f.value = "" } });
@@ -644,6 +705,8 @@ export async function openBriefMap(ctx){
   o.addEventListener("click", e => {
     if(sheet._swiped && performance.now() - sheet._swiped < 350 && e.target.closest(".bmsheet")) return;
     if(e.target.closest("[data-sheet]")){ close(); return }   // a flight in the month view: the app opens its sheet once the map has closed
+    const sc2 = e.target.closest("[data-bmsec]"); if(sc2){ pick(sc2.dataset.bmsec); setup(); sub(); const f = B.flights.find(x => x.key === selKey);
+      if(f && f.std){ const [a, b] = range(); T = Math.min(b, Math.max(a, f.std)); slide.value = Math.round((T - a) / 6e5) } paintTime(false); fitRoute(true); return }
     const stn = e.target.closest("[data-bmst]"); if(stn){ if(jets) jets.focus(stn.dataset.bmst); else monthSheet("stn", stn.dataset.bmst); return }
     const ap = e.target.closest("[data-bmap]"); if(ap){ zoomTo(ap.dataset.bmap); return }
     const nn = e.target.closest("[data-bmn]"); if(nn){ const n = B && B.notams.find(x => x.id === nn.dataset.bmn); if(n){ ntSheet([n.id]);
@@ -672,7 +735,7 @@ export async function openBriefMap(ctx){
     else if(k === "vmonth"){ if(M && view !== "month") setView("month", true) }
     else if(k === "vbrief"){ if(view !== "brief") setView("brief", true) }
   });
-  o.addEventListener("keydown", e => { if((e.key === "Enter" || e.key === " ") && e.target.matches("[data-bmap],[data-bmn],[data-bmst]")){ e.preventDefault(); e.stopPropagation(); e.target.click() } });
+  o.addEventListener("keydown", e => { if((e.key === "Enter" || e.key === " ") && e.target.matches("[data-bmap],[data-bmn],[data-bmst],[data-bmsec]")){ e.preventDefault(); e.stopPropagation(); e.target.click() } });
 
   // NOTAMs that reach their end time while the map is open go straight away, and the phone's copy is updated
   var expiry = setInterval(() => { if(closed || !S) return; if(prune(S)){ putStore(S); B = viewOf(S); if(B) markMine(B, routePts, apts); paintTime(false); if(sheet.classList.contains("open") && sheet.dataset.k === "list") listSheet() } }, 60000);   // var, so closing before this line runs is safe
@@ -680,7 +743,8 @@ export async function openBriefMap(ctx){
   function close(){ if(closed) return; closed = true; clearInterval(expiry); removeEventListener("keydown", onEsc); document.documentElement.classList.remove("sheet-open", "bm-open"); mq.removeEventListener && mq.removeEventListener("change", onScheme); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
 
   // opens on the briefing when one is loaded for about now (6 h before its day to the end of the next), else the month
-  const now = Date.now(), fresh = B && B.date && now > B.date - 6 * 36e5 && now < B.date + 48 * 36e5;
+  if(B && B.flights) selKey = defaultKey();
+  const now = Date.now(), fresh = B && ((B.flights || []).some(f => f.date && now > f.date - 6 * 36e5 && now < f.date + 48 * 36e5) || (B.date && now > B.date - 6 * 36e5 && now < B.date + 48 * 36e5));
   view = ctx.view || (fresh || !M ? "brief" : "month");
   monthSetup(); setup(); paintTime(true); setView(view, "open"); lookBtn();
   function onEsc(e){ if(e.key === "Escape" && !document.querySelector("#sheetWrap:not([hidden])")) close() }   // hoisted, so closing early is safe

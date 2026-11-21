@@ -78,11 +78,16 @@ export function adKind(t){
   return {k:"gen"} }
 
 export function parseBriefing(rawLines){
-  const L = clean(rawLines), B = {date:null, dep:null, dest:null, altn:[], route:[], fl:null, winds:{}, notams:[], aup:[], wx:{}, icao:{}, sects:[]};
+  const L = clean(rawLines), B = {date:null, dep:null, dest:null, altn:[], route:[], fl:null, winds:{}, notams:[], aup:[], wx:{}, icao:{}, sects:[], std:null, sta:null, taxi:null};
   // date of the plan: a line holding only "10NOV26"
   for(const l of L){ const m = l.match(/^(\d{2})([A-Z]{3})(\d{2})$/); if(m && m[2] in MON){ B.date = Date.UTC(2000 + +m[3], MON[m[2]], +m[1]); break } }
   for(const l of L){ const m = l.match(/\bDEP ([A-Z]{4})\/([A-Z]{3})\b.*\bDEST ([A-Z]{4})\/([A-Z]{3})\b/); if(m){ B.dep = m[2]; B.dest = m[4]; B.icao[m[1]] = m[2]; B.icao[m[3]] = m[4]; break } }
   for(const l of L){ const m = l.match(/^-ALTN- ((?:[A-Z]{4}\s*)+)$/); if(m){ B.altnIcao = m[1].trim().split(/\s+/); break } }
+  // times from the plan: STD and STA (UTC), and the taxi time; the aircraft is airborne from STD + taxi
+  const hm = (h, m) => +h * 60 + +m;
+  for(const l of L){ const m = l.match(/\bSTD:(\d{2})(\d{2})Z\b.*\bSTA:(\d{2})(\d{2})Z\b/); if(m && B.date != null){ B.std = B.date + hm(m[1], m[2]) * 6e4; B.sta = B.date + hm(m[3], m[4]) * 6e4; if(B.sta < B.std) B.sta += 864e5; break } }
+  if(B.std == null && B.date != null) for(const l of L){ const m = l.match(/^ETD: (\d{2})\/(\d{2})(\d{2})Z\b/); if(m){ B.std = B.date + hm(m[2], m[3]) * 6e4; break } }
+  for(const l of L){ const m = l.match(/^TAXI\s+\d+\s+(\d{2}):(\d{2})\b/); if(m){ B.taxi = hm(m[1], m[2]); break } }
   // ICAO to IATA from section and weather headings: "VABB / BOM", "VOHS -HYD - NAME"
   for(const l of L){ let m = l.match(/^([A-Z]{4}) \/ ([A-Z]{3})(?: |$)/) || l.match(/^([A-Z]{4}) -([A-Z]{3}) -/); if(m) B.icao[m[1]] = m[2] }
 
@@ -94,7 +99,8 @@ export function parseBriefing(rawLines){
     let lat = +c[2] + (+c[3] + c[4] / 10) / 60, lon = +c[6] + (+c[7] + c[8] / 10) / 60; if(c[1] === "S") lat = -lat; if(c[5] === "W") lon = -lon;
     const last = B.route[B.route.length - 1];
     if(B.route.length > 1 && name === B.route[0].n) break;
-    if(!last || Math.abs(last.lon - lon) + Math.abs(last.lat - lat) > 1e-4) B.route.push({n:name, lon, lat});
+    const ct = L[i + 1].match(/\s(\d{2})(\d{2})\s+\d{3,6}\s*$/), ctm = ct ? hm(ct[1], ct[2]) : (B.route.length ? null : 0);
+    if(!last || Math.abs(last.lon - lon) + Math.abs(last.lat - lat) > 1e-4) B.route.push({n:name, lon, lat, ctm});
     if(destI && name === destI && B.route.length > 1) break;
   }
   for(const l of L){ const m = l.match(/\bTMP [-+]\d{2}\/(\d{3})\b/); if(m){ B.fl = +m[1]; break } }

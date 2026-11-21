@@ -892,3 +892,12 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .bmt b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bmap .bmnc{display:inline-block;margin-left:5px;min-width:16px;padding:1px 4px;border-radius:8px;background:#e9b949;color:#1b1b1b;font-size:10px;text-align:center}
 .bmsheet{touch-action:pan-y}
+/* sectors and the planned aircraft (build 75) */
+.bmsecs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:0 2px 8px} .bmsecs::-webkit-scrollbar{display:none} .bmsecs[hidden]{display:none}
+.bmsec{flex:none;display:flex;align-items:center;gap:6px;min-height:34px;padding:0 11px;border-radius:10px;background:rgba(255,255,255,.1);font-size:13px;font-weight:700;cursor:pointer;color:#f4f1ea}
+.bmsec b{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.18);font-size:11px}
+.bmsec small{opacity:.7;font-weight:600} .bmsec.on{background:#f4f1ea;color:#1b1b1b} .bmsec.on b{background:#e9b949}
+.bm.hassecs .bmsheet{bottom:calc(env(safe-area-inset-bottom) + 150px)}
+.bmplane{width:30px;height:30px;pointer-events:none} .bmplane svg{width:30px;height:30px;fill:#e9b949;stroke:#1b1b1b;stroke-width:.9;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+.bmplane.gnd svg{fill:#c9cdd4;transform:scale(.8)} .bm[data-view=month] .bmplane{display:none}
+.bmwind.near{opacity:.6}
