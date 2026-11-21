@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=77";
-import { RWY, ICAO } from "./rwydata.js?b=77";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=78";
+import { RWY, ICAO } from "./rwydata.js?b=78";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -186,6 +186,7 @@ function tilePlan(routePts, apts, opt){
 /* ======================================================================================================== */
 export async function openBriefMap(ctx){
   const lib = await loadLib(), apx = ctx.apx, base = ctx.base || "BOM";
+  const solo = ctx.view === "month" || ctx.view === "brief";   // opened as the Month map or the Briefing map: no switch between them
   const o = document.createElement("div"); o.className = "bm"; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Map");
   o.innerHTML = `<div class="bmtop">
       <div role="button" tabindex="0" class="wclose hz" data-bm="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
@@ -286,8 +287,9 @@ export async function openBriefMap(ctx){
      - grows out of the runway over the first 30% of the track on the climb, shrinks over the last 30% to nothing at touchdown
      - same size on screen at any zoom; deadheads as a see-through jet
      - tap a plane: it slows to about a third of its pace, the detailed 737 is swapped in, the camera flies in low behind it
-       (about 21 degrees above the horizon) with a smoothed heading; drag to swing round it, pinch to move in and out,
-       it stays followed; its route line goes faint and the others fainter; the details bubble floats above it
+       (about 21 degrees above the horizon) with a smoothed heading; one finger drags round it to look around (left and
+       right turns, up and down raises or lowers the camera), two fingers pinch in and out, twist to turn and move together
+       to pan; it stays followed, and its nose always points along its track; tap the jet to centre it again; its route line goes faint and the others fainter; the details bubble floats above it
      - tap an airport: the camera turns to it, routes through it stay bright and the rest dim, its bubble floats above it
      - tap empty map: let go, and pull back out to the overview distance where you are
      - airport tags never pile on each other; while following, tags near the jet fade out of its way
@@ -296,7 +298,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=77")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=78")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -310,7 +312,7 @@ export async function openBriefMap(ctx){
       const A = [r.A.lon, r.A.lat], B2 = [r.B.lon, r.B.lat], dur = Math.max(21, Math.min(60, gcNm(A, B2) / 3440.065 * 141))   /* 3x the old pace (build 71), so a jet is easy to catch */, cyc = dur * 2 + G * 2;
       return {r, T, g, j, A, B:B2, dur, cyc, tt:Math.random() * cyc, rate:1, vis:0, pos:A, from:r.a} });
     let raf = 0, running = false, F = null, foc = null, last = 0;
-    const orb = {pitch:0, z:FZ, ox:0, oy:0};   // following: the zoom you pinch to, and where you have panned the view to (px from the jet)
+    const orb = {pitch:0, yaw:0, z:FZ, ox:0, oy:0};   // following: how far you have looked round (yaw degrees, pitch radians), the zoom you pinch to, and where you have panned the view to (px from the jet)
     const bub = document.createElement("div"); bub.className = "gbubble bmfol"; bub.hidden = true; $(o, ".bmmap").appendChild(bub);
     const bp = {x:0, y:0, sx:-1, sy:-1};
     const size = () => { const c = map.getContainer(), W = c.clientWidth, H = c.clientHeight; R.setSize(W, H, false); cam.right = W; cam.bottom = -H; cam.updateProjectionMatrix() };
@@ -341,7 +343,7 @@ export async function openBriefMap(ctx){
       if(F){ const hd = brgOf(F.tail, F.nose); F.sb = F.sb == null ? hd : (F.sb + wrap(hd - F.sb) * lerpK(ctx.rm() ? 1 : .04, dt) + 360) % 360;
         const k = lerpK(ctx.rm() ? 1 : .08, dt), el = EL + orb.pitch; if(!F.cc){ const c = map.getCenter(); F.cc = [c.lng, c.lat] }
         F.cc = [F.cc[0] + wrap(F.pos[0] - F.cc[0]) * k, F.cc[1] + (F.pos[1] - F.cc[1]) * k];   // the camera's own smoothed track of the jet
-        const want = {bearing:F.sb, pitch:Math.max(0, Math.min(70, 90 - el * 180 / Math.PI)), zoom:orb.z};   // nose always along the track
+        const want = {bearing:(F.sb + orb.yaw + 360) % 360, pitch:Math.max(0, Math.min(70, 90 - el * 180 / Math.PI)), zoom:orb.z};   // nose always along the track
         map.jumpTo({center:F.cc, zoom:map.getZoom() + (want.zoom - map.getZoom()) * k, pitch:map.getPitch() + (want.pitch - map.getPitch()) * k, bearing:map.getBearing() + wrap(want.bearing - map.getBearing()) * k});
         if(orb.ox || orb.oy){ const q = map.project(F.cc), c2 = map.unproject([q.x - orb.ox, q.y - orb.oy]); map.jumpTo({center:c2}) } }   // panned: the view rides along, offset as you left it
       const ctr = map.getCenter(), cen = [ctr.lng, ctr.lat], pitch = map.getPitch() * Math.PI / 180, z = map.getZoom();
@@ -349,7 +351,10 @@ export async function openBriefMap(ctx){
       for(const p of planes){
         if(p.vis <= .01 || gcNm(cen, p.pos) > 4800){ p.T.visible = false; p.sx = null; continue }   // on the ground, or round the back of the globe
         const a = map.project(p.pos), t = map.project(p.tail), n = map.project(p.nose); p.T.visible = true;
-        p.T.position.set(a.x, -a.y, 0); p.T.rotation.x = -pitch * .85 - .28; p.g.rotation.z = Math.atan2(-(n.y - t.y), n.x - t.x) + Math.PI / 2;
+        p.T.position.set(a.x, -a.y, 0); p.T.rotation.x = -pitch * .85 - .28;
+        // heading: the followed jet turns by its track against the map's bearing, so neither the 3D tilt nor zooming or looking round can swing its nose;
+        // the others keep the angle their track makes on screen (right for a flat globe)
+        p.g.rotation.z = p === F ? Math.PI - (brgOf(p.tail, p.nose) - map.getBearing()) * Math.PI / 180 : Math.atan2(-(n.y - t.y), n.x - t.x) + Math.PI / 2;
         p.T.scale.setScalar((p === F ? fpx : px) * Math.max(p.vis, .001)); p.sx = a.x; p.sy = a.y;
       }
       R.render(scene, cam);
@@ -370,18 +375,23 @@ export async function openBriefMap(ctx){
       if(on){ if(!baseD) baseD = build737({detail:true}); const d = baseD.clone(true); if(p.r.dh) ghost(d); d.rotation.x = Math.PI / 2; p.g.add(d); p.jd = d; p.j.visible = false }
       else if(p.jd){ p.g.remove(p.jd); p.jd = null; p.j.visible = true }
     }
-    // while following, your finger moves the camera round the jet instead of the map
+    // while following, your fingers move the camera round the jet instead of the map:
+    // one finger looks around it, two fingers pinch to zoom, twist to turn and move together to pan
     const handlers = ["dragPan", "dragRotate", "touchZoomRotate", "touchPitch", "scrollZoom", "doubleClickZoom", "keyboard"];
     const freeMap = on => handlers.forEach(h => { try{ on ? map[h].enable() : map[h].disable() }catch(e){} });
     const ptrs = new Map(); let st = null, pinch = null; const box = map.getCanvasContainer();
     box.addEventListener("pointerdown", e => { if(!F) return; ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
-      if(ptrs.size === 1) st = {x:e.clientX, y:e.clientY, ox:orb.ox, oy:orb.oy};
-      if(ptrs.size === 2){ const [p, q] = [...ptrs.values()]; pinch = {d:Math.hypot(p.x - q.x, p.y - q.y), z:orb.z} } });
+      if(ptrs.size === 1) st = {x:e.clientX, y:e.clientY, yaw:orb.yaw, pitch:orb.pitch, on:false};
+      if(ptrs.size === 2){ const [p, q] = [...ptrs.values()]; pinch = {d:Math.hypot(p.x - q.x, p.y - q.y), z:orb.z, a:Math.atan2(q.y - p.y, q.x - p.x), yaw:orb.yaw, mx:(p.x + q.x) / 2, my:(p.y + q.y) / 2, ox:orb.ox, oy:orb.oy} } });
     box.addEventListener("pointermove", e => { if(!F || !ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
-      if(ptrs.size === 2 && pinch){ const [p, q] = [...ptrs.values()]; zoomTo(pinch.z + Math.log2(Math.max(20, Math.hypot(p.x - q.x, p.y - q.y)) / pinch.d)); return }
-      if(ptrs.size === 1 && st){ const dx = e.clientX - st.x, dy = e.clientY - st.y; if(Math.hypot(dx, dy) < 10) return;
-        orb.ox = st.ox + dx; orb.oy = st.oy + dy } });   // pan anywhere: the jet moves with your finger and stays followed
-    const up = e => { ptrs.delete(e.pointerId); if(ptrs.size < 2) pinch = null; if(ptrs.size === 1){ const [p] = [...ptrs.values()]; st = {x:p.x, y:p.y, ox:orb.ox, oy:orb.oy} } };
+      if(ptrs.size === 2 && pinch){ const [p, q] = [...ptrs.values()];
+        orb.yaw = pinch.yaw - wrap((Math.atan2(q.y - p.y, q.x - p.x) - pinch.a) * 180 / Math.PI);   // twist
+        orb.ox = pinch.ox + (p.x + q.x) / 2 - pinch.mx; orb.oy = pinch.oy + (p.y + q.y) / 2 - pinch.my;   // move together: pan
+        zoomTo(pinch.z + Math.log2(Math.max(20, Math.hypot(p.x - q.x, p.y - q.y)) / pinch.d)); return }   // pinch: zoom
+      if(ptrs.size === 1 && st){ const dx = e.clientX - st.x, dy = e.clientY - st.y; if(!st.on && Math.hypot(dx, dy) < 10) return; st.on = true;
+        orb.yaw = st.yaw - dx * .3;   // look around: left and right swing round the jet
+        orb.pitch = Math.max(-.016, Math.min(1.1, st.pitch + dy * .005)) } });   // up and down: lower towards the horizon or higher above it
+    const up = e => { ptrs.delete(e.pointerId); if(ptrs.size < 2) pinch = null; if(ptrs.size === 1){ const [p] = [...ptrs.values()]; st = {x:p.x, y:p.y, yaw:orb.yaw, pitch:orb.pitch, on:true} } };
     box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
     box.addEventListener("wheel", e => { if(!F) return; e.preventDefault(); zoomTo(orb.z - e.deltaY * .0017) }, {passive:false});
     // zooming while following: in to street level, out as far as you like; past the overview it lets go and the map is yours
@@ -391,8 +401,8 @@ export async function openBriefMap(ctx){
       run(){ if(running) return; running = true; cv.hidden = false; last = 0; raf = requestAnimationFrame(frame) },
       stop(){ running = false; cancelAnimationFrame(raf); cv.hidden = true; this.release(false) },
       hit(x, y){ let best = null, d = 44; for(const p of planes){ if(!p.T.visible || p.sx == null || p.vis < .3) continue; const q = Math.hypot(p.sx - x, p.sy - y); if(q < d){ d = q; best = p } } return best },
-      follow(p){ if(F === p){ orb.ox = 0; orb.oy = 0; return }   // tap the followed jet: centre it again
-        if(F) detail(F, false); foc = null; closeSheet(); F = p; F.sb = null; F.cc = null; orb.pitch = 0; orb.z = FZ; orb.ox = 0; orb.oy = 0;
+      follow(p){ if(F === p){ orb.ox = 0; orb.oy = 0; orb.yaw = 0; orb.pitch = 0; return }   // tap the followed jet: centre it again, behind it
+        if(F) detail(F, false); foc = null; closeSheet(); F = p; F.sb = null; F.cc = null; orb.pitch = 0; orb.yaw = 0; orb.z = FZ; orb.ox = 0; orb.oy = 0;
         detail(p, true); showBub("route", p.r.k, p.from); lines("follow", p.r.k); freeMap(false); o.classList.add("following"); if(ctx.haptics) ctx.haptics(bub) },
       focus(code){ const s = M.stations.find(x => x.code === code); if(!s) return; if(F){ detail(F, false); F = null; freeMap(true) }
         closeSheet(); foc = {lon:s.lon, lat:s.lat}; showBub("stn", code); lines("stn", code); o.classList.remove("following");
@@ -736,8 +746,8 @@ export async function openBriefMap(ctx){
     else if(k === "fit"){ if(jets) jets.release(false); closeSheet(); fitMonth(true) }
     else if(k === "look"){ prefs.look = {auto:"light", light:"dark", dark:"auto"}[prefs.look] || "auto"; savePrefs(); applyLook();
       toast(LOOKS[prefs.look]) }
-    else if(k === "vmonth"){ if(M && view !== "month") setView("month", true) }
-    else if(k === "vbrief"){ if(view !== "brief") setView("brief", true) }
+    else if(k === "vmonth"){ if(!solo && M && view !== "month") setView("month", true) }
+    else if(k === "vbrief"){ if(!solo && view !== "brief") setView("brief", true) }
   });
   o.addEventListener("keydown", e => { if((e.key === "Enter" || e.key === " ") && e.target.matches("[data-bmap],[data-bmn],[data-bmst],[data-bmsec]")){ e.preventDefault(); e.stopPropagation(); e.target.click() } });
 
@@ -750,6 +760,8 @@ export async function openBriefMap(ctx){
   if(B && B.flights) selKey = defaultKey();
   const now = Date.now(), fresh = B && ((B.flights || []).some(f => f.date && now > f.date - 6 * 36e5 && now < f.date + 48 * 36e5) || (B.date && now > B.date - 6 * 36e5 && now < B.date + 48 * 36e5));
   view = ctx.view || (fresh || !M ? "brief" : "month");
+  // the Month map and the Briefing map are separate: each opens on its own view and there is no switch between them
+  if(solo) $(o, ".bmseg").style.display = "none";
   monthSetup(); setup(); paintTime(true); setView(view, "open"); lookBtn();
   function onEsc(e){ if(e.key === "Escape" && !document.querySelector("#sheetWrap:not([hidden])")) close() }   // hoisted, so closing early is safe
   addEventListener("keydown", onEsc);
