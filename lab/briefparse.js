@@ -137,6 +137,7 @@ export function parseBriefing(rawLines){
     const text = (n.title ? [n.title] : []).concat(body.slice(i)); delete n.title;
     let lo = null, hi = null; const rest = [];
     for(const l of text){ const f = l.match(/^F\) (.+)$/), g = l.match(/^G\) (.+)$/); if(f){ n.loT = f[1]; lo = feet(f[1]) } else if(g){ n.hiT = g[1]; hi = feet(g[1]) } else rest.push(l) }
+    n.lo = lo; n.hi = hi; textLimits(n, rest.join(" ")); lo = n.lo; hi = n.hi;
     n.lo = lo; n.hi = hi; n.text = rest.join("\n"); delete n.lines;
     const flat = rest.join(" "), joined = rest.join("");
     // airspace activation tables: "1 TRA503(A) PUNE 0130 1200 FL325 FL460"
@@ -179,6 +180,14 @@ export const locKey = n => n.ad ? "AD:" + n.ad : "FIR:" + (n.sect || "-");
 export function obsTime(metar, ref){
   const m = (metar || "").match(/^(\d{2})(\d{2})(\d{2})Z/); if(!m || !ref) return null; const d = new Date(ref);
   let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), +m[1], +m[2], +m[3]); if(t - ref > 20 * 864e5) t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, +m[1], +m[2], +m[3]); return t }
+
+// no F)/G) lines: take limits written in the text ("UPPER LIMIT 447.63FT AMSL", "LOWER LIMIT GND"); an obstacle stands on the ground
+export function textLimits(n, tx = n.text || ""){
+  tx = tx.replace(/\s+/g, " "); const clean = v => v.replace(/(\d)\.\d+/, "$1");
+  if(n.hi == null){ const m = tx.match(/UPPER\s+LIMIT[:\s]+(FL\s?\d{2,3}|[\d.]+\s?(?:FT|M)(?:\s?(?:AMSL|AGL))?|UNL)/); if(m){ n.hiT = clean(m[1]); n.hi = feet(n.hiT) } }
+  if(n.lo == null){ const m = tx.match(/LOWER\s+LIMIT[:\s]+(FL\s?\d{2,3}|[\d.]+\s?(?:FT|M)(?:\s?(?:AMSL|AGL))?|SFC|GND)/); if(m){ n.loT = clean(m[1]); n.lo = feet(n.loT) } }
+  if(n.hi != null && n.lo == null && /\b(OBST|CRANE|TOWER|MAST|CHIMNEY|BLDG|BUILDING)\b/.test(tx)){ n.lo = 0; n.loT = "GND" }
+  return n }
 
 // weather category from a METAR: visibility in metres, lowest broken/overcast layer in feet
 export function wxCat(metar){

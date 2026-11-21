@@ -832,7 +832,7 @@ html.isl-hw #isl{top:11px}   /* home-screen app: grow out of the camera cutout i
 .bmsheet{position:absolute;z-index:5;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom) + 108px);max-height:min(38vh,340px);display:flex;flex-direction:column;background:var(--surface,#fff);color:var(--text,#1b1b1b);border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.4);transform:translateY(calc(100% + 140px));transition:transform .32s cubic-bezier(.2,.8,.2,1);visibility:hidden}
 .bmsheet.open{transform:none;visibility:visible} .bmsheet.full{max-height:min(68vh,620px)} .bmsheet{transition:transform .32s cubic-bezier(.2,.8,.2,1),max-height .3s ease}
 .bmwind em{font-style:normal;opacity:.7}
-.bmgrab{height:22px;flex:none;cursor:pointer;position:relative} .bmgrab::after{content:"";position:absolute;left:50%;top:8px;width:40px;height:5px;margin-left:-20px;border-radius:3px;background:var(--border,#ccc)}
+.bmgrab{height:28px;flex:none;cursor:grab;position:relative;touch-action:none} .bmgrab::after{content:"";position:absolute;left:50%;top:8px;width:40px;height:5px;margin-left:-20px;border-radius:3px;background:var(--border,#ccc)}
 .bmsc{overflow:auto;padding:0 16px 16px;-webkit-overflow-scrolling:touch}
 .bmn h4{margin:2px 0 6px;font:600 18px var(--fd,inherit);display:flex;justify-content:space-between;gap:8px;align-items:baseline} .bmn h4 small{font:600 12px var(--fb,inherit);color:var(--muted,#666)}
 .bmn+.bmn{border-top:1px solid var(--border,#ddd);margin-top:12px;padding-top:12px}
@@ -891,3 +891,4 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .bmst.tagoff{visibility:hidden} .bmst.tagdim{opacity:.1!important;pointer-events:none}
 .bmt b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bmap .bmnc{display:inline-block;margin-left:5px;min-width:16px;padding:1px 4px;border-radius:8px;background:#e9b949;color:#1b1b1b;font-size:10px;text-align:center}
+.bmsheet{touch-action:pan-y}

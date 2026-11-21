@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime } from "./briefparse.js?b=73";
-import { RWY, ICAO } from "./rwydata.js?b=73";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=74";
+import { RWY, ICAO } from "./rwydata.js?b=74";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -22,6 +22,7 @@ const $ = (r, s) => r.querySelector(s);
 const nmPerDegLat = 60;
 const hhmm = t => { const d = new Date(t); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0") + "Z" };
 const dayLbl = t => new Date(t).toLocaleDateString("en-GB", {timeZone:"UTC", weekday:"short", day:"numeric", month:"short"});
+const lvl = n => n.lo == null && n.hi == null ? "Levels in the text" : n.lo == null ? "Up to " + ftTxt(n.hi, n.hiT) : n.hi == null ? "From " + ftTxt(n.lo, n.loT) : ftTxt(n.lo, n.loT) + " to " + ftTxt(n.hi, n.hiT);
 const ftTxt = (f, raw) => raw ? raw : f == null ? "?" : f === 0 ? "SFC" : f >= 99999 ? "UNL" : f >= 10000 ? "FL" + Math.round(f / 100) : f.toLocaleString("en-IN") + " ft";
 const prefs = (() => { let p; try{ p = Object.assign({nt:true, wx:true, mine:false, wind:0, look:"auto"}, JSON.parse(localStorage.getItem(PREFKEY) || "{}")) }catch(e){ p = {nt:true, wx:true, mine:false, wind:0, look:"auto"} }
   if(!p.v73){ p.mine = false; p.v73 = 1 }   // build 73: every stored NOTAM stays on the map; "Only my route" is now opt-in
@@ -85,7 +86,7 @@ function mergeBrief(S, nb){
   S.updated = Object.keys(groups).length; S.kept = kept; return S }
 function viewOf(S){
   if(!S) return null; const L = S.last || {}, seen = new Set(), notams = [];
-  for(const k in S.locs) for(const n of S.locs[k].notams){ if(seen.has(n.id)) continue; seen.add(n.id); n.locDate = S.locs[k].date; notams.push(n) }
+  for(const k in S.locs) for(const n of S.locs[k].notams){ if(seen.has(n.id)) continue; seen.add(n.id); n.locDate = S.locs[k].date; if(n.lo == null || n.hi == null) textLimits(n); notams.push(n) }   // briefings read before build 74 get their text limits too
   if(!notams.length && !S.last && !Object.keys(S.wx).length) return null;
   return {date:L.date || null, dep:L.dep || null, dest:L.dest || null, altn:L.altn || [], route:L.route || [], fl:L.fl || null, winds:L.winds || {},
     notams, wx:S.wx, aup:S.aup ? S.aup.rows : [], places:Object.keys(S.locs).length} }
@@ -267,7 +268,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=73")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=74")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -514,13 +515,23 @@ export async function openBriefMap(ctx){
 
   /* ---------- sheets ---------- */
   function openSheet(k, html){ sc.innerHTML = html; sheet.dataset.k = k; sheet.classList.add("open"); sheet.classList.toggle("full", k === "list" || k === "load" || k === "off"); sc.scrollTop = 0 }
-  function closeSheet(){ sheet.classList.remove("open") }
+  function closeSheet(){ sheet.classList.remove("open"); sheet.style.transform = "" }
+  (() => { let y0 = null, t0 = 0, dy = 0, drag = false;
+    sheet.addEventListener("pointerdown", e => { if(!sheet.classList.contains("open")) return; const onGrab = !!e.target.closest(".bmgrab");
+      if(!onGrab && (sc.scrollTop > 0 || e.target.closest("pre,input,a,summary"))) return; y0 = e.clientY; t0 = performance.now(); dy = 0; drag = false });
+    sheet.addEventListener("pointermove", e => { if(y0 == null) return; dy = e.clientY - y0;
+      if(!drag && Math.abs(dy) > 8){ drag = true; sheet.style.transition = "none"; try{ sheet.setPointerCapture(e.pointerId) }catch(_){} }
+      if(drag){ e.preventDefault(); sheet.style.transform = `translateY(${Math.max(-40, dy)}px)` } }, {passive:false});
+    const end = () => { if(y0 == null) return; const v = dy / Math.max(1, performance.now() - t0); y0 = null; sheet.style.transition = ""; if(!drag) return; drag = false;
+      sheet._swiped = performance.now();   // so the tap at the end of a swipe does nothing
+      if(dy > 90 || v > .5) closeSheet(); else { sheet.style.transform = ""; if(dy < -30 || v < -.5) sheet.classList.add("full") } };
+    sheet.addEventListener("pointerup", end); sheet.addEventListener("pointercancel", end) })();
   const stateTag = n => { const on = activeAt(n, T); return `<span class="bmk ${on ? "on" : ""}">${on ? "In force at " + hhmm(T) : "Not at " + hhmm(T)}</span>` };
   const validity = n => `${n.from ? hhmm(n.from) + " " + dayLbl(n.from) : "?"} to ${n.to ? hhmm(n.to) + " " + dayLbl(n.to) : "permanent"}${n.schedText ? `<br>${esc(n.schedText)}` : n.schedFromText ? "<br>Times from the text" : ""}`;
   function ntSheet(ids){
     const L = ids.map(id => B.notams.find(n => n.id === id)).filter(Boolean); if(!L.length) return;
     openSheet("nt", L.map(n => `<div class="bmn"><h4>${esc(KIND[n.kind] || "NOTAM")}<small>${esc(n.id)}</small></h4>
-      <div class="bmtags"><span class="bmk" style="color:${COL[n.kind]};background:${COL[n.kind]}22">${esc(ftTxt(n.lo, n.loT))} to ${esc(ftTxt(n.hi, n.hiT))}</span>${stateTag(n)}${n.mine ? `<span class="bmk mine">On your route</span>` : ""}</div>
+      <div class="bmtags"><span class="bmk" style="color:${COL[n.kind]};background:${COL[n.kind]}22">${esc(lvl(n))}</span>${stateTag(n)}${n.mine ? `<span class="bmk mine">On your route</span>` : ""}</div>
       <p class="bmv">${validity(n)}</p><pre>${esc(n.text)}</pre></div>`).join(""));
   }
   function wxBlock(k){ const w = B && B.wx[k]; if(!w) return `<p class="bmv">No weather for ${esc(k)} in this briefing.</p>`;
@@ -549,7 +560,7 @@ export async function openBriefMap(ctx){
     openSheet("list", `<div class="bmn"><h4>${esc(B.dep || "")}${B.dest ? " to " + esc(B.dest) : ""}<small>${B.date ? dayLbl(B.date) : ""}${B.fl ? " · FL" + B.fl : ""}</small></h4>
         <p class="bmv">${B.route.length} waypoints · ${B.notams.length} NOTAMs · ${Object.keys(B.wx).length} airports with weather</p></div>
       <div class="bmgh">Areas ${prefs.mine ? "on your route" : ""} (${S.length})</div>
-      ${S.map(n => `<div role="button" tabindex="0" class="bmrow" data-bmn="${esc(n.id)}"><i style="background:${COL[n.kind]}"></i><span>${esc(KIND[n.kind])}<small>${esc(ftTxt(n.lo, n.loT))} to ${esc(ftTxt(n.hi, n.hiT))}</small></span>${stateTag(n)}</div>`).join("") || `<p class="bmv">None.</p>`}
+      ${S.map(n => `<div role="button" tabindex="0" class="bmrow" data-bmn="${esc(n.id)}"><i style="background:${COL[n.kind]}"></i><span>${esc(KIND[n.kind])}<small>${esc(lvl(n))}</small></span>${stateTag(n)}</div>`).join("") || `<p class="bmv">None.</p>`}
       <div class="bmgh">Airports</div>
       ${[B.dep, B.dest, ...(B.altn || [])].filter(Boolean).map(k => `<div role="button" tabindex="0" class="bmrow" data-bmap="${esc(k)}"><i style="background:#8a94a6"></i><span>${esc(k)}<small>${B.notams.filter(n => n.ad === k).length} NOTAMs</small></span><span class="bmk">Zoom in</span></div>`).join("")}
       <details class="bmd"><summary><span>Airspace activations at FL${B.fl || 350} (${aup.length})</span></summary>${aup.map(r => `<p class="bmv${aOn(r) ? "" : " dim"}"><b>${esc(r.id)}</b> ${esc(r.place)} ${r.a}-${r.b}Z ${esc(r.loT)} to ${esc(r.hiT)}</p>`).join("")}<p class="bmv">The briefing gives these as names only, so they cannot be drawn.</p></details>
@@ -631,6 +642,7 @@ export async function openBriefMap(ctx){
   });
   for(const id of ["bm-ntf", "bm-ntp", "bm-rwf"]){ map.on("mouseenter", id, () => map.getCanvas().style.cursor = "pointer"); map.on("mouseleave", id, () => map.getCanvas().style.cursor = "") }
   o.addEventListener("click", e => {
+    if(sheet._swiped && performance.now() - sheet._swiped < 350 && e.target.closest(".bmsheet")) return;
     if(e.target.closest("[data-sheet]")){ close(); return }   // a flight in the month view: the app opens its sheet once the map has closed
     const stn = e.target.closest("[data-bmst]"); if(stn){ if(jets) jets.focus(stn.dataset.bmst); else monthSheet("stn", stn.dataset.bmst); return }
     const ap = e.target.closest("[data-bmap]"); if(ap){ zoomTo(ap.dataset.bmap); return }
