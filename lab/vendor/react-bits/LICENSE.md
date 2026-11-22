@@ -28,4 +28,5 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Used in this app (rewritten in plain JS, in lab/brief.js): SplitFlapText, GradualBlur, ElasticSlider.
+Used in this app (rewritten in plain JS): SplitFlapText, GradualBlur, ElasticSlider (lab/brief.js);
+HoldButton (roster hold-to-import, in lab/index.html and lab/lab.css).
