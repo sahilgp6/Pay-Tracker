@@ -279,15 +279,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=85">
-<script src="intro.js?b=85" defer></script>
+<link rel="stylesheet" href="lab.css?b=86">
+<script src="intro.js?b=86" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=85"></script>
-<script src="motion.js?b=85" defer></script>
-<script src="lab.js?b=85"></script>
+<script src="mapdata.js?b=86"></script>
+<script src="motion.js?b=86" defer></script>
+<script src="lab.js?b=86"></script>
 </head>
 <body>
 <div class="wrap">
@@ -884,25 +884,33 @@ function rosterReviewHTML(){
        st.removed?`<div class="rrow bad"><span>No longer on your roster</span><b>${n(st.removed,"item")} removed</b></div>`:""].join("");
   const skip=st.skipped&&st.skipped.size?`<p class="note">${[...st.skipped].sort().map(ymLabel).join(", ")} kept as recorded totals.</p>`:"";
   return `<div class="rreview" id="rosterReview"><h3>Ready to import</h3>${rows}${skip}
-    <button type="button" class="holdb" id="rosterHold" aria-describedby="rosterHoldHint"><span class="hb-l"><span class="hb-i">Hold to import</span><span class="hb-d">Imported</span></span><span class="hb-clip" aria-hidden="true"><span class="hb-fill"><span class="hb-l"><span class="hb-i">Hold to import</span><span class="hb-d">Imported</span></span></span><span class="hb-crest"></span></span><span id="rosterHoldHint" class="sr">Press and hold for 1.5 seconds to import</span></button>
+    ${holdBtn("rosterHold","Hold to import")}
     <div class="btns" style="justify-content:center"><button type="button" class="linkbtn" id="rosterCancel">Cancel</button></div></div>` }
+const holdBtn=(id,label)=>{ const l=`<span class="hb-l"><span class="hb-i">${esc(label)}</span><span class="hb-d">Imported</span></span>`;
+  return `<button type="button" class="holdb" id="${id}" aria-describedby="${id}Hint">${l}<span class="hb-clip" aria-hidden="true"><span class="hb-fill">${l}</span><span class="hb-crest"></span></span><span id="${id}Hint" class="sr">Press and hold for 1.5 seconds to import</span></button>` };
 // the hold: fills over HOLD ms while held; let go early and it drains back; full: "Imported", then the import runs
 const HOLD_MS=1500; let hold=null;
 function holdSet(b,p){ b.style.setProperty("--hb-p",p.toFixed(4)) }
 function holdDrive(to,ms,ease){ const h=hold; if(!h) return; cancelAnimationFrame(h.raf); const from=h.p, t0=performance.now();
   const step=now=>{ const t=ms>0?Math.min(1,(now-t0)/ms):1; h.p=from+(to-from)*ease(t); holdSet(h.b,h.p); if(t<1) h.raf=requestAnimationFrame(step); else if(to===1&&h.down) holdDone() };
   h.raf=requestAnimationFrame(step) }
-function holdDone(){ const h=hold; if(!h||!pendingRoster) return; h.down=false; h.done=true; h.b.dataset.phase="done"; const text=pendingRoster.text;
-  setTimeout(()=>{ pendingRoster=null; hold=null; applyRoster(text) }, RM()?150:520) }
+function holdDone(){ const h=hold; if(!h) return; const pdf=h.b.id==="rpdfHold"; if(pdf ? !(rpdf&&rpdf.mode) : !pendingRoster) return;
+  h.down=false; h.done=true; h.b.dataset.phase="done"; const text=pdf?null:pendingRoster.text;
+  setTimeout(()=>{ hold=null; if(pdf) rpdfImport(); else { pendingRoster=null; applyRoster(text) } }, RM()?150:520) }
 function holdEnd(){ const h=hold; if(!h||!h.down) return; h.down=false; h.b.dataset.phase="idle"; holdDrive(0,200,t=>1-Math.pow(1-t,3)) }
-document.addEventListener("pointerdown",e=>{ const b=e.target.closest&&e.target.closest("#rosterHold"); if(!b||!e.isPrimary||(hold&&hold.done)) return;
+document.addEventListener("pointerdown",e=>{ const b=e.target.closest&&e.target.closest(".holdb"); if(!b||!e.isPrimary||(hold&&hold.done)) return;
   if(!hold||hold.b!==b) hold={b, p:0, raf:0}; hold.down=true; b.dataset.phase="holding"; try{ b.setPointerCapture(e.pointerId) }catch(_){}
   holdDrive(1, HOLD_MS*(1-hold.p), t=>t) }, true);
-document.addEventListener("pointerup",e=>{ if(hold&&e.target.closest&&e.target.closest("#rosterHold")) holdEnd() }, true);
+document.addEventListener("pointerup",e=>{ if(hold&&e.target.closest&&e.target.closest(".holdb")) holdEnd() }, true);
 document.addEventListener("pointercancel",()=>holdEnd(), true);
 addEventListener("blur",()=>holdEnd());
-document.addEventListener("keydown",e=>{ if(e.target.id==="rosterHold"&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); if(e.repeat) return; const b=e.target; if(!hold||hold.b!==b) hold={b,p:0,raf:0}; if(hold.done) return; hold.down=true; b.dataset.phase="holding"; holdDrive(1,HOLD_MS*(1-hold.p),t=>t) } });
-document.addEventListener("keyup",e=>{ if(e.target.id==="rosterHold"&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); holdEnd() } });
+document.addEventListener("keydown",e=>{ if(e.target.classList&&e.target.classList.contains("holdb")&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); if(e.repeat) return; const b=e.target; if(!hold||hold.b!==b) hold={b,p:0,raf:0}; if(hold.done) return; hold.down=true; b.dataset.phase="holding"; holdDrive(1,HOLD_MS*(1-hold.p),t=>t) } });
+document.addEventListener("keyup",e=>{ if(e.target.classList&&e.target.classList.contains("holdb")&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); holdEnd() } });
+// the roster PDF import (was inline in the click handler; build 86 calls it from the hold button)
+function rpdfImport(){ { const x=rpdf; rpdf=null; const before=rowIds();
+    for(const e of x.evs){ const m=/^Deadhead: ([A-Z]{3})→([A-Z]{3})/.exec(e.summary); if(!m) continue;
+      const o=rosterEvents.find(o=>o.t==="sector"&&o.from===m[1]&&o.to===m[2]&&o.flt&&Math.abs((o.pStart??o.start)-e.start)<=3*HR); if(o) e.desc="Flight Number: "+o.flt+"\n"+e.desc } const st=importEvents(x.evs); try{ if(!st.error) localStorage.setItem(LS_KEY+".lastSync", new Date().toISOString()) }catch(e){} showBanner(rosterMessage(st).replace("Roster synced","Roster PDF imported")); render(); if(window.PTMotion&&PTMotion.ready()) PTMotion.lit(before); return }
+}
 async function pasteRoster(){
   let text="";
   try{ text=await navigator.clipboard.readText() }catch(e){ text="" }
@@ -942,7 +950,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=85").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=86").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -1091,7 +1099,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=85");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=86");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1187,7 +1195,7 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=85") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=86") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
@@ -1364,7 +1372,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=85"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=86"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1372,7 +1380,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=85");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=86");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -1393,7 +1401,7 @@ function rosterPdfCard(){
     <p class="note${rpdf.mode?"":" warn"}">${rpdf.mode==="local"?"Each time is converted from its station's own clock to UTC: IST in India, Dubai time at Dubai, daylight saving included.":rpdf.mode==="utc"?"Times are read as UTC.":"Could not tell whether this PDF is in UTC or local time. Pick one before importing."}</p>
     ${rpdf.skipped.length?`<p class="note">Not understood, left out: ${rpdf.skipped.map(esc).join("; ")}</p>`:""}
     <details><summary>What it found, day by day</summary><div class="tbl"><table><tbody>${rows}</tbody></table></div></details>
-    <div class="btns">${rpdf.mode?`<button class="btn" id="rpdfGo">Import ${esc(rpdf.label)}</button>`:""}<button class="btn quiet" id="rpdfNo">Cancel</button></div>
+    ${rpdf.mode?holdBtn("rpdfHold",`Hold to import ${rpdf.label}`):""}<div class="btns" style="justify-content:center"><button type="button" class="linkbtn" id="rpdfNo">Cancel</button></div>
   </div>`;
 }
 function rosterCard(){
@@ -2586,7 +2594,7 @@ function mapCtx(view, month){ return {apx:APX||new Map(), base:(profile.base||"B
   pdfLib:async()=>{ if(!window.pdfjsLib) await loadScript("../pdfjs/pdf.min.js"); const lib=window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc="../pdfjs/pdf.worker.min.js"; return lib }} }
 function openBrief(){
   if(briefOpen) return; briefOpen=true; apMap();
-  import("./brief.js?b=85").then(m=>m.openBriefMap(mapCtx("brief", monthMapData())))
+  import("./brief.js?b=86").then(m=>m.openBriefMap(mapCtx("brief", monthMapData())))
     .catch(e=>{ briefOpen=false; showBanner("The map could not open: "+(e&&e.message||e)) });
 }
 function openWorld(){
@@ -2595,7 +2603,7 @@ function openWorld(){
   if(briefOpen) return; briefOpen=true;
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./brief.js?b=85").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openBriefMap(mapCtx("month", monthMapData()))))
+  import("./brief.js?b=86").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openBriefMap(mapCtx("month", monthMapData()))))
     .then(g=>{ if(!g) briefOpen=false; ld.done() })
     .catch(()=>{ briefOpen=false; ld.done(); openGlobeOld() });
 }
@@ -2611,7 +2619,7 @@ function openGlobeOld(){   // the build 64 globe, used only if the map cannot st
     stations:[...stns.keys()].map(k=>({code:k, ...APX.get(k), home:k===base, abroad:!IN_AIRPORTS.has(k)})),
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
-  import("./world3d.js?b=85").then(m=>m.openGlobe(data)).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap) }).catch(()=>openWorld2D());
+  import("./world3d.js?b=86").then(m=>m.openGlobe(data)).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap) }).catch(()=>openWorld2D());
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2885,7 +2893,7 @@ function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead()
 
 let qIcaoLoad=false;
 function viewQuals(){
-  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=85").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=86").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
   const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
   // due soon: everything amber or red, soonest first
   const due=[];
@@ -3629,7 +3637,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=85") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=86") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
@@ -3962,9 +3970,7 @@ document.addEventListener("click", e=>{
   if(t.dataset.ymode){ yearMode=t.dataset.ymode; try{localStorage.setItem("crewpaylog.lab.v1.year",yearMode)}catch(_){}; render(); return }
   if(t.id==="pasteRoster"){ pasteRoster(); return }
   if(t.id==="rosterCancel"){ pendingRoster=null; hold=null; render(); showBanner("Roster not imported. Nothing changed."); return }
-  if(t.id==="rpdfGo"&&rpdf&&rpdf.mode){ if(window.PTMotion&&!t.dataset.w){ t.dataset.w=1; PTMotion.wipe(t).then(()=>t.click()); return } const x=rpdf; rpdf=null; const before=rowIds();
-    for(const e of x.evs){ const m=/^Deadhead: ([A-Z]{3})→([A-Z]{3})/.exec(e.summary); if(!m) continue;
-      const o=rosterEvents.find(o=>o.t==="sector"&&o.from===m[1]&&o.to===m[2]&&o.flt&&Math.abs((o.pStart??o.start)-e.start)<=3*HR); if(o) e.desc="Flight Number: "+o.flt+"\n"+e.desc } const st=importEvents(x.evs); try{ if(!st.error) localStorage.setItem(LS_KEY+".lastSync", new Date().toISOString()) }catch(e){} showBanner(rosterMessage(st).replace("Roster synced","Roster PDF imported")); render(); if(window.PTMotion&&PTMotion.ready()) PTMotion.lit(before); return }
+  if(t.id==="rpdfGo"&&rpdf&&rpdf.mode){ rpdfImport(); return }
   if(t.id==="rpdfNo"){ rpdf=null; render(); return }
   if(t.dataset&&t.dataset.rpdfmode&&rpdf){ rpdf.mode=t.dataset.rpdfmode; rpdfRun(); render(); return }
   if(t.id==="rosterGo"){ const ta=document.getElementById("rosterText"); if(ta&&ta.value.trim()) (window.PTMotion?PTMotion.wipe(t):Promise.resolve()).then(()=>reviewRoster(ta.value)); else if(window.PTMotion) PTMotion.shake(ta); return }
