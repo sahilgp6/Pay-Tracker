@@ -931,3 +931,7 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .bmsl{display:flex;justify-content:space-between;gap:8px;margin-top:7px;font-size:12.5px;color:#5f6675}
 .bmsl .wxc{font-weight:600;color:inherit}
 @media (prefers-color-scheme:dark){ .bmstrip{background:rgba(24,30,39,.95);color:#ebe7dc} .bmsl{color:#9aa2b0} }
+
+/* build 82: the month map's loading piece can be skipped with a tap */
+.gload{cursor:pointer} .gl-skip{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 22px);text-align:center;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:rgba(233,196,122,.6);pointer-events:none}
+.gload.still .gl-skip{display:none}
