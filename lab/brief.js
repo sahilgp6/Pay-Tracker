@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=78";
-import { RWY, ICAO } from "./rwydata.js?b=78";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=79";
+import { RWY, ICAO } from "./rwydata.js?b=79";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -298,7 +298,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=78")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=79")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -352,9 +352,11 @@ export async function openBriefMap(ctx){
         if(p.vis <= .01 || gcNm(cen, p.pos) > 4800){ p.T.visible = false; p.sx = null; continue }   // on the ground, or round the back of the globe
         const a = map.project(p.pos), t = map.project(p.tail), n = map.project(p.nose); p.T.visible = true;
         p.T.position.set(a.x, -a.y, 0); p.T.rotation.x = -pitch * .85 - .28;
-        // heading: the followed jet turns by its track against the map's bearing, so neither the 3D tilt nor zooming or looking round can swing its nose;
-        // the others keep the angle their track makes on screen (right for a flat globe)
-        p.g.rotation.z = p === F ? Math.PI - (brgOf(p.tail, p.nose) - map.getBearing()) * Math.PI / 180 : Math.atan2(-(n.y - t.y), n.x - t.x) + Math.PI / 2;
+        // heading: the followed jet turns by its track against the map's bearing, so neither the 3D tilt nor zooming or looking round can swing its nose.
+        // The others follow the line their track makes on screen; the jet is then tilted back by T.rotation.x, which squashes its up-down by cos(tilt),
+        // so that part is stretched first, or the tilt would count twice and the nose would swing off the route as the view turns
+        const tcos = Math.max(.15, Math.cos(pitch * .85 + .28));
+        p.g.rotation.z = p === F ? Math.PI - (brgOf(p.tail, p.nose) - map.getBearing()) * Math.PI / 180 : Math.atan2(-(n.y - t.y) / tcos, n.x - t.x) + Math.PI / 2;
         p.T.scale.setScalar((p === F ? fpx : px) * Math.max(p.vis, .001)); p.sx = a.x; p.sy = a.y;
       }
       R.render(scene, cam);
@@ -389,7 +391,7 @@ export async function openBriefMap(ctx){
         orb.ox = pinch.ox + (p.x + q.x) / 2 - pinch.mx; orb.oy = pinch.oy + (p.y + q.y) / 2 - pinch.my;   // move together: pan
         zoomTo(pinch.z + Math.log2(Math.max(20, Math.hypot(p.x - q.x, p.y - q.y)) / pinch.d)); return }   // pinch: zoom
       if(ptrs.size === 1 && st){ const dx = e.clientX - st.x, dy = e.clientY - st.y; if(!st.on && Math.hypot(dx, dy) < 10) return; st.on = true;
-        orb.yaw = st.yaw - dx * .3;   // look around: left and right swing round the jet
+        orb.yaw = st.yaw - dx * 360 / Math.max(300, box.clientWidth);   // look around: a swipe across the screen goes once all the way round the jet
         orb.pitch = Math.max(-.016, Math.min(1.1, st.pitch + dy * .005)) } });   // up and down: lower towards the horizon or higher above it
     const up = e => { ptrs.delete(e.pointerId); if(ptrs.size < 2) pinch = null; if(ptrs.size === 1){ const [p] = [...ptrs.values()]; st = {x:p.x, y:p.y, yaw:orb.yaw, pitch:orb.pitch, on:true} } };
     box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);

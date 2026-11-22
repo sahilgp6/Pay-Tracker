@@ -869,6 +869,8 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .bmmonth{font-size:13px;font-weight:600;opacity:.85;text-align:center;padding:6px 4px 2px}
 .bm[data-view=month] .bmsheet{bottom:calc(env(safe-area-inset-bottom) + 56px)}
 .bmjets{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+/* the map keeps every touch: while a jet is followed MapLibre's own gestures are off and it drops its touch-action, so Safari took the drag as a page gesture and cancelled it part way round */
+.bm .maplibregl-canvas-container,.bm .maplibregl-canvas-container .maplibregl-canvas{touch-action:none!important}
 .bmst{display:flex;align-items:center;gap:5px;cursor:pointer;padding:6px 6px 6px 0;position:relative}
 .bmst i{width:11px;height:11px;border-radius:50%;background:#e9b949;border:2px solid #fff;box-shadow:0 0 0 3px rgba(0,0,0,.25)}
 .bmst.abroad i{background:#7fb3ff} .bmst.home i{width:14px;height:14px}
