@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=86";
-import { RWY, ICAO } from "./rwydata.js?b=86";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=87";
+import { RWY, ICAO } from "./rwydata.js?b=87";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -319,7 +319,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=86")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=87")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -532,7 +532,8 @@ export async function openBriefMap(ctx){
         mMarkers.forEach(m => { const e = m.getElement(); e._op = null; e.classList.remove("tagoff", "tagdim") });
         if(was && flyOut) map.easeTo({zoom:Math.min(map.getZoom(), overviewZoom), pitch:0, bearing:0, duration:ctx.rm() ? 0 : 700}) },
       get following(){ return F }, get drawn(){ return ni }, get focused(){ return foc }, get orb(){ return orb },
-      kill(){ this.stop(); try{ R.dispose() }catch(e){} cv.remove(); strip.remove(); bub.remove() } };
+      kill(){ this.stop(); try{ rg.dispose(); rib.material.dispose(); shadow.geometry.dispose(); shadow.material.dispose(); shTex.dispose(); if(glowTex) glowTex.dispose(); R.dispose(); R.forceContextLoss() }catch(e){}   // free the GPU context: Safari allows only a few at once
+        cv.remove(); strip.remove(); bub.remove() } };
     // panning the map yourself while an airport is focused lets go of it
     // (an airport's bubble stays put over it while you move the map; tap empty map to close it)
     if(view === "month") jets.run();
@@ -888,7 +889,7 @@ export async function openBriefMap(ctx){
   // NOTAMs that reach their end time while the map is open go straight away, and the phone's copy is updated
   var expiry = setInterval(() => { if(closed || !S) return; if(prune(S)){ putStore(S); B = viewOf(S); if(B) markMine(B, routePts, apts); paintTime(false); if(sheet.classList.contains("open") && sheet.dataset.k === "list") listSheet() } }, 60000);   // var, so closing before this line runs is safe
   function sub(){ if(view === "month") return; const d = dlInfo(); $(o, ".bmsub").textContent = B ? `${B.dep || "?"} to ${B.dest || "?"}${B.date ? " · " + dayLbl(B.date) : ""}${d ? " · offline map saved" : ""}` : styleOK ? "No briefing yet · tap upload" : "Offline · no saved map here" }
-  function close(){ if(closed) return; closed = true; clearInterval(expiry); removeEventListener("keydown", onEsc); document.documentElement.classList.remove("sheet-open", "bm-open"); mq.removeEventListener && mq.removeEventListener("change", onScheme); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(ctx.onClose) ctx.onClose() }
+  function close(){ if(closed) return; closed = true; clearInterval(expiry); removeEventListener("keydown", onEsc); document.documentElement.classList.remove("sheet-open", "bm-open"); mq.removeEventListener && mq.removeEventListener("change", onScheme); if(jets) jets.kill(); try{ map.remove() }catch(e){} o.remove(); if(window.__bm && window.__bm.map === map) window.__bm = null; if(ctx.onClose) ctx.onClose() }
 
   // opens on the briefing when one is loaded for about now (6 h before its day to the end of the next), else the month
   if(B && B.flights) selKey = defaultKey();

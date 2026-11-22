@@ -491,20 +491,7 @@ html.look-a .tile{padding:0;perspective:900px;background:transparent;box-shadow:
 @keyframes ptpulse{50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.busy{animation:none}.litrow{transition:none}}
 
-/* moon phase on the take-home card */
-.hero .moon{position:absolute;top:16px;right:16px;z-index:2;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;letter-spacing:.02em;
-  color:color-mix(in srgb,var(--onfill,#fff) 72%,transparent);background:color-mix(in srgb,var(--onfill,#fff) 9%,transparent);padding:4px 9px 4px 5px;border-radius:999px}
-.hero .moon svg{width:18px;height:18px;flex:none}
-.hero .moon .mdark{fill:color-mix(in srgb,var(--onfill,#fff) 16%,transparent)}
-.hero .moon .mlit{fill:#f3ead2}
-
 .hero .wxdots{display:flex;gap:3px;margin-top:-1px}.hero .wxdots i{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.35}.hero .wxdots i.on{opacity:1}
-.hero .wsun{fill:#f6c453}.hero .wsun-r path{stroke:#f6c453;stroke-width:1.6;stroke-linecap:round}
-.hero .wcl{fill:#dfe6f0;stroke:rgba(0,0,0,.12);stroke-width:.5}
-.hero .wfog path{stroke:#dfe6f0;stroke-width:1.8;stroke-linecap:round}
-.hero .wrain path{stroke:#8fc3ff;stroke-width:1.5;stroke-linecap:round}
-.hero .wsnow circle{fill:#fff}.hero .wbolt{fill:#f6c453}
-.hero .mdark{fill:color-mix(in srgb,var(--onfill,#fff) 16%,transparent)}.hero .mlit{fill:#f3ead2}
 
 /* the sky behind the take-home figure */
 .hero .wxsky{position:absolute!important;inset:0;width:100%;height:100%;z-index:0!important;pointer-events:none}
