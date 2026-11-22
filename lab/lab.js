@@ -1,6 +1,6 @@
 /* LAB bar: marks this as the test copy, switches the look, and copies your real data in (read-only on the real copy). */
 (function(){
-  const BUILD=79;
+  const BUILD=80;
   const LOOK="crewpaylog.lab.look", REAL="crewpaylog.v1", LAB="crewpaylog.lab.v1";
   const get=k=>{ try{ return localStorage.getItem(k) }catch(e){ return null } };
   const set=(k,v)=>{ try{ localStorage.setItem(k,v); return true }catch(e){ return false } };

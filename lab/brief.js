@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=79";
-import { RWY, ICAO } from "./rwydata.js?b=79";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=80";
+import { RWY, ICAO } from "./rwydata.js?b=80";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -183,12 +183,31 @@ function tilePlan(routePts, apts, opt){
   for(const a of apts){ for(let z = 7; z <= 10; z++) tilesAround(set, a, opt.cr, z); for(let z = 11; z <= 13; z++) tilesAround(set, a, opt.ar, z); tilesAround(set, a, opt.zr, 14) }
   return set }
 
+/* split-flap letters, like a departure board: each character flips through a few others before it lands.
+   Adapted from SplitFlapText in React Bits (github.com/DavidHDev/react-bits), (c) David Haz, MIT + Commons Clause;
+   rewritten here in plain JS. The letters stay on their tiles; Reduce Motion sets them straight away. */
+const FLAP_CH = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+function flapIn(el, text, rm){ if(!el) return; text = text == null ? el.textContent : text;
+  if(el._flapT) el._flapT.forEach(clearInterval); el._flapT = []; el._flap = text;
+  el.classList.add("flap"); el.setAttribute("aria-label", text); el.textContent = "";
+  [...text].forEach((c, i) => { const sp = document.createElement("span"); sp.setAttribute("aria-hidden", "true");
+    const fin = c === " " ? "\u00a0" : c; if(c === " ") sp.className = "sp"; el.appendChild(sp);
+    if(rm || !/[A-Z0-9]/i.test(c)){ sp.textContent = fin; return }
+    let n = 4 + Math.round(i * .9); sp.textContent = FLAP_CH[Math.floor(Math.random() * FLAP_CH.length)];
+    const t = setInterval(() => { sp.classList.remove("f"); void sp.offsetWidth; sp.classList.add("f");
+      if(--n <= 0){ sp.textContent = fin; clearInterval(t); el._flapT = el._flapT.filter(x => x !== t) } else sp.textContent = FLAP_CH[Math.floor(Math.random() * FLAP_CH.length)] }, 65);
+    el._flapT.push(t) }) }
+const flapBusy = el => !!(el && el._flapT && el._flapT.length);
+// soft edge: four stacked blurs, each masked a little further in, so the map fades into the blur instead of meeting a hard line.
+// The idea comes from GradualBlur in React Bits (same author and licence), rewritten here.
+const softEdge = dir => `<div class="bmblur ${dir}" aria-hidden="true">${[1.5, 3, 6, 12].map((b, i) => `<i style="--b:${b}px;--a:${i * 22}%;--z:${i * 22 + 34}%"></i>`).join("")}</div>`;
+
 /* ======================================================================================================== */
 export async function openBriefMap(ctx){
   const lib = await loadLib(), apx = ctx.apx, base = ctx.base || "BOM";
   const solo = ctx.view === "month" || ctx.view === "brief";   // opened as the Month map or the Briefing map: no switch between them
   const o = document.createElement("div"); o.className = "bm"; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Map");
-  o.innerHTML = `<div class="bmtop">
+  o.innerHTML = `<div class="bmtop">${softEdge("top")}
       <div role="button" tabindex="0" class="wclose hz" data-bm="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
       <div class="bmt"><b class="bmtt">Map</b><span class="bmsub">Loading the map…</span></div>
       <div class="bmseg" role="tablist" aria-label="View"><div role="tab" tabindex="0" data-bm="vmonth">Month</div><div role="tab" tabindex="0" data-bm="vbrief">Briefing</div></div>
@@ -200,7 +219,7 @@ export async function openBriefMap(ctx){
     <div role="button" tabindex="0" class="bmpill bmback" data-bm="route" hidden>← Route</div>
     <div role="button" tabindex="0" class="bmlook" data-bm="look"></div>
     <div class="bmsheet" aria-live="polite"><div class="bmgrab" data-bm="sheet"></div><div class="bmsc"></div></div>
-    <div class="bmbar">
+    <div class="bmbar">${softEdge("bot")}
       <div class="bmmonth"></div>
       <div class="bmsecs" role="tablist" aria-label="Sectors"></div>
       <div class="bmtime"><input type="range" class="bmslide" aria-label="Time" step="1"><span class="bmtl"></span></div>
@@ -298,7 +317,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=79")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=80")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -320,7 +339,7 @@ export async function openBriefMap(ctx){
     const brgOf = (a, b) => { const r = Math.PI / 180, y = Math.sin((b[0] - a[0]) * r) * Math.cos(b[1] * r), x = Math.cos(a[1] * r) * Math.sin(b[1] * r) - Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos((b[0] - a[0]) * r); return (Math.atan2(y, x) / r + 360) % 360 };
     const wrap = d => ((d + 540) % 360) - 180, ease = x => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2, ramp = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x) };
     const lerpK = (k, dt) => 1 - Math.pow(1 - k, dt * 60);   // a per-frame lerp at 60 fps, the same at any frame rate
-    function showBub(kind, key, from){ bub.innerHTML = M.bubble(kind, key, from); bub.hidden = false; bub.dataset.kind = kind; bp.sx = -1;
+    function showBub(kind, key, from){ bub.innerHTML = M.bubble(kind, key, from); bub.hidden = false; bub.dataset.kind = kind; bp.sx = -1; flapIn(bub.querySelector(".gbh b"), null, ctx.rm());
       if(!ctx.rm()){ bub.classList.remove("pop"); void bub.offsetWidth; bub.classList.add("pop") } }
     function lines(mode, key){   // route line brightness: normal, following one route, or focused on an airport
       const op = mode === "follow" ? ["case", ["==", ["get", "k"], key], .35, .15] : mode === "stn" ? ["case", ["in", key, ["get", "k"]], 1, .25] : null;
@@ -419,7 +438,7 @@ export async function openBriefMap(ctx){
     if(view === "month") jets.run();
   }
   function monthSheet(kind, key, dirFrom){ if(!M || !M.bubble) return; const h = M.bubble(kind, key, dirFrom); if(!h) return; if(jets) jets.release(false);
-    openSheet("month", `<div class="bmbub">${h}</div>`) }
+    openSheet("month", `<div class="bmbub">${h}</div>`); flapIn(sc.querySelector(".gbh b"), null, ctx.rm()) }
 
   function layersFor(v){ BRIEF_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "brief" ? "visible" : "none"));
     MONTH_LAYERS.forEach(id => map.setLayoutProperty(id, "visibility", v === "month" ? "visible" : "none")) }
@@ -564,7 +583,10 @@ export async function openBriefMap(ctx){
     const [a, b] = range(); slide.min = 0; slide.max = Math.round((b - a) / 6e5);
     if(init){ T = Math.min(b, Math.max(a, Date.now())); slide.value = Math.round((T - a) / 6e5) }
     $(o, ".bmtl").textContent = hhmm(T) + " · " + dayLbl(T);
-    const fa = planeAt(); $(o, ".bmclock").textContent = hhmm(T) + (fa ? ` · ${fa.f.dep}–${fa.f.dest} ${fa.p.phase}` : Math.abs(T - Date.now()) < 6e5 ? " · now" : "");
+    const fa = planeAt(), ck = $(o, ".bmclock"), tail = fa ? ` · ${fa.f.dep}–${fa.f.dest} ${fa.p.phase}` : Math.abs(T - Date.now()) < 6e5 ? " · now" : "", txt = hhmm(T) + tail;
+    if(fa && ck._ph !== tail){ ck._ph = tail; flapIn(ck, txt.toUpperCase(), ctx.rm()) }   // a new sector or phase flips in
+    else if(fa){ if(!flapBusy(ck) && ck._flap !== txt.toUpperCase()) flapIn(ck, txt.toUpperCase(), true) }   // same phase: the time changes on its tiles, no flip
+    else { ck._ph = null; if(ck._flapT) ck._flapT.forEach(clearInterval); ck._flapT = null; ck._flap = null; ck.classList.remove("flap"); ck.removeAttribute("aria-label"); ck.textContent = txt }
     lastNt = ntFeatures(); map.getSource("bm-nt").setData(fc(lastNt)); adPaint(); vis(); count(); drawPlane();
   }
   function count(){ const el = $(o, ".bmcount"); if(view === "month") return;
@@ -585,6 +607,16 @@ export async function openBriefMap(ctx){
     paintTime(false); if(sheet.classList.contains("open") && sheet.dataset.k === "ap") apSheet(zoomAp) });
 
   /* ---------- sheets ---------- */
+  // stretchy time bar: drag past either end and the track stretches and thins a little, then springs back when you let go.
+  // From ElasticSlider in React Bits (github.com/DavidHDev/react-bits), (c) David Haz, MIT + Commons Clause; rewritten here.
+  (() => { let id = null, r0 = null;
+    const set = over => { const W = r0 ? r0.width : slide.clientWidth || 1, sq = over ? Math.sign(over) * Math.sqrt(Math.abs(over) * W) * .45 : 0, k = Math.abs(sq) / W;
+      slide.style.transformOrigin = sq < 0 ? "right center" : "left center";
+      slide.style.transform = sq ? `scaleX(${1 + k}) scaleY(${1 - Math.min(.3, k * 1.5)})` : "" };
+    slide.addEventListener("pointerdown", e => { if(ctx.rm()) return; id = e.pointerId; slide.classList.remove("spring"); slide.style.transform = ""; r0 = slide.getBoundingClientRect() });
+    o.addEventListener("pointermove", e => { if(e.pointerId !== id || !r0) return; set(e.clientX > r0.right ? e.clientX - r0.right : e.clientX < r0.left ? e.clientX - r0.left : 0) });
+    const end = e => { if(e.pointerId !== id) return; id = null; r0 = null; slide.classList.add("spring"); set(0) };
+    o.addEventListener("pointerup", end); o.addEventListener("pointercancel", end) })();
   function openSheet(k, html){ sc.innerHTML = html; sheet.dataset.k = k; sheet.classList.add("open"); sheet.classList.toggle("full", k === "list" || k === "load" || k === "off"); sc.scrollTop = 0 }
   function closeSheet(){ sheet.classList.remove("open"); sheet.style.transform = "" }
   (() => { let y0 = null, t0 = 0, dy = 0, drag = false;

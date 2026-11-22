@@ -903,3 +903,20 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .bmplane{width:30px;height:30px;pointer-events:none} .bmplane svg{width:30px;height:30px;fill:#e9b949;stroke:#1b1b1b;stroke-width:.9;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
 .bmplane.gnd svg{fill:#c9cdd4;transform:scale(.8)} .bm[data-view=month] .bmplane{display:none}
 .bmwind.near{opacity:.6}
+
+/* build 80: split-flap letters (bubble titles, clock pill), soft blur edges under the map's header and bottom bar, stretchy time bar */
+.flap{display:inline-flex;flex-wrap:wrap;gap:2px;vertical-align:middle}
+.gbh b.flap{display:flex}
+.flap>span,.gbh b.flap>span{font-size:inherit;color:inherit;font-weight:inherit}   /* the tiles keep the title's own size and colour (.gbh span is the grey subtitle) */
+.flap span{display:inline-block;position:relative;min-width:.64em;padding:1px 1px;border-radius:3px;text-align:center;line-height:1.2;background:rgba(127,127,127,.16);font-family:"B612 Mono",ui-monospace,monospace}
+.flap span::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:currentColor;opacity:.14}
+.flap span.sp{min-width:.35em;background:none} .flap span.sp::after{display:none}
+.flap span.f{animation:flapf .065s linear}
+@keyframes flapf{50%{transform:scaleY(.12)}}
+.bmblur{position:absolute;left:0;right:0;z-index:-1;pointer-events:none}
+.bmblur.top{top:0;bottom:-28px} .bmblur.bot{bottom:0;top:-28px}
+.bmblur i{position:absolute;inset:0;backdrop-filter:blur(var(--b));-webkit-backdrop-filter:blur(var(--b))}
+.bmblur.top i{-webkit-mask-image:linear-gradient(to top,transparent var(--a),#000 var(--z));mask-image:linear-gradient(to top,transparent var(--a),#000 var(--z))}
+.bmblur.bot i{-webkit-mask-image:linear-gradient(to bottom,transparent var(--a),#000 var(--z));mask-image:linear-gradient(to bottom,transparent var(--a),#000 var(--z))}
+.bmslide.spring{transition:transform .45s cubic-bezier(.34,1.56,.64,1)}
+@media (prefers-reduced-motion:reduce){ .flap span.f{animation:none} .bmslide.spring{transition:none} }
