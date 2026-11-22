@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=83";
-import { RWY, ICAO } from "./rwydata.js?b=83";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=84";
+import { RWY, ICAO } from "./rwydata.js?b=84";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -319,7 +319,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=83")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=84")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -408,20 +408,25 @@ export async function openBriefMap(ctx){
     function lines(mode, key){   // route line brightness: normal, following one route, or focused on an airport
       const op = mode === "follow" ? ["case", ["==", ["get", "k"], key], .35, .15] : mode === "stn" ? ["case", ["in", key, ["get", "k"]], 1, .25] : null;
       map.setPaintProperty("bm-mrl", "line-opacity", op || 1); map.setPaintProperty("bm-mrd", "line-opacity", op || .7); map.setPaintProperty("bm-mrc", "line-opacity", arcsOn ? 0 : op ? ["*", .4, op] : .4); emph = {mode, key} }
-    function drawArcs(cen, pitch, fpx){
+    // build 84: how far you can actually see. With the map tilted, places far beyond the horizon are squeezed into a band near the top of
+    // the screen and were drawn over the nearby map (Dibrugarh over Kalyan). Anything farther than the farthest ground point on screen is left out.
+    function farLimit(cen, pitch){ if(pitch < .5) return 4800; const c = map.getContainer(), W = c.clientWidth; let d = 0;
+      for(const xy of [[0, 0], [W / 2, 0], [W, 0]]){ let g; try{ g = map.unproject(xy) }catch(e){ return 4800 } if(!g || !isFinite(g.lng) || !isFinite(g.lat)) return 4800; d = Math.max(d, gcNm(cen, [g.lng, g.lat])) }
+      return Math.min(4800, d * 1.15 + 5) }
+    function drawArcs(cen, pitch, fpx, LIM){
       const W = map.getContainer().clientWidth, Hh = map.getContainer().clientHeight; nv = 0; ni = 0;
       // a point well off screen (or beyond the horizon when you look along it) breaks the line
       const onScr = q => isFinite(q.x) && isFinite(q.y) && q.x > -W && q.x < W * 2 && q.y > -Hh && q.y < Hh * 2;
       const dk = o.dataset.look === "dark", GOLD = dk ? LIN.gold : LIN.goldL, TRAIL = dk ? LIN.trail : LIN.trailL, AK = dk ? 1 : 1.7, TK = dk ? 1 : .8;
       for(const p of planes){   // the arcs
         const a0 = map.project(p.A), b0 = map.project(p.B), Lp = Math.hypot(b0.x - a0.x, b0.y - a0.y); p.H = isFinite(Lp) ? Math.min(HMAX, Lp * .22) : HMAX;
-        const ar = []; for(let i = 0; i <= 48; i++){ const g = p.gc[i]; if(gcNm(cen, g) > 4800 || (p.r.dh && i % 3 === 2)){ ar.push(null); continue }   // deadheads dashed
+        const ar = []; for(let i = 0; i <= 48; i++){ const g = p.gc[i]; if(gcNm(cen, g) > LIM || (p.r.dh && i % 3 === 2)){ ar.push(null); continue }   // deadheads dashed
           const q = map.project(g); ar.push(onScr(q) ? [q.x, q.y - liftOf(p, i / 48)] : null) }
         const al = Math.min(1, .34 * AK * routeF(p) * (p.r.dh ? .7 : 1)); ribbon(ar, () => 1.8, () => [...GOLD, al]) }
       for(const p of planes){   // the trails: 20 steps back along the arc from the jet, fading; the selected jet's sinks towards its ground track and spreads
         if(!(p.vis > .01) || p.uu < 0) continue; const dir = p.dir, tc = p.tc, len = .3, N = 20, f = routeF(p) * (p.r.dh ? .5 : 1) * Math.min(1, p.vis * 1.5), me = p === F, Q = [];
         for(let k = 0; k <= N; k++){ const u = tc - dir * len * k / N; if(u < 0 || u > 1) break; const g = gcAt(p.A, p.B, u);
-          if(gcNm(cen, g) > 4800){ Q.push(null); continue } const q = map.project(g); Q.push(onScr(q) ? [q.x, q.y - liftOf(p, u) * (me ? 1 - .55 * k / N : 1)] : null) }
+          if(gcNm(cen, g) > LIM){ Q.push(null); continue } const q = map.project(g); Q.push(onScr(q) ? [q.x, q.y - liftOf(p, u) * (me ? 1 - .55 * k / N : 1)] : null) }
         ribbon(Q, k => me ? 3 + k * .25 : 2.6 * (1 - k / 30), k => [...TRAIL, (me ? .45 : .85) * TK * (1 - k / N) * f]) }
       rg.setDrawRange(0, ni);   // upload only the part in use this frame
       for(const [at, n] of [[rg.attributes.position, nv * 3], [rg.attributes.color, nv * 4], [rg.index, ni]]){ at.clearUpdateRanges(); at.addUpdateRange(0, Math.max(1, n)); at.needsUpdate = true }
@@ -457,9 +462,9 @@ export async function openBriefMap(ctx){
         if(orb.ox || orb.oy){ const q = map.project(F.cc), c2 = map.unproject([q.x - orb.ox, q.y - orb.oy]); map.jumpTo({center:c2}) } }   // panned: the view rides along, offset as you left it
       const ctr = map.getCenter(), cen = [ctr.lng, ctr.lat], pitch = map.getPitch() * Math.PI / 180, z = map.getZoom();
       const px = 30 / .034, fpx = Math.max(px, 230 / .034 * Math.pow(2, orb.z - FZ));
-      drawArcs(cen, pitch, fpx);   // ~30 px at any zoom; the followed jet ~230 px up close, smaller as you pinch out
+      const LIM = farLimit(cen, pitch); drawArcs(cen, pitch, fpx, LIM);   // ~30 px at any zoom; the followed jet ~230 px up close, smaller as you pinch out
       for(const p of planes){
-        if(p.vis <= .01 || gcNm(cen, p.pos) > 4800){ p.T.visible = false; p.sx = null; continue }   // on the ground, or round the back of the globe
+        if(p.vis <= .01 || gcNm(cen, p.pos) > LIM){ p.T.visible = false; p.sx = null; continue }   // on the ground, round the back of the globe, or beyond what you can see
         const a = map.project(p.pos), t = map.project(p.tail), n = map.project(p.nose); p.T.visible = true;
         const tcc = Math.max(.0005, Math.min(.9995, p.tc)), lh = liftOf(p, tcc); p.lift = lh; p.gx = a.x; p.gy = a.y;   // up its arc; gx/gy: the ground point below
         t.y -= liftOf(p, p.dir > 0 ? tcc - .004 : tcc + .004); n.y -= liftOf(p, p.dir > 0 ? tcc + .004 : tcc - .004); a.y -= lh;
@@ -475,6 +480,7 @@ export async function openBriefMap(ctx){
       // airport tags: none on top of another; while following, those near the jet step out of its way
       const placed = []; const fx = F && F.sx != null ? [F.sx, F.sy] : null;
       for(const m of mMarkers){ const ll = m.getLngLat(), q = map.project(ll), e = m.getElement();
+        const far = gcNm(cen, [ll.lng, ll.lat]) > LIM; if(e._far !== far){ e._far = far; e.classList.toggle("tagfar", far) } if(far) continue;
         const clash = placed.some(([x, y]) => Math.abs(x - q.x) < 34 && Math.abs(y - q.y) < 16); let op = clash ? 0 : 1;
         if(!clash) placed.push([q.x, q.y]); if(fx && Math.abs(q.x - fx[0]) < 80 && Math.abs(q.y - fx[1]) < 70) op = Math.min(op, .1);
         if(e._op !== op){ e._op = op; e.classList.toggle("tagoff", op === 0); e.classList.toggle("tagdim", op > 0 && op < .5) } }   // classes: MapLibre rewrites marker opacity itself
@@ -522,7 +528,7 @@ export async function openBriefMap(ctx){
       focus(code){ const s = M.stations.find(x => x.code === code); if(!s) return; if(F){ detail(F, false); F = null; freeMap(true); map.setPadding({top:0, bottom:0, left:0, right:0}); paintStrip(null) }
         closeSheet(); foc = {lon:s.lon, lat:s.lat}; showBub("stn", code); lines("stn", code); o.classList.remove("following");
         map.easeTo({center:[s.lon, s.lat], zoom:Math.max(map.getZoom(), overviewZoom + .6), pitch:0, bearing:0, duration:ctx.rm() ? 0 : 1100}) },   // flies there once; then the map is yours
-      release(flyOut){ const was = F || foc; if(F) detail(F, false); if(F) map.setPadding({top:0, bottom:0, left:0, right:0}); F = null; foc = null; bub.hidden = true; paintStrip(null); lines(); freeMap(true); o.classList.remove("following");
+      release(flyOut){ mMarkers.forEach(m => { const e = m.getElement(); e._far = false; e.classList.remove("tagfar") }); const was = F || foc; if(F) detail(F, false); if(F) map.setPadding({top:0, bottom:0, left:0, right:0}); F = null; foc = null; bub.hidden = true; paintStrip(null); lines(); freeMap(true); o.classList.remove("following");
         mMarkers.forEach(m => { const e = m.getElement(); e._op = null; e.classList.remove("tagoff", "tagdim") });
         if(was && flyOut) map.easeTo({zoom:Math.min(map.getZoom(), overviewZoom), pitch:0, bearing:0, duration:ctx.rm() ? 0 : 700}) },
       get following(){ return F }, get drawn(){ return ni }, get focused(){ return foc }, get orb(){ return orb },

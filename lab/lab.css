@@ -938,3 +938,6 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 
 /* build 83: the sector picker belongs to the Briefing map only */
 .bm[data-view=month] .bmsecs{display:none} .bm[data-view=month].hassecs .bmsheet{bottom:calc(env(safe-area-inset-bottom) + 56px)}
+
+/* build 84: an airport beyond what you can see (tilted map) is hidden, dot and tag */
+.bmst.tagfar{visibility:hidden;pointer-events:none}
