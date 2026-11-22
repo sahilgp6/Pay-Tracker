@@ -935,3 +935,6 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 /* build 82: the month map's loading piece can be skipped with a tap */
 .gload{cursor:pointer} .gl-skip{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 22px);text-align:center;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:rgba(233,196,122,.6);pointer-events:none}
 .gload.still .gl-skip{display:none}
+
+/* build 83: the sector picker belongs to the Briefing map only */
+.bm[data-view=month] .bmsecs{display:none} .bm[data-view=month].hassecs .bmsheet{bottom:calc(env(safe-area-inset-bottom) + 56px)}
