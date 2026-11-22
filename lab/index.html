@@ -279,15 +279,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=87">
-<script src="intro.js?b=87" defer></script>
+<link rel="stylesheet" href="lab.css?b=88">
+<script src="intro.js?b=88" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=87"></script>
-<script src="motion.js?b=87" defer></script>
-<script src="lab.js?b=87"></script>
+<script src="mapdata.js?b=88"></script>
+<script src="motion.js?b=88" defer></script>
+<script src="lab.js?b=88"></script>
 </head>
 <body>
 <div class="wrap">
@@ -950,7 +950,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=87").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=88").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -1099,7 +1099,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=87");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=88");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1195,7 +1195,7 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=87") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=88") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
@@ -1372,7 +1372,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=87"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=88"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1380,7 +1380,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=87");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=88");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -2594,7 +2594,7 @@ function mapCtx(view, month){ return {apx:APX||new Map(), base:(profile.base||"B
   pdfLib:async()=>{ if(!window.pdfjsLib) await loadScript("../pdfjs/pdf.min.js"); const lib=window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc="../pdfjs/pdf.worker.min.js"; return lib }} }
 function openBrief(){
   if(briefOpen) return; briefOpen=true; apMap();
-  import("./brief.js?b=87").then(m=>m.openBriefMap(mapCtx("brief", monthMapData())))
+  import("./brief.js?b=88").then(m=>m.openBriefMap(mapCtx("brief", monthMapData())))
     .catch(e=>{ briefOpen=false; showBanner("The map could not open: "+(e&&e.message||e)) });
 }
 function openWorld(){
@@ -2603,7 +2603,7 @@ function openWorld(){
   if(briefOpen) return; briefOpen=true;
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./brief.js?b=87").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openBriefMap(mapCtx("month", monthMapData()))))
+  import("./brief.js?b=88").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openBriefMap(mapCtx("month", monthMapData()))))
     .then(g=>{ if(!g) briefOpen=false; ld.done() })
     .catch(()=>{ briefOpen=false; ld.done(); openGlobeOld() });
 }
@@ -2619,7 +2619,7 @@ function openGlobeOld(){   // the build 64 globe, used only if the map cannot st
     stations:[...stns.keys()].map(k=>({code:k, ...APX.get(k), home:k===base, abroad:!IN_AIRPORTS.has(k)})),
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
-  import("./world3d.js?b=87").then(m=>m.openGlobe(data)).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap) }).catch(()=>openWorld2D());
+  import("./world3d.js?b=88").then(m=>m.openGlobe(data)).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap) }).catch(()=>openWorld2D());
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2893,7 +2893,7 @@ function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead()
 
 let qIcaoLoad=false;
 function viewQuals(){
-  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=87").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=88").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
   const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
   // due soon: everything amber or red, soonest first
   const due=[];
@@ -3544,7 +3544,7 @@ function cardAuto(s, key){
   const a=actuals[key]||{}, d=s.date?new Date(s.date+"T00:00:00Z"):null;
   return { date: d?d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric",timeZone:"UTC"}):"", flt:s.flt||"", dep:ic(s.from), arr:ic(s.to),
     etd: tm?hhmmMs(tm.start):(depOf(s)||""), eta: tm?hhmmMs(tm.end):"", rep: tm&&tm.report?hhmmMs(tm.report):"",
-    atd:a.off||"", ata:a.on||"", bp: +s.fixed?hm(+s.fixed).padStart(5,"0"):"", type:/MAX/i.test(profile.fleet||"")?"MAX":"", div:s.kind==="div"?"Y":"" };
+    atd:a.off||"", ata:a.on||"", co:a.off||"", con:a.on||"", bp: +s.fixed?hm(+s.fixed).padStart(5,"0"):"", type:/MAX/i.test(profile.fleet||"")?"MAX":"", div:s.kind==="div"?"Y":"" };
 }
 // the most recent earlier card at the same airport, for suggestions
 function cardMemory(key, dep, arr){
@@ -3556,9 +3556,13 @@ function cardMemory(key, dep, arr){
 function cardVal(key, f, auto){ const c=cards[key]||{}; return c[f]!=null&&c[f]!=="" ? c[f] : (auto[f]||"") }
 const toMin = v=>{ const m=String(v||"").match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null };
 const spanHM = (a,b)=>{ const x=toMin(a), y=toMin(b); if(x==null||y==null) return ""; const d=((y-x)+1440)%1440; return String(Math.floor(d/60)).padStart(2,"0")+":"+String(d%60).padStart(2,"0") };
-function cardProgress(s){ const key=cardKey(s), c=cards[key]; if(!c) return 0;
-  const n=CARD_FIELDS.filter(f=>!(f[3]&&(f[3].if||f[3].opt))).length, filled=CARD_FIELDS.filter(f=>!(f[3]&&(f[3].if||f[3].opt))&&c[f[0]]!=null&&c[f[0]]!=="").length;
-  return Math.round(filled/n*100) }
+const CARD_PAIR={atd:"co", co:"atd", ata:"con", con:"ata"};
+// build 88: counted like the section rings: fields the app fills in (date, flight, airports, ETD, ETA, planned block...) count as filled,
+// and a field shown only after a Yes (defect details, diverted to, opti-climb speeds) counts only then. It used to count typed values only, so a full card stopped at 91%.
+function cardProgress(s){ const key=cardKey(s); if(!cards[key]) return 0; const auto=cardAuto(s,key); let n=0, got=0;
+  if(!auto.dep&&s.from) auto.dep=s.from; if(!auto.arr&&s.to) auto.arr=s.to;   // the airport table (ICAO codes) may not have loaded on the Flights list yet
+  for(const g of CARD){ const F=secFields(g,key,auto); n+=F.length; got+=F.filter(f=>{ const v=cardVal(key,f[0],auto); return v!=null&&v!=="" }).length }
+  return n?Math.round(got/n*100):0 }
 function cardFieldHTML(f, key, auto, mem){
   const [id,label,type,x={}] = f, c=cards[key]||{};
   if(x.if && (c[x.if]||auto[x.if])!=="Y") return "";
@@ -3626,10 +3630,13 @@ function cardSummary(key, auto, s){ if(cardProgress(s)<85) return "";
 function cardSet(id, v){
   const {s,key}=dcard; const c={...(cards[key]||{})}, auto=cardAuto(s,key);
   if(v===""||v==null) delete c[id]; else c[id]=v;
+  // build 88: ATD is chocks off (C/O) and ATA is chocks on (C/ON): filling one fills the other, both ways
+  const pid=CARD_PAIR[id]; if(pid){ if(v===""||v==null) delete c[pid]; else c[pid]=v;
+    const pe=document.querySelector(`#dcard input[data-card="${pid}"]`); if(pe&&document.activeElement!==pe) pe.value=v||"" }
   // auto-filled values become your own once you touch the card, so later roster edits do not shift a filled card
   for(const f of ["dep","arr","flt","date"]) if(c[f]==null&&auto[f]) c[f]=auto[f];
   c.at=Date.now(); cards[key]=c;
-  const f=CARD_FIELDS.find(x=>x[0]===id), act=f&&f[3]&&f[3].act;
+  const actOf=k=>{ const ff=CARD_FIELDS.find(x=>x[0]===k); return ff&&ff[3]&&ff[3].act }, act=actOf(id)||(pid&&actOf(pid));   // C/O and C/ON feed the Duty tab through their pair
   if(act){ const cur2={...(actuals[key]||{})}; if(v) cur2[act]=v; else delete cur2[act]; if(Object.keys(cur2).length) actuals[key]=cur2; else delete actuals[key] }
   if(id==="div"){ const sec=monthData(cur).sectors.find(x=>x.id===s.id)||s; if(v==="Y"&&sec.kind==="op") sec.kind="div"; else if(v!=="Y"&&sec.kind==="div") sec.kind="op" }
   queueSave(); }
@@ -3637,7 +3644,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=87") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=88") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
