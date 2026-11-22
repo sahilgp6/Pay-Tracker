@@ -6,8 +6,8 @@
    airports, NIL ones included) and leaves the rest; NOTAMs drop off when they expire. Read on the phone and kept only in
    this phone's storage, never in backups. "Offline" saves the map along the route so it works with no signal.
    Map data: OpenFreeMap, OpenMapTiles, OpenStreetMap contributors. Runways: OurAirports. */
-import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=80";
-import { RWY, ICAO } from "./rwydata.js?b=80";
+import { parseBriefing, activeAt, wxCat, locKey, obsTime, textLimits } from "./briefparse.js?b=81";
+import { RWY, ICAO } from "./rwydata.js?b=81";
 
 const HOST = "https://tiles.openfreemap.org", PHOST = "ptc://tiles.openfreemap.org", STYLES = {light:HOST + "/styles/liberty", dark:HOST + "/styles/dark"};
 const MCACHE = "pt-map-v1", BCACHE = "pt-brief-v1", BKEY = "./briefing.json", DLKEY = "pt.mapdl", PREFKEY = "pt.bmprefs";
@@ -262,6 +262,8 @@ export async function openBriefMap(ctx){
   const ntF = ["==", ["geometry-type"], "Polygon"], ntL = ["any", ["==", ["geometry-type"], "Polygon"], ["==", ["geometry-type"], "LineString"]], ntP = ["==", ["geometry-type"], "Point"];
   let hasOMT = false, BRIEF_LAYERS = [];
   const MONTH_LAYERS = ["bm-mrc", "bm-mrl", "bm-mrd"];
+  let arcsOn = false;   // build 81: once the lifted arcs are drawn, the flat route lines become their shadow on the ground
+  const SHADOW = "rgba(5,12,24,.38)";
   function addOverlays(){
   const dk = o.dataset.look === "dark";
   map.addSource("bm-nt", {type:"geojson", data:fc()}); map.addSource("bm-rt", {type:"geojson", data:fc()}); map.addSource("bm-rw", {type:"geojson", data:fc()});
@@ -278,9 +280,9 @@ export async function openBriefMap(ctx){
     paint:{"line-color":"#ff5a45", "line-width":["interpolate", ["linear"], ["zoom"], 12, 2, 16, 9], "line-dasharray":[1.4, .8]}});
 
   map.addSource("bm-mr", {type:"geojson", data:fc()});
-  map.addLayer({id:"bm-mrc", type:"line", source:"bm-mr", paint:{"line-color":"#0b1626", "line-width":5, "line-opacity":.4}, layout:{"line-cap":"round"}});
-  map.addLayer({id:"bm-mrl", type:"line", source:"bm-mr", filter:["!", ["get", "dh"]], paint:{"line-color":"#e9b949", "line-width":2.4}, layout:{"line-cap":"round"}});
-  map.addLayer({id:"bm-mrd", type:"line", source:"bm-mr", filter:["get", "dh"], paint:{"line-color":"#e9b949", "line-width":2, "line-opacity":.7, "line-dasharray":[2, 1.6]}});
+  map.addLayer({id:"bm-mrc", type:"line", source:"bm-mr", paint:{"line-color":"#0b1626", "line-width":5, "line-opacity":arcsOn ? 0 : .4}, layout:{"line-cap":"round"}});
+  map.addLayer({id:"bm-mrl", type:"line", source:"bm-mr", filter:["!", ["get", "dh"]], paint:{"line-color":arcsOn ? SHADOW : "#e9b949", "line-width":arcsOn ? 2 : 2.4}, layout:{"line-cap":"round"}});
+  map.addLayer({id:"bm-mrd", type:"line", source:"bm-mr", filter:["get", "dh"], paint:{"line-color":arcsOn ? SHADOW : "#e9b949", "line-width":2, "line-opacity":.7, "line-dasharray":[2, 1.6]}});
   BRIEF_LAYERS = ["bm-ntf", "bm-ntl", "bm-ntp", "bm-rtc", "bm-rto", "bm-rtl", "bm-rwf", "bm-rwx"].concat(hasOMT ? ["bm-twy"] : []);
   }
   addOverlays();
@@ -317,7 +319,7 @@ export async function openBriefMap(ctx){
   let overviewZoom = 4;
   async function startJets(){
     if(!M || closed) return; if(jets){ jets.run(); return }
-    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=80")) }catch(e){ return }
+    let THREE, build737; try{ THREE = await import("./vendor/three/three.module.min.js"); ({build737} = await import("./jet737.js?b=81")) }catch(e){ return }
     if(closed) return;
     const cv = document.createElement("canvas"); cv.className = "bmjets"; map.getCanvasContainer().insertBefore(cv, map.getCanvas().nextSibling);
     let R; try{ R = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}) }catch(e){ cv.remove(); return }
@@ -334,6 +336,68 @@ export async function openBriefMap(ctx){
     const orb = {pitch:0, yaw:0, z:FZ, ox:0, oy:0};   // following: how far you have looked round (yaw degrees, pitch radians), the zoom you pinch to, and where you have panned the view to (px from the jet)
     const bub = document.createElement("div"); bub.className = "gbubble bmfol"; bub.hidden = true; $(o, ".bmmap").appendChild(bub);
     const bp = {x:0, y:0, sx:-1, sy:-1};
+    let emph = {};   // which routes are bright: following one, or focused on an airport (mirrors lines())
+    /* build 81: lifted arcs with contrails, and more for the selected jet.
+       - each route rises off the map as an arc (screen-up, higher for longer routes, at most HMAX px); the flat route line below is its shadow
+       - each jet rides its arc and leaves a fading trail behind it
+       - selected jet: its soft shadow on the map below it, steady red and green nav lights with white strobes and a red beacon,
+         its contrail sinking back towards the ground track, a strip with where it is on the sector and the fixed block, and the
+         destination's weather */
+    const HMAX = 120;
+    // arcs, trails and the selected jet's shadow are drawn on the jets' own GPU canvas (no extra layer to composite):
+    // one ribbon mesh rebuilt each frame from screen-space polylines, with a colour and alpha per vertex
+    const RMAX = 9000, rpos = new Float32Array(RMAX * 3), rcol = new Float32Array(RMAX * 4), ridx = new Uint32Array(RMAX * 3), rg = new THREE.BufferGeometry();
+    rg.setAttribute("position", new THREE.BufferAttribute(rpos, 3).setUsage(THREE.DynamicDrawUsage)); rg.setAttribute("color", new THREE.BufferAttribute(rcol, 4).setUsage(THREE.DynamicDrawUsage));
+    rg.setIndex(new THREE.BufferAttribute(ridx, 1).setUsage(THREE.DynamicDrawUsage));
+    const rib = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({vertexColors:true, transparent:true, depthTest:false, depthWrite:false, side:THREE.DoubleSide})); rib.renderOrder = -2; rib.frustumCulled = false; scene.add(rib);
+    let nv = 0, ni = 0;
+    const lin = hex => { const c = new THREE.Color().setStyle(hex, THREE.SRGBColorSpace); return [c.r, c.g, c.b] }, LIN = {gold:lin("#e9b949"), trail:lin("#faecc8"), goldL:lin("#b98510"), trailL:lin("#9c6a12")};   // deeper on the light map, or they vanish   // vertex colours are linear: convert so the gold stays gold
+    function ribbon(P, wOf, cOf){   // P: screen points, null breaks the line; wOf(i): width in px; cOf(i): [r,g,b,a] 0..1
+      let i = 0; while(i < P.length){ while(i < P.length && !P[i]) i++; let j = i; while(j < P.length && P[j]) j++;
+        if(j - i >= 2) for(let k = i; k < j; k++){ if(nv + 2 > RMAX) return; const a = P[Math.max(i, k - 1)], b = P[Math.min(j - 1, k + 1)], q = P[k];
+          let tx = b[0] - a[0], ty = b[1] - a[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl; const w = wOf(k) / 2, c = cOf(k);
+          rpos.set([q[0] - ty * w, -(q[1] + tx * w), 0, q[0] + ty * w, -(q[1] - tx * w), 0], nv * 3); rcol.set([...c, ...c], nv * 4);
+          if(k > i){ ridx.set([nv - 2, nv - 1, nv, nv - 1, nv + 1, nv], ni); ni += 6 } nv += 2 }
+        i = j } }
+    let shTex = null; { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      r.addColorStop(0, "rgba(0,0,0,1)"); r.addColorStop(.55, "rgba(0,0,0,.55)"); r.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = r; g.fillRect(0, 0, 64, 64); shTex = new THREE.CanvasTexture(c) }
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({map:shTex, transparent:true, depthTest:false, depthWrite:false, opacity:.3, side:THREE.DoubleSide}));
+    shadow.renderOrder = -3; shadow.visible = false; scene.add(shadow);
+    // get the GPU ready for the lights, ribbons and shadow now, so tapping a jet does not stall while it prepares them
+    setTimeout(() => { if(closed) return; try{ if(!baseD) baseD = build737({detail:true}); const warm = new THREE.Group(), dj = baseD.clone(true); warm.add(lights(), dj); warm.position.set(-9999, 9999, 0); scene.add(warm);
+        shadow.visible = true; R.compile(scene, cam); R.render(scene, cam); scene.remove(warm); shadow.visible = false }catch(e){} }, 400);   // the detailed 737 too: it was a 2 s stall on the first tap
+    planes.forEach(p => { p.gc = Array.from({length:49}, (_, i) => gcAt(p.A, p.B, i / 48)) });
+    const liftOf = (p, u) => (p.H || 0) * Math.sin(Math.PI * Math.max(0, Math.min(1, u)));
+    const routeF = p => emph.mode === "follow" ? (p.r.k === emph.key ? 1 : .45) : emph.mode === "stn" ? (p.r.k.includes(emph.key) ? 1 : .35) : 1;
+    arcsOn = true; map.setPaintProperty("bm-mrl", "line-color", SHADOW); map.setPaintProperty("bm-mrd", "line-color", SHADOW); map.setPaintProperty("bm-mrl", "line-width", 2); map.setPaintProperty("bm-mrc", "line-opacity", 0);
+    // the selected jet's strip: where it is on the sector, the fixed block, the destination's weather
+    const strip = document.createElement("div"); strip.className = "bmstrip"; strip.hidden = true; strip.setAttribute("aria-live", "off");
+    strip.innerHTML = `<div class="bmsr"><b class="a"></b><span class="trk"><i class="fill"></i><i class="dot"></i></span><b class="b"></b></div><div class="bmsl"><span class="go"></span><span class="wxc"></span></div>`;
+    o.appendChild(strip); let stripKey = "";
+    function paintStrip(p){ if(!p){ if(!strip.hidden){ strip.hidden = true; stripKey = "" } return }
+      const from = p.dir > 0 ? p.r.a : p.r.b, to = p.dir > 0 ? p.r.b : p.r.a, u = Math.max(0, Math.min(1, p.uu || 0));
+      const fx = M.fixed ? M.fixed(from, to) : null, left = fx != null ? Math.round(fx * (1 - u)) : null, w = M.wx ? M.wx(to) : null;
+      const go = p.r.dh ? "Deadhead" + (fx != null ? ` · ${hm(fx)} block` : "") : left != null ? `${hm(left)} to go · ${hm(fx)} fixed block` : "";
+      const wx = w ? `${to} ${w.temp}° ${w.label}` : "";
+      const key = from + to + go + wx; if(strip.hidden) strip.hidden = false;
+      if(key !== stripKey){ stripKey = key; strip._tw = 0; $(strip, ".a").textContent = from; $(strip, ".b").textContent = to; $(strip, ".go").textContent = go;
+        const wc = $(strip, ".wxc"); wc.textContent = wx; wc.hidden = !wx }
+      $(strip, ".fill").style.transform = `scaleX(${u.toFixed(4)})`; const tw = strip._tw || (strip._tw = $(strip, ".trk").clientWidth); $(strip, ".dot").style.transform = `translateX(${(u * tw).toFixed(1)}px)` }
+    const hm = m => Math.floor(m / 60) + ":" + String(Math.round(m % 60)).padStart(2, "0");
+    // nav lights for the detailed jet: steady red (left) and green (right) at the wingtips, white strobes double-flashing, a red beacon
+    let glowTex = null;
+    function lights(){ if(!glowTex){ const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(.25, "rgba(255,255,255,.75)"); r.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = r; g.fillRect(0, 0, 64, 64); glowTex = new THREE.CanvasTexture(c) }
+      const K = .034 / 39.5, S = st => (39.52 / 2 - st) * K, tipY = (-1.05 + 16.5 * Math.tan(6 * Math.PI / 180)) * K, grp = new THREE.Group(), L = {};
+      const add = (name, col, x, y, z, sz) => { const m = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, color:col, blending:THREE.AdditiveBlending, depthTest:false, depthWrite:false, transparent:true}));
+        m.position.set(x, y, z); m.scale.setScalar(sz * K); m.renderOrder = 10; grp.add(m); L[name] = m; return m };
+      add("red", 0xff3b30, 17.5 * K, tipY, S(23.5), 2.4); add("green", 0x32ff7e, -17.5 * K, tipY, S(23.5), 2.4);   // the nose points to +z, so the left wing is +x
+      add("sl", 0xffffff, 17.6 * K, tipY, S(24.2), 4); add("sr", 0xffffff, -17.6 * K, tipY, S(24.2), 4); add("st", 0xffffff, 0, .9 * K, S(39.4), 3);
+      add("bt", 0xff2a1a, 0, 2.15 * K, S(19), 2.6); add("bb", 0xff2a1a, 0, -2.15 * K, S(21), 2.6);
+      grp.userData.L = L; return grp }
+    function blink(now){ if(!F || !F.jd || !F.jd.userData.lights) return; const L = F.jd.userData.lights.userData.L, t = now / 1000, rm = ctx.rm();
+      const s = t % 1.3, strobe = !rm && (s < .05 || (s > .14 && s < .19)), beacon = !rm && ((t + .45) % 1.1) < .13;
+      L.sl.visible = L.sr.visible = L.st.visible = strobe; L.bt.visible = L.bb.visible = beacon || rm }
     const size = () => { const c = map.getContainer(), W = c.clientWidth, H = c.clientHeight; R.setSize(W, H, false); cam.right = W; cam.bottom = -H; cam.updateProjectionMatrix() };
     size(); map.on("resize", size);
     const brgOf = (a, b) => { const r = Math.PI / 180, y = Math.sin((b[0] - a[0]) * r) * Math.cos(b[1] * r), x = Math.cos(a[1] * r) * Math.sin(b[1] * r) - Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos((b[0] - a[0]) * r); return (Math.atan2(y, x) / r + 360) % 360 };
@@ -343,7 +407,30 @@ export async function openBriefMap(ctx){
       if(!ctx.rm()){ bub.classList.remove("pop"); void bub.offsetWidth; bub.classList.add("pop") } }
     function lines(mode, key){   // route line brightness: normal, following one route, or focused on an airport
       const op = mode === "follow" ? ["case", ["==", ["get", "k"], key], .35, .15] : mode === "stn" ? ["case", ["in", key, ["get", "k"]], 1, .25] : null;
-      map.setPaintProperty("bm-mrl", "line-opacity", op || 1); map.setPaintProperty("bm-mrd", "line-opacity", op || .7); map.setPaintProperty("bm-mrc", "line-opacity", op ? ["*", .4, op] : .4) }
+      map.setPaintProperty("bm-mrl", "line-opacity", op || 1); map.setPaintProperty("bm-mrd", "line-opacity", op || .7); map.setPaintProperty("bm-mrc", "line-opacity", arcsOn ? 0 : op ? ["*", .4, op] : .4); emph = {mode, key} }
+    function drawArcs(cen, pitch, fpx){
+      const W = map.getContainer().clientWidth, Hh = map.getContainer().clientHeight; nv = 0; ni = 0;
+      // a point well off screen (or beyond the horizon when you look along it) breaks the line
+      const onScr = q => isFinite(q.x) && isFinite(q.y) && q.x > -W && q.x < W * 2 && q.y > -Hh && q.y < Hh * 2;
+      const dk = o.dataset.look === "dark", GOLD = dk ? LIN.gold : LIN.goldL, TRAIL = dk ? LIN.trail : LIN.trailL, AK = dk ? 1 : 1.7, TK = dk ? 1 : .8;
+      for(const p of planes){   // the arcs
+        const a0 = map.project(p.A), b0 = map.project(p.B), Lp = Math.hypot(b0.x - a0.x, b0.y - a0.y); p.H = isFinite(Lp) ? Math.min(HMAX, Lp * .22) : HMAX;
+        const ar = []; for(let i = 0; i <= 48; i++){ const g = p.gc[i]; if(gcNm(cen, g) > 4800 || (p.r.dh && i % 3 === 2)){ ar.push(null); continue }   // deadheads dashed
+          const q = map.project(g); ar.push(onScr(q) ? [q.x, q.y - liftOf(p, i / 48)] : null) }
+        const al = Math.min(1, .34 * AK * routeF(p) * (p.r.dh ? .7 : 1)); ribbon(ar, () => 1.8, () => [...GOLD, al]) }
+      for(const p of planes){   // the trails: 20 steps back along the arc from the jet, fading; the selected jet's sinks towards its ground track and spreads
+        if(!(p.vis > .01) || p.uu < 0) continue; const dir = p.dir, tc = p.tc, len = .3, N = 20, f = routeF(p) * (p.r.dh ? .5 : 1) * Math.min(1, p.vis * 1.5), me = p === F, Q = [];
+        for(let k = 0; k <= N; k++){ const u = tc - dir * len * k / N; if(u < 0 || u > 1) break; const g = gcAt(p.A, p.B, u);
+          if(gcNm(cen, g) > 4800){ Q.push(null); continue } const q = map.project(g); Q.push(onScr(q) ? [q.x, q.y - liftOf(p, u) * (me ? 1 - .55 * k / N : 1)] : null) }
+        ribbon(Q, k => me ? 3 + k * .25 : 2.6 * (1 - k / 30), k => [...TRAIL, (me ? .45 : .85) * TK * (1 - k / N) * f]) }
+      rg.setDrawRange(0, ni);   // upload only the part in use this frame
+      for(const [at, n] of [[rg.attributes.position, nv * 3], [rg.attributes.color, nv * 4], [rg.index, ni]]){ at.clearUpdateRanges(); at.addUpdateRange(0, Math.max(1, n)); at.needsUpdate = true }
+      shadow.visible = false;
+      if(F && F.vis > .01 && F.lift > 2 && F.gx != null){   // the selected jet's shadow on the map below it, fainter the higher it is
+        const span = .0309 * fpx * F.vis, rx = span * .5, ry = rx * Math.max(.12, Math.cos(pitch)) * .4, t = map.project(F.tail), n = map.project(F.nose);
+        shadow.visible = true; shadow.position.set(F.gx, -F.gy, 0); shadow.rotation.z = -(Math.atan2(n.y - t.y, n.x - t.x) + Math.PI / 2); shadow.scale.set(rx * 2, ry * 2, 1);
+        shadow.material.opacity = .34 * (1 - .45 * Math.min(1, F.lift / HMAX)) * F.vis }
+    }
     function frame(now){
       if(!running || closed) return; raf = requestAnimationFrame(frame);
       if(document.hidden){ last = now; return }
@@ -353,7 +440,7 @@ export async function openBriefMap(ctx){
         p.tt = (p.tt + dt * p.rate) % p.cyc; const tt = ctx.rm() ? p.dur * .5 : p.tt;
         let t, dir, u = -1;
         if(tt < p.dur){ u = tt / p.dur; t = ease(u); dir = 1 } else if(tt < p.dur + G){ t = 1; dir = -1 } else if(tt < p.dur * 2 + G){ u = (tt - p.dur - G) / p.dur; t = 1 - ease(u); dir = -1 } else { t = 0; dir = 1 }
-        p.vis = u < 0 ? 0 : Math.pow(ramp(Math.min(t, 1 - t) / .3), .8);
+        p.vis = u < 0 ? 0 : Math.pow(ramp(Math.min(t, 1 - t) / .3), .8); p.uu = u; p.dir = dir; p.tc = t;
         const tc = Math.max(.0005, Math.min(.9995, t)), t0 = Math.max(0, tc - .004), t1 = Math.min(1, tc + .004);
         p.pos = gcAt(p.A, p.B, tc); p.tail = gcAt(p.A, p.B, dir > 0 ? t0 : t1); p.nose = gcAt(p.A, p.B, dir > 0 ? t1 : t0);
         const from = dir > 0 ? p.r.a : p.r.b; if(p === F && from !== p.from && !bub.hidden) showBub("route", p.r.k, from); p.from = from;
@@ -363,13 +450,19 @@ export async function openBriefMap(ctx){
         const k = lerpK(ctx.rm() ? 1 : .08, dt), el = EL + orb.pitch; if(!F.cc){ const c = map.getCenter(); F.cc = [c.lng, c.lat] }
         F.cc = [F.cc[0] + wrap(F.pos[0] - F.cc[0]) * k, F.cc[1] + (F.pos[1] - F.cc[1]) * k];   // the camera's own smoothed track of the jet
         const want = {bearing:(F.sb + orb.yaw + 360) % 360, pitch:Math.max(0, Math.min(70, 90 - el * 180 / Math.PI)), zoom:orb.z};   // nose always along the track
-        map.jumpTo({center:F.cc, zoom:map.getZoom() + (want.zoom - map.getZoom()) * k, pitch:map.getPitch() + (want.pitch - map.getPitch()) * k, bearing:map.getBearing() + wrap(want.bearing - map.getBearing()) * k});
+        F.ly = (F.ly == null ? 0 : F.ly) + ((F.lift || 0) - (F.ly || 0)) * k;   // build 81: frame the jet up on its arc, not the ground below it (its shadow sits below):
+        // the focal point (the ground under the jet) moves down the screen by the jet's height, through the camera's padding, which keeps the perspective right
+        map.jumpTo({center:F.cc, zoom:map.getZoom() + (want.zoom - map.getZoom()) * k, pitch:map.getPitch() + (want.pitch - map.getPitch()) * k, bearing:map.getBearing() + wrap(want.bearing - map.getBearing()) * k,
+          padding:{top:Math.round(F.ly * 2), bottom:0, left:0, right:0}});
         if(orb.ox || orb.oy){ const q = map.project(F.cc), c2 = map.unproject([q.x - orb.ox, q.y - orb.oy]); map.jumpTo({center:c2}) } }   // panned: the view rides along, offset as you left it
       const ctr = map.getCenter(), cen = [ctr.lng, ctr.lat], pitch = map.getPitch() * Math.PI / 180, z = map.getZoom();
-      const px = 30 / .034, fpx = Math.max(px, 230 / .034 * Math.pow(2, orb.z - FZ));   // ~30 px at any zoom; the followed jet ~230 px up close, smaller as you pinch out
+      const px = 30 / .034, fpx = Math.max(px, 230 / .034 * Math.pow(2, orb.z - FZ));
+      drawArcs(cen, pitch, fpx);   // ~30 px at any zoom; the followed jet ~230 px up close, smaller as you pinch out
       for(const p of planes){
         if(p.vis <= .01 || gcNm(cen, p.pos) > 4800){ p.T.visible = false; p.sx = null; continue }   // on the ground, or round the back of the globe
         const a = map.project(p.pos), t = map.project(p.tail), n = map.project(p.nose); p.T.visible = true;
+        const tcc = Math.max(.0005, Math.min(.9995, p.tc)), lh = liftOf(p, tcc); p.lift = lh; p.gx = a.x; p.gy = a.y;   // up its arc; gx/gy: the ground point below
+        t.y -= liftOf(p, p.dir > 0 ? tcc - .004 : tcc + .004); n.y -= liftOf(p, p.dir > 0 ? tcc + .004 : tcc - .004); a.y -= lh;
         p.T.position.set(a.x, -a.y, 0); p.T.rotation.x = -pitch * .85 - .28;
         // heading: the followed jet turns by its track against the map's bearing, so neither the 3D tilt nor zooming or looking round can swing its nose.
         // The others follow the line their track makes on screen; the jet is then tilted back by T.rotation.x, which squashes its up-down by cos(tilt),
@@ -378,7 +471,7 @@ export async function openBriefMap(ctx){
         p.g.rotation.z = p === F ? Math.PI - (brgOf(p.tail, p.nose) - map.getBearing()) * Math.PI / 180 : Math.atan2(-(n.y - t.y) / tcos, n.x - t.x) + Math.PI / 2;
         p.T.scale.setScalar((p === F ? fpx : px) * Math.max(p.vis, .001)); p.sx = a.x; p.sy = a.y;
       }
-      R.render(scene, cam);
+      blink(now); R.render(scene, cam); paintStrip(F && F.vis > .01 ? F : null);
       // airport tags: none on top of another; while following, those near the jet step out of its way
       const placed = []; const fx = F && F.sx != null ? [F.sx, F.sy] : null;
       for(const m of mMarkers){ const ll = m.getLngLat(), q = map.project(ll), e = m.getElement();
@@ -393,7 +486,8 @@ export async function openBriefMap(ctx){
           if(Math.abs(bx - bp.sx) > 1.5 || Math.abs(by - bp.sy) > 1.5){ bp.sx = bx; bp.sy = by; bub.style.transform = `translate(${bx}px,${by}px) translate(-50%,-100%)` } } }
     }
     function detail(p, on){
-      if(on){ if(!baseD) baseD = build737({detail:true}); const d = baseD.clone(true); if(p.r.dh) ghost(d); d.rotation.x = Math.PI / 2; p.g.add(d); p.jd = d; p.j.visible = false }
+      if(on){ if(!baseD) baseD = build737({detail:true}); const d = baseD.clone(true); if(p.r.dh) ghost(d); d.rotation.x = Math.PI / 2;
+        const lg = lights(); d.add(lg); d.userData.lights = lg; p.g.add(d); p.jd = d; p.j.visible = false }
       else if(p.jd){ p.g.remove(p.jd); p.jd = null; p.j.visible = true }
     }
     // while following, your fingers move the camera round the jet instead of the map:
@@ -420,19 +514,19 @@ export async function openBriefMap(ctx){
       orb.z = Math.min(10, z) }
     jets = {planes, el:cv,
       run(){ if(running) return; running = true; cv.hidden = false; last = 0; raf = requestAnimationFrame(frame) },
-      stop(){ running = false; cancelAnimationFrame(raf); cv.hidden = true; this.release(false) },
+      stop(){ running = false; cancelAnimationFrame(raf); cv.hidden = true; strip.hidden = true; this.release(false) },
       hit(x, y){ let best = null, d = 44; for(const p of planes){ if(!p.T.visible || p.sx == null || p.vis < .3) continue; const q = Math.hypot(p.sx - x, p.sy - y); if(q < d){ d = q; best = p } } return best },
       follow(p){ if(F === p){ orb.ox = 0; orb.oy = 0; orb.yaw = 0; orb.pitch = 0; return }   // tap the followed jet: centre it again, behind it
-        if(F) detail(F, false); foc = null; closeSheet(); F = p; F.sb = null; F.cc = null; orb.pitch = 0; orb.yaw = 0; orb.z = FZ; orb.ox = 0; orb.oy = 0;
+        if(F) detail(F, false); foc = null; closeSheet(); F = p; F.sb = null; F.cc = null; F.ly = null; orb.pitch = 0; orb.yaw = 0; orb.z = FZ; orb.ox = 0; orb.oy = 0;
         detail(p, true); showBub("route", p.r.k, p.from); lines("follow", p.r.k); freeMap(false); o.classList.add("following"); if(ctx.haptics) ctx.haptics(bub) },
-      focus(code){ const s = M.stations.find(x => x.code === code); if(!s) return; if(F){ detail(F, false); F = null; freeMap(true) }
+      focus(code){ const s = M.stations.find(x => x.code === code); if(!s) return; if(F){ detail(F, false); F = null; freeMap(true); map.setPadding({top:0, bottom:0, left:0, right:0}); paintStrip(null) }
         closeSheet(); foc = {lon:s.lon, lat:s.lat}; showBub("stn", code); lines("stn", code); o.classList.remove("following");
         map.easeTo({center:[s.lon, s.lat], zoom:Math.max(map.getZoom(), overviewZoom + .6), pitch:0, bearing:0, duration:ctx.rm() ? 0 : 1100}) },   // flies there once; then the map is yours
-      release(flyOut){ const was = F || foc; if(F) detail(F, false); F = null; foc = null; bub.hidden = true; lines(); freeMap(true); o.classList.remove("following");
+      release(flyOut){ const was = F || foc; if(F) detail(F, false); if(F) map.setPadding({top:0, bottom:0, left:0, right:0}); F = null; foc = null; bub.hidden = true; paintStrip(null); lines(); freeMap(true); o.classList.remove("following");
         mMarkers.forEach(m => { const e = m.getElement(); e._op = null; e.classList.remove("tagoff", "tagdim") });
         if(was && flyOut) map.easeTo({zoom:Math.min(map.getZoom(), overviewZoom), pitch:0, bearing:0, duration:ctx.rm() ? 0 : 700}) },
-      get following(){ return F }, get focused(){ return foc }, get orb(){ return orb },
-      kill(){ this.stop(); try{ R.dispose() }catch(e){} cv.remove(); bub.remove() } };
+      get following(){ return F }, get drawn(){ return ni }, get focused(){ return foc }, get orb(){ return orb },
+      kill(){ this.stop(); try{ R.dispose() }catch(e){} cv.remove(); strip.remove(); bub.remove() } };
     // panning the map yourself while an airport is focused lets go of it
     // (an airport's bubble stays put over it while you move the map; tap empty map to close it)
     if(view === "month") jets.run();

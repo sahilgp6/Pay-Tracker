@@ -920,3 +920,14 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .bmblur.bot i{-webkit-mask-image:linear-gradient(to bottom,transparent var(--a),#000 var(--z));mask-image:linear-gradient(to bottom,transparent var(--a),#000 var(--z))}
 .bmslide.spring{transition:transform .45s cubic-bezier(.34,1.56,.64,1)}
 @media (prefers-reduced-motion:reduce){ .flap span.f{animation:none} .bmslide.spring{transition:none} }
+
+/* build 81: the selected jet's strip (where it is on the sector, fixed block, destination weather) */
+.bmstrip{position:absolute;z-index:4;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 58px);padding:10px 14px 9px;border-radius:16px;background:rgba(255,255,255,.95);color:#1b1b1b;box-shadow:0 6px 22px rgba(0,0,0,.2)}
+.bmstrip[hidden]{display:none}
+.bmsr{display:flex;align-items:center;gap:10px} .bmsr b{font:500 15px/1 var(--f-num);letter-spacing:.02em}
+.bmsr .trk{position:relative;flex:1;height:4px;border-radius:2px;background:rgba(127,127,127,.28)}
+.bmsr .fill{position:absolute;left:0;top:0;bottom:0;width:100%;border-radius:2px;background:#e9b949;transform-origin:left center;transform:scaleX(0)}
+.bmsr .dot{position:absolute;left:0;top:50%;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:#e9b949;box-shadow:0 0 0 3px rgba(233,185,73,.25)}
+.bmsl{display:flex;justify-content:space-between;gap:8px;margin-top:7px;font-size:12.5px;color:#5f6675}
+.bmsl .wxc{font-weight:600;color:inherit}
+@media (prefers-color-scheme:dark){ .bmstrip{background:rgba(24,30,39,.95);color:#ebe7dc} .bmsl{color:#9aa2b0} }
