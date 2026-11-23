@@ -80,7 +80,7 @@ const RAIL = [["ac", "Aircraft"], ["sat", "Satellites"], ["quake", "Earthquakes"
 let S = null;   // the open screen's state
 export async function openOsint(){
   if(S) return; const css = document.getElementById("oscss");
-  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=93", import.meta.url).href; document.head.appendChild(l) }
+  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=94", import.meta.url).href; document.head.appendChild(l) }
   const el = document.createElement("div"); el.id = "osint"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "OSINT");
   el.innerHTML = `<div class="os-map"></div><div class="os-top"><div class="os-brand">${svg("radar")}<div><b>OSINT</b><small>PAY TRACKER · OPEN SOURCE INTEL</small></div>
     <button class="os-x" data-os="close" aria-label="Close OSINT">${svg("x")}</button></div>
@@ -116,12 +116,14 @@ export function closeOsint(){
 /* ---------- data into the screen ---------- */
 async function loadAll(force){
   if(!S) return;
-  const ks = ["quakes", "disasters", "events", "fires", "kp", "flares", "alerts", "tle", "stations", "mil"];
+  const ks = ["quakes", "disasters", "events", "fires", "kp", "flares", "alerts", "tle", "stations"];
   if(prefs.on.rain) ks.push("rain");
   await Promise.all(ks.map(async k => { const r = await getFeed(k, force); if(!S) return; S.at[k] = r.at; S.live = S.live || {}; S.live[k] = r.live;
     if(k === "tle" || k === "stations"){ S.data[k] = P.tle(r.data) } else if(P[k]) S.data[k] = P[k](r.data); else S.data[k] = r.data }));
   if(!S) return;
   S.mil = S.data.mil || [];
+  if(navigator.onLine !== false && (!S.milAt || Date.now() - S.milAt > MIN)) for(const u of ["https://api.adsb.lol/v2/mil", "https://api.airplanes.live/v2/mil", "https://opendata.adsb.fi/api/v2/mil"]){
+    try{ const r = await fetch(u, {signal:AbortSignal.timeout(9000)}); if(!r.ok) continue; const m = P.mil(await r.json()); if(m.length && S){ S.mil = m; S.milAt = Date.now(); break } }catch(e){} }
   buildSats(); paintData(); paintStatus(); paintTicker();
   if(!S.acAt) loadAircraft();
 }
@@ -129,9 +131,19 @@ async function loadAircraft(){
   if(!S || !S.map || !prefs.on.ac) return;
   if(navigator.onLine === false){ paintAircraft(); return }
   const b = S.map.getBounds(), z = S.map.getZoom(); if(z < 3.2){ S.ac = []; S.acAt = Date.now(); paintAircraft(); toastOnce("zoom", "Zoom in to see civil traffic; military aircraft show worldwide"); return }
-  const q = `lamin=${Math.max(-90, b.getSouth()).toFixed(1)}&lamax=${Math.min(90, b.getNorth()).toFixed(1)}&lomin=${Math.max(-180, b.getWest()).toFixed(1)}&lomax=${Math.min(180, b.getEast()).toFixed(1)}`;
-  try{ const r = await fetch(`${RELAY}/flights?${q}`); if(r.ok){ const j = await r.json(); if(!S) return; S.ac = P.ac(j); S.acSrc = j.src; S.acAt = Date.now();
-    try{ (await caches.open(OC)).put(RELAY + "/flights-last", new Response(JSON.stringify({j, at:S.acAt}))) }catch(e){} } }catch(e){}
+  const la0 = Math.max(-85, b.getSouth()), la1 = Math.min(85, b.getNorth()), lo0 = Math.max(-180, b.getWest()), lo1 = Math.min(180, b.getEast());
+  const q = `lamin=${la0.toFixed(1)}&lamax=${la1.toFixed(1)}&lomin=${lo0.toFixed(1)}&lomax=${lo1.toFixed(1)}`, c = S.map.getCenter();
+  const dist = Math.max(25, Math.min(250, Math.round(Math.max(la1 - la0, (lo1 - lo0) * Math.cos(c.lat * Math.PI / 180)) * 30))), la = c.lat.toFixed(2), lo = c.lng.toFixed(2);
+  // build 94: the phone asks the aircraft feeds itself (they refuse Cloudflare's servers); the relay is the last resort
+  const SRC = [["adsblol", `https://api.adsb.lol/v2/point/${la}/${lo}/${dist}`], ["opensky", `https://opensky-network.org/api/states/all?${q}`],
+    ["airplaneslive", `https://api.airplanes.live/v2/point/${la}/${lo}/${dist}`], ["adsbfi", `https://opendata.adsb.fi/api/v2/lat/${la}/lon/${lo}/dist/${dist}`], ["relay", `${RELAY}/flights?${q}`]];
+  const order = S.acSrc ? [...SRC.filter(x => x[0] === S.acSrc), ...SRC.filter(x => x[0] !== S.acSrc)] : SRC;
+  for(const [n, u] of order){
+    try{ const r = await fetch(u, {signal:AbortSignal.timeout(9000)}); if(!r.ok) continue; let j = await r.json(); if(n !== "relay") j = {src:n, data:j};
+      const list = P.ac(j); if(!list.length && n !== order[order.length - 1][0]) continue; if(!S) return;
+      S.ac = list; S.acSrc = n; S.acAt = Date.now();
+      try{ (await caches.open(OC)).put(RELAY + "/flights-last", new Response(JSON.stringify({j, at:S.acAt}))) }catch(e){}
+      break }catch(e){} }
   paintAircraft();
 }
 async function lastAircraft(){ try{ const h = await (await caches.open(OC)).match(RELAY + "/flights-last"); if(h){ const o = await h.json(); S.ac = P.ac(o.j); S.acAt = o.at } }catch(e){} }
@@ -152,7 +164,7 @@ async function loadShips(){
 function paintShips(){ if(!S) return; setSrc("os-ship", prefs.on.ship ? (S.ships || []).map(x => pt(x, {id:String(x.id), cog:x.hdg != null && x.hdg < 360 ? x.hdg : x.cog || 0, cls:shipCls(x.type)})) : []); paintRail() }
 /* public cameras: the list ships with the app (cameras.json, from OSIRIS's public camera lists), so it works offline */
 async function loadCams(){
-  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=93", import.meta.url)); const a = await r.json(); if(!S) return;
+  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=94", import.meta.url)); const a = await r.json(); if(!S) return;
     S.cams = a.map(c => ({k:"cam", lat:c[0], lon:c[1], name:c[2], city:c[3], ctry:c[4], img:c[5], stream:c[6], st:c[7], ext:c[8], src:c[9]})) }catch(e){ S.cams = [] } }
   setSrc("os-cam", prefs.on.cam ? S.cams.map((c, i) => pt(c, {i})) : []); paintRail();
 }
@@ -180,7 +192,7 @@ function orbitOf(s){ const out = [], d0 = Date.now(); let seg = [];
 
 /* ---------- map ---------- */
 async function startMap(){
-  const B = await import("./brief.js?b=93"), ml = await B.loadLib();
+  const B = await import("./brief.js?b=94"), ml = await B.loadLib();
   if(!window.satellite) await new Promise(res => { const s = document.createElement("script"); s.src = new URL("./vendor/satellite/satellite.min.js", import.meta.url).href; s.onload = res; s.onerror = res; document.head.appendChild(s) });
   if(!S) return; buildSats();
   let style;
@@ -322,7 +334,7 @@ function paintCard(){
   const c = S.el.querySelector(".os-card"), o = S.sel; if(!o){ c.hidden = true; return }
   let head = "", title = "", sub = "", ico = "ac", grid = [], acts = "", link = "";
   if(o.k === "ac"){ head = `ADS-B · ${String(o.hex || "").toUpperCase()} · ${ll(o.lat, o.lon)}`; title = o.cs || String(o.hex).toUpperCase();
-    sub = [o.type, o.reg, o.mil ? "MILITARY" : "CIVIL"].filter(Boolean).join(" · ");
+    sub = [o.type, o.reg, o.mil ? "MILITARY" : "CIVIL", S.acSrc && !o.mil ? "VIA " + S.acSrc.toUpperCase() : ""].filter(Boolean).join(" · ");
     grid = [["ALT", o.alt == null ? "—" : o.alt >= 10000 ? "FL" + Math.round(o.alt / 100) : Math.round(o.alt) + "ft"], ["GS", o.gs == null ? "—" : Math.round(o.gs) + "kt"], ["HDG", String(Math.round(o.trk || 0)).padStart(3, "0") + "°"], ["SQK", o.sq || "—"]];
     acts = `<button data-os="follow"${S.follow ? ' class="on"' : ""}>${S.follow ? "TRACKING" : "TRACK"}</button><span>${o.owner ? esc(o.owner) : Date.now() - S.acAt > 2 * MIN ? "SEEN " + ago(S.acAt) + " AGO" : "LIVE"}</span>` }
   else if(o.k === "sat"){ const p = o.s.p || {}; ico = "sat"; head = `NORAD ${o.s.id} · ${p.lat != null ? ll(p.lat, p.lon) : ""}`; title = o.s.name; sub = "SATELLITE · ORBIT FROM SAVED DATA";
@@ -428,7 +440,7 @@ export async function runQueue(){
 /* ---------- save an area for offline: map tiles for the view, a few zooms deeper ---------- */
 async function saveArea(){
   if(navigator.onLine === false){ toast("Saving needs signal"); return }
-  const B = await import("./brief.js?b=93"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
+  const B = await import("./brief.js?b=94"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
   let tpl; try{ const tj = await (await B.cget(B.HOST + "/planet", true)).json(); tpl = tj.tiles[0] }catch(e){ toast("Could not reach the map server"); return }
   const t2 = (lon, lat, z) => { const n = 2 ** z, x = Math.floor((lon + 180) / 360 * n), r = lat * Math.PI / 180, y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return [Math.max(0, Math.min(n - 1, x)), Math.max(0, Math.min(n - 1, y))] };
   const list = []; for(let z = z0; z <= Math.min(14, z0 + 3) && list.length < 1500; z++){ const [x0, y0] = t2(Math.max(-180, b.getWest()), Math.min(85, b.getNorth()), z), [x1, y1] = t2(Math.min(180, b.getEast()), Math.max(-85, b.getSouth()), z);
