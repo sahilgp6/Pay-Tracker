@@ -739,13 +739,13 @@ html[data-vt="back"]::view-transition-old(root){animation:ptvtr .22s var(--ease-
 #isl{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 8px);z-index:9000;width:126px;height:37px;border-radius:22px;background:#000;color:#f4f1ea;overflow:hidden;
   border:0;padding:0;margin:0;font:600 13px/1.25 var(--f-body,-apple-system,system-ui,sans-serif);text-align:left;cursor:pointer;opacity:0;pointer-events:none;
   transform:translateX(-50%) scale(.7);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
-  transition:width .55s cubic-bezier(.34,1.3,.5,1),height .55s cubic-bezier(.34,1.3,.5,1),border-radius .55s cubic-bezier(.34,1.3,.5,1),transform .45s cubic-bezier(.34,1.3,.5,1),opacity .25s,box-shadow .4s}
+  transition:transform .45s cubic-bezier(.34,1.3,.5,1),opacity .25s,box-shadow .4s}   /* build 90: size and corners are sprung in JS (islMorph) */
 html.isl-hw #isl{top:11px}   /* home-screen app: grow out of the camera cutout itself */
 #isl.on{opacity:1;pointer-events:auto;transform:translateX(-50%);box-shadow:0 8px 22px rgba(0,0,0,.28)}
 #isl.compact{width:min(calc(100vw - 28px),384px);height:38px}
 #isl.mini{width:186px;height:38px}
-#isl.exp{width:min(calc(100vw - 16px),420px);height:var(--h,170px);border-radius:36px;box-shadow:0 16px 36px rgba(0,0,0,.36)}
-#isl .icp,#isl .ixp{position:absolute;left:0;right:0;top:0;opacity:0;transition:opacity .16s;pointer-events:none;z-index:1}
+#isl.exp{width:min(calc(100vw - 16px),420px);height:var(--h,170px);border-radius:46px;box-shadow:0 16px 36px rgba(0,0,0,.36)}
+#isl .icp,#isl .ixp{position:absolute;left:0;right:0;top:0;opacity:0;filter:blur(6px);transform:scale(.92);transition:opacity .16s,filter .2s,transform .2s;pointer-events:none;z-index:1}
 #isl .icp{height:38px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 14px 0 12px;white-space:nowrap}
 #isl.compact .icp,#isl.mini .icp{opacity:1;transition-delay:.2s}
 #isl.exp .ixp{opacity:1;pointer-events:auto;transition-delay:.22s}
@@ -949,3 +949,20 @@ html.bm-open #isl{visibility:hidden;pointer-events:none}
 .holdb:focus-visible{outline:2px solid var(--fill);outline-offset:3px}
 .holdb .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){ .holdb{transform:none!important} .holdb .hb-crest{display:none} .holdb .hb-fill{clip-path:inset(0);opacity:var(--hb-p)} .holdb .hb-l>span{filter:none!important} }
+
+/* build 90: island content blurs and scales in as the shape grows (islandcn); expanded rows ripple in; the split; the countdown ring */
+#isl.compact .icp,#isl.mini .icp,#isl.exp .ixp{filter:none;transform:none;transition:opacity .28s .08s,filter .32s .08s,transform .4s .08s cubic-bezier(.2,.9,.3,1.15)}
+#isl.exp .ixp > *{animation:islrow .5s cubic-bezier(.2,.9,.3,1.2) both;animation-delay:calc(.14s + var(--i,0) * .045s)}
+@keyframes islrow{from{opacity:0;transform:translateY(10px) scale(.97);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+#isl.split{width:calc(min(calc(100vw - 28px),384px) - 52px);transform:translateX(calc(-50% - 26px))}
+#isl.exp.split{width:min(calc(100vw - 16px),420px);transform:translateX(-50%)}
+#islb{position:fixed;z-index:9000;top:calc(env(safe-area-inset-top) + 8px);left:calc(50% + min(calc(100vw - 28px),384px) / 2 - 38px);width:38px;height:38px;border:0;padding:0;border-radius:19px;background:#000;color:#f4f1ea;display:grid;place-items:center;opacity:0;transform:scale(.3);pointer-events:none;transition:opacity .2s,transform .5s cubic-bezier(.34,1.5,.5,1)}
+html.isl-hw #islb{top:11px}
+#islb.on{opacity:1;transform:none;pointer-events:auto} #islb.on.away{opacity:0;transform:scale(.3);pointer-events:none}
+#islb .iico,#islb svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#islb.iblu{color:#9cc2f5}#islb.iamb{color:#f0b060}#islb.ired{color:#ff8a75}#islb.iok{color:#7fd4a4}#islb.igold{color:#f3cf7a}
+#isl .iv .iring{width:15px;height:15px;margin-right:6px;vertical-align:-2px;transform:rotate(-90deg)}
+#isl .iring circle{fill:none;stroke-width:3} #isl .iring .t{stroke:rgba(255,255,255,.16)} #isl .iring .p{stroke:currentColor;stroke-linecap:round;transition:stroke-dashoffset .6s}
+@media (prefers-reduced-motion:reduce){ #isl .icp,#isl .ixp,#isl.compact .icp,#isl.mini .icp,#isl.exp .ixp{filter:none;transform:none} #isl.exp .ixp > *{animation:none} #islb{transition:opacity .2s;transform:none} }
+/* build 90: the island steps aside while a sheet or the data card is open, so it never covers their close buttons */
+html.sheet-open #isl,html.sheet-open #islb{opacity:0!important;pointer-events:none!important}

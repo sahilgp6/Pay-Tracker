@@ -279,15 +279,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=89">
-<script src="intro.js?b=89" defer></script>
+<link rel="stylesheet" href="lab.css?b=90">
+<script src="intro.js?b=90" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=89"></script>
-<script src="motion.js?b=89" defer></script>
-<script src="lab.js?b=89"></script>
+<script src="mapdata.js?b=90"></script>
+<script src="motion.js?b=90" defer></script>
+<script src="lab.js?b=90"></script>
 </head>
 <body>
 <div class="wrap">
@@ -950,7 +950,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=89").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=90").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -1099,7 +1099,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=89");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=90");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1195,7 +1195,7 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=89") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=90") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
@@ -1372,7 +1372,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=89"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=90"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1380,7 +1380,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=89");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=90");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -2594,7 +2594,7 @@ function mapCtx(view, month){ return {apx:APX||new Map(), base:(profile.base||"B
   pdfLib:async()=>{ if(!window.pdfjsLib) await loadScript("../pdfjs/pdf.min.js"); const lib=window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc="../pdfjs/pdf.worker.min.js"; return lib }} }
 function openBrief(){
   if(briefOpen) return; briefOpen=true; apMap();
-  import("./brief.js?b=89").then(m=>m.openBriefMap(mapCtx("brief", monthMapData())))
+  import("./brief.js?b=90").then(m=>m.openBriefMap(mapCtx("brief", monthMapData())))
     .catch(e=>{ briefOpen=false; showBanner("The map could not open: "+(e&&e.message||e)) });
 }
 function openWorld(){
@@ -2603,7 +2603,7 @@ function openWorld(){
   if(briefOpen) return; briefOpen=true;
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./brief.js?b=89").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openBriefMap(mapCtx("month", monthMapData()))))
+  import("./brief.js?b=90").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openBriefMap(mapCtx("month", monthMapData()))))
     .then(g=>{ if(!g) briefOpen=false; ld.done() })
     .catch(()=>{ briefOpen=false; ld.done(); openGlobeOld() });
 }
@@ -2619,7 +2619,7 @@ function openGlobeOld(){   // the build 64 globe, used only if the map cannot st
     stations:[...stns.keys()].map(k=>({code:k, ...APX.get(k), home:k===base, abroad:!IN_AIRPORTS.has(k)})),
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
-  import("./world3d.js?b=89").then(m=>m.openGlobe(data)).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap) }).catch(()=>openWorld2D());
+  import("./world3d.js?b=90").then(m=>m.openGlobe(data)).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap) }).catch(()=>openWorld2D());
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2893,7 +2893,7 @@ function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead()
 
 let qIcaoLoad=false;
 function viewQuals(){
-  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=89").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=90").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
   const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
   // due soon: everything amber or red, soonest first
   const due=[];
@@ -2993,11 +2993,42 @@ function islEl(){
   b.addEventListener("pointerup",()=>{ y0=null });
   b.addEventListener("click",e=>{ e.stopPropagation(); if(sw){ sw=false; return }
     const g=e.target.closest("[data-isltab]");
+    const fl=e.target.closest("[data-islflight]")||(b.classList.contains("exp")&&ISL.cur&&ISL.cur.uid&&{dataset:{islflight:ISL.cur.uid}});
+    if(fl){ islGoFlight(fl.dataset.islflight); return }
     if(g){ const want=g.dataset.isltab; islClose(); const t=document.querySelector(`.tabbar [data-tab="${want}"]`); if(t) t.click(); return }
     if(b.classList.contains("exp")) islClose(); else islOpen() });
   document.addEventListener("click",e=>{ if(ISL.el && ISL.el.classList.contains("exp") && !ISL.el.contains(e.target)) islClose() }, true);
   return b;
 }
+/* build 90: island motion from islandcn (github.com/opencoredev/islandcn, MIT): a spring per change, fitted there to recordings of the real
+   island (response s, damping ratio); expand is livelier than the real one at my request. The size is animated in JS (Web Animations,
+   sampled spring), the classes still set where it ends. Reduce Motion: no spring, the CSS fades only. */
+const ISPR={appear:[.483,.62], expand:[.56,.58], collapse:[.479,.894], dismiss:[.432,1], swap:[.498,.829], split:[.505,.815], unsplit:[.487,.794]};
+function springAt(resp,z,t){ const w=2*Math.PI/resp; if(z<1){ const wd=w*Math.sqrt(1-z*z); return 1-Math.exp(-z*w*t)*(Math.cos(wd*t)+z*w/wd*Math.sin(wd*t)) } return 1-Math.exp(-w*t)*(1+w*t) }
+function islMorph(b, kind, apply){
+  const r0=b.getBoundingClientRect(), c0=parseFloat(getComputedStyle(b).borderTopLeftRadius)||19;
+  if(b._morph){ b._morph.cancel(); b._morph=null } apply();
+  if(RM()||!b.animate||!r0.width) return;
+  const r1=b.getBoundingClientRect(), c1=parseFloat(getComputedStyle(b).borderTopLeftRadius)||19;
+  if(Math.abs(r1.width-r0.width)<1&&Math.abs(r1.height-r0.height)<1) return;
+  const [resp,z]=ISPR[kind]||ISPR.swap, dur=Math.min(1.4, resp*(z<1?2.3:1.5)), N=48, fr=[];
+  for(let i=0;i<=N;i++){ const k=i===N?1:springAt(resp,z,dur*i/N); fr.push({width:(r0.width+(r1.width-r0.width)*k)+"px", height:(r0.height+(r1.height-r0.height)*k)+"px", borderRadius:Math.max(8,c0+(c1-c0)*k)+"px"}) }
+  b._morph=b.animate(fr,{duration:dur*1000, easing:"linear"}); b._morph.onfinish=()=>{ b._morph=null } }
+function islRows(b){ [...b.querySelectorAll(".ixp > *")].forEach((e,i)=>e.style.setProperty("--i",i)) }
+// the split: a short notice during the report countdown gets its own bubble beside the pill, and the countdown stays
+function islSplit(n){ const b=islEl(); let bb=document.getElementById("islb");
+  if(!bb){ bb=document.createElement("button"); bb.type="button"; bb.id="islb"; document.body.appendChild(bb);
+    bb.addEventListener("click",e=>{ e.stopPropagation(); const m=ISL.split; islUnsplit(); if(m) islShow(m) }) }
+  ISL.split=n; const tone=(n.cp.match(/class="il (i[a-z]+)"/)||[])[1]||"", ico=(n.cp.match(/<svg[\s\S]*?<\/svg>/)||[""])[0];
+  bb.innerHTML=ico; bb.className="on "+tone+(b.classList.contains("exp")?" away":""); bb.setAttribute("aria-label",n.label+". Tap to open.");
+  if(!b.classList.contains("split")) islMorph(b,"split",()=>b.classList.add("split"));
+  clearTimeout(ISL.stimer); ISL.stimer=setTimeout(islUnsplit, Math.max(6000, n.life||6000)) }
+function islUnsplit(){ const b=ISL.el, bb=document.getElementById("islb"); ISL.split=null; clearTimeout(ISL.stimer); if(bb) bb.className="";
+  if(b&&b.classList.contains("split")) islMorph(b,"unsplit",()=>b.classList.remove("split")) }
+// tapping the expanded countdown opens that flight's data card
+function islGoFlight(uid){ let hit=null; for(const ym of Object.keys(months)) for(const s of ((months[ym]||{}).sectors||[])) if(cardKey(s)===uid) hit={ym,s};
+  islClose(); if(!hit) return; cur=hit.ym; const t=document.querySelector('.tabbar [data-tab="log"]'); if(tab!=="log"&&t) t.click(); else render();
+  setTimeout(()=>{ const row=document.querySelector(`#view .item[data-sheet="${hit.s.id}"]`); openCard(hit.s.id, row||ISL.el) }, 380) }
 function islSparks(){
   if(RM()) return; const b=ISL.el, r=b.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
   for(let i=0;i<16;i++){ const d=document.createElement("i"); d.className="isl-spark"; d.style.left=cx+"px"; d.style.top=cy+"px"; document.body.appendChild(d);
@@ -3009,21 +3040,25 @@ function islShow(n){
   const b=islEl(); clearTimeout(ISL.timer); ISL.cur=n;
   const put=()=>{ if(ISL.cur!==n) return;
     b.querySelector(".icp").innerHTML=n.cp; b.querySelector(".ixp").innerHTML=n.xp||""; b.style.setProperty("--h",(n.h||170)+"px");
-    b.className="on "+(n.mini?"mini":"compact")+(n.glow?" g-"+n.glow:""); b.querySelector(".ifx").className="ifx"+(n.fx?" "+n.fx:"");
+    const was=b.classList.contains("on"); islRows(b);
+    islMorph(b, was?"swap":"appear", ()=>{ b.className="on "+(n.mini?"mini":"compact")+(n.glow?" g-"+n.glow:"")+(ISL.split&&n.kind==="report"?" split":"") }); b.querySelector(".ifx").className="ifx"+(n.fx?" "+n.fx:"");
     b.dataset.kind=n.kind; b.setAttribute("aria-label", n.label+(n.xp?". Tap for details.":""));
     if(n.kind==="pay") islSparks();
     if(n.life) ISL.timer=setTimeout(islNext, n.life) };
-  if(b.classList.contains("on")){ b.classList.remove("compact","mini","exp"); setTimeout(put, RM()?40:320) } else put();
+  if(b.classList.contains("on")){ islMorph(b,"collapse",()=>b.classList.remove("compact","mini","exp")); setTimeout(put, RM()?40:320) } else put();
 }
-function islHide(){ const b=ISL.el; ISL.cur=null; if(!b) return; clearTimeout(ISL.timer); b.className=""; b.removeAttribute("data-kind"); b.setAttribute("aria-label","") }
+function islHide(){ const b=ISL.el; ISL.cur=null; if(!b) return; clearTimeout(ISL.timer); islUnsplit(); islMorph(b,"dismiss",()=>{ b.className="" }); b.removeAttribute("data-kind"); b.setAttribute("aria-label","") }
 function islNext(){ const n=ISL.q.shift(); if(n) return islShow(n); const p=islReport(); if(p) return islShow(p); islHide() }
 function islPush(n, force){
   if(!n || (!force && !islOn(n.kind))) return;
-  if(ISL.cur && ISL.cur.life){ ISL.q.push(n); return }   // a short one is showing: wait your turn; the countdown gives way
+  if(ISL.cur && ISL.cur.life){ ISL.q.push(n); return }   // a short one is showing: wait your turn
+  if(ISL.cur && ISL.cur.kind==="report" && !force){ islSplit(n); return }   // build 90: during the countdown, the split
   islShow(n);
 }
-function islOpen(){ const b=ISL.el, n=ISL.cur; if(!b||!n||!n.xp) return; clearTimeout(ISL.timer); b.classList.remove("compact","mini"); b.classList.add("exp") }
-function islClose(){ const b=ISL.el, n=ISL.cur; if(!b||!n||!b.classList.contains("exp")) return; b.classList.remove("exp"); b.classList.add(n.mini?"mini":"compact"); if(n.life) ISL.timer=setTimeout(islNext, 4000) }
+function islOpen(){ const b=ISL.el, n=ISL.cur; if(!b||!n||!n.xp) return; clearTimeout(ISL.timer); islRows(b); const bb=document.getElementById("islb"); if(bb) bb.classList.add("away");
+  islMorph(b,"expand",()=>{ b.classList.remove("compact","mini"); b.classList.add("exp") }) }
+function islClose(){ const b=ISL.el, n=ISL.cur; if(!b||!n||!b.classList.contains("exp")) return; const bb=document.getElementById("islb"); if(bb) bb.classList.remove("away");
+  islMorph(b,"collapse",()=>{ b.classList.remove("exp"); b.classList.add(n.mini?"mini":"compact") }); if(n.life) ISL.timer=setTimeout(islNext, 4000) }
 function islDismiss(){ const n=ISL.cur; if(!n) return; if(n.kind==="report"){ const m=islMem(); m.repOff=n.id; islSave(m) } islNext() }
 
 // destination weather as a glow colour, and the effect inside the open card
@@ -3042,10 +3077,11 @@ function islReport(){
     const rows=secs.map(x=>`<span class="iln"><span>${esc(x.from)} → ${esc(x.to)}</span><span>${hhmmZ(x.offA??x.start)}Z</span></span>`).join("");
     const wx=w&&w.ok?`<span class="iln"><span>${esc(f.to)} at landing</span><span>${Math.round(w.temp)}° ${esc(w.label)}</span></span>`:"";
     const what=before?"Report":"Off blocks";
-    return {kind:"report", id, life:0, glow, fx:glow==="night"?"":glow,
+    const frac=Math.max(0,Math.min(1,left/180)), ring=`<svg class="iring" viewBox="0 0 20 20" aria-hidden="true"><circle class="t" cx="10" cy="10" r="8"/><circle class="p" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="${(50.27*(1-frac)).toFixed(2)}"/></svg>`;
+    return {kind:"report", id, uid:f.uid, life:0, glow, fx:glow==="night"?"":glow,
       h:120+32*(secs.length+(wx?1:0)),
-      cp:`<span class="il iblu">${ISL_ICO.plane}<span>${what} ${hhmmZ(target)}Z</span></span><span class="iv iblu">${hm(left)}</span>`,
-      xp:`<span class="ih">${what} in ${hm(left)}</span><span class="isub">${before?`${hhmmZ(rep)}Z`:"Reported"} · ${secs.length} sector${secs.length===1?"":"s"}</span>${rows}${wx}<span class="igo" role="button" tabindex="0" data-isltab="duty">Open Duty</span>`,
+      cp:`<span class="il iblu">${ISL_ICO.plane}<span>${what} ${hhmmZ(target)}Z</span></span><span class="iv iblu">${ring}${hm(left)}</span>`,
+      xp:`<span class="ih">${what} in ${hm(left)}</span><span class="isub">${before?`${hhmmZ(rep)}Z`:"Reported"} · ${secs.length} sector${secs.length===1?"":"s"}</span>${rows}${wx}<span class="igo" role="button" tabindex="0" data-islflight="${esc(f.uid)}">Open flight</span>`,
       label:`${what} at ${hhmmZ(target)} Z, ${hm(left)} to go` };
   }
   return null;
@@ -3137,7 +3173,7 @@ function islSetupCard(){
     ${ISL_KINDS.map(([k,l])=>`<div class="islset"><label class="islchk"><input type="checkbox" id="isl-${k}" data-islk="${k}"${islOn(k)?" checked":""}><span>${esc(l)}</span></label><button class="btn quiet" data-islprev="${k}">Preview</button></div>`).join("")}</section>`;
 }
 function islChange(el){ if(!el.dataset.islk) return false; profile.island={...(profile.island||{}), [el.dataset.islk]:el.checked}; queueProfile(); if(!el.checked && ISL.cur && ISL.cur.kind===el.dataset.islk) islNext(); return true }
-function islClick(t){ if(!t.dataset.islprev) return false; const n=islSample(t.dataset.islprev); if(n){ ISL.q=[]; islShow(n) } return true }
+function islClick(t){ if(!t.dataset.islprev) return false; const n=islSample(t.dataset.islprev); if(n){ if(ISL.cur&&ISL.cur.kind==="report"&&n.kind!=="report"){ islSplit(n); return true } ISL.q=[]; islShow(n) } return true }
 
 
 function viewLog(){
@@ -3649,7 +3685,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=89") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=90") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
