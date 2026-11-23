@@ -3,7 +3,7 @@
 // there is no signal, so the lab and its briefing map open in the air. Map tiles are saved separately by the map
 // itself. Your data is never cached here: it lives in the browser's local storage on your device.
 
-const CACHE = 'pay-tracker-lab-v4';
+const CACHE = 'pay-tracker-lab-v5';
 const SCOPE = self.registration.scope;               // .../lab/
 const ROOT = new URL('../', SCOPE).href;              // .../ (for the shared PDF reader)
 const PRECACHE = [
@@ -11,6 +11,7 @@ const PRECACHE = [
   'brief.js',
   'briefparse.js',
   'cameras.json',
+  'gazetteer.json',
   'globedata.js',
   'index.html',
   'intro.js',
@@ -22,6 +23,7 @@ const PRECACHE = [
   'motion.js',
   'osint.css',
   'osint.js',
+  'osintdata.json',
   'rwydata.js',
   'tzdata.js',
   'world3d.js',

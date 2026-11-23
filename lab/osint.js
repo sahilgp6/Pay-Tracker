@@ -10,14 +10,16 @@ const FEEDS = {
   fires:{u:"/fires", ttl:H, text:1}, kp:{u:"/space?which=kp", ttl:10 * MIN}, flares:{u:"/space?which=flares", ttl:15 * MIN},
   alerts:{u:"/space?which=alerts", ttl:15 * MIN}, tle:{u:"/tle?group=visual", ttl:12 * H, text:1}, stations:{u:"/tle?group=stations", ttl:12 * H, text:1},
   mil:{u:"/military", ttl:MIN}, rain:{u:"/rain", ttl:10 * MIN},
-  sdn:{u:"/sanctions", ttl:7 * 24 * H, text:1}, feodo:{u:"/threats", ttl:6 * H}, kev:{u:"/kev", ttl:24 * H}
+  sdn:{u:"/sanctions", ttl:7 * 24 * H, text:1}, feodo:{u:"/threats", ttl:6 * H}, kev:{u:"/kev", ttl:24 * H},
+  news:{u:"/news", ttl:15 * MIN}, gdelt:{u:"/gdelt", ttl:20 * MIN}, front:{u:"/frontlines", ttl:6 * H}, outages:{u:"/outages", ttl:20 * MIN}, markets:{u:"/markets", ttl:10 * MIN}
 };
-const SMALL = ["quakes", "disasters", "events", "kp", "flares", "alerts", "tle", "stations", "fires"];
+const SMALL = ["quakes", "disasters", "events", "kp", "flares", "alerts", "tle", "stations", "fires", "news", "gdelt", "outages", "markets"];
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[c]));
 const RM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const zulu = t => new Date(t).toISOString().slice(11, 19) + "Z";
 const ago = t => { if(!t) return "never"; const m = Math.round((Date.now() - t) / MIN); return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? Math.round(m / 60) + "h" : Math.round(m / 1440) + "d" };
-const prefs = (() => { try{ return Object.assign({on:{ac:1, sat:1, quake:1, fire:1, dis:1, rain:0, ship:0, cam:0}, look:"map", proj:"globe"}, JSON.parse(localStorage.getItem(PKEY) || "{}")) }catch(e){ return {on:{ac:1, sat:1, quake:1, fire:1, dis:1, rain:0}, look:"map", proj:"globe"} } })();
+const prefs = (() => { try{ return Object.assign({on:{ac:1, sat:1, quake:1, fire:1, dis:1, rain:0, ship:0, cam:0, conf:1, news:1, net:0, aq:0}, look:"map", proj:"globe"}, JSON.parse(localStorage.getItem(PKEY) || "{}")) }catch(e){ return {on:{ac:1, sat:1, quake:1, fire:1, dis:1, rain:0}, look:"map", proj:"globe"} } })();
+prefs.on.ship = 0;   // ships dropped in build 96 (AISStream refuses Cloudflare)
 const savePrefs = () => { try{ localStorage.setItem(PKEY, JSON.stringify(prefs)) }catch(e){} };
 
 /* ---------- feeds: saved copy first when fresh, network when stale, saved copy again when offline ---------- */
@@ -70,26 +72,29 @@ const ICO = {
   quake:'<path d="M2 12h4l2-5 3 10 3-8 2 3h6"/>', fire:'<path d="M12 3c1 4 5 5 5 10a5 5 0 01-10 0c0-3 2-4 2-7 1 1 2 2 3-3z"/>',
   dis:'<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>', rain:'<path d="M7 16a5 5 0 01-.5-9.9A6 6 0 0118 8a4 4 0 01-1 8"/><path d="M9 19l1-2M13 20l1-2"/>',
   ship:'<path d="M3 15h18M5 15l2 4h10l2-4M12 15V4l6 7h-6"/>', cam:'<rect x="3" y="7" width="13" height="10" rx="1"/><path d="M16 10l5-3v10l-5-3"/>',
-  feed:'<path d="M4 6h16M4 12h10M4 18h13"/>', search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>', recon:'<path d="M4 17l6-6-6-6M12 19h8"/>',
+  feed:'<path d="M4 6h16M4 12h10M4 18h13"/>', conf:'<path d="M12 2l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 9l6-1z"/>', news:'<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M7 9h10M7 13h6"/>',
+  net:'<path d="M2 9a15 15 0 0120 0M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0"/><path d="M3 3l18 18"/>', aq:'<path d="M3 8h11a3 3 0 10-3-3M3 12h15a3 3 0 11-3 3M3 16h7"/>',
+  mkt:'<path d="M3 20h18M6 16v-5M10 16V8M14 16v-7M18 16V5"/>', draw:'<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>', ai:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>', search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>', recon:'<path d="M4 17l6-6-6-6M12 19h8"/>',
   north:'<circle cx="12" cy="12" r="9"/><path d="M12 6l2.5 6L12 18l-2.5-6z"/>', loc:'<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   save:'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>', alert:'<path d="M12 3l9 16H3z"/><path d="M12 10v4"/>', x:'<path d="M6 6l12 12M18 6L6 18"/>', radar:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l6-6"/>'
 };
 const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
-const RAIL = [["ac", "Aircraft"], ["sat", "Satellites"], ["quake", "Earthquakes"], ["fire", "Fires"], ["dis", "Disasters and events"], ["rain", "Rain radar"], ["ship", "Ships"], ["cam", "Public cameras"]];
+const RAIL = [["ac", "Aircraft"], ["sat", "Satellites"], ["conf", "Conflict zones and front lines"], ["news", "News on the map and live TV"], ["quake", "Earthquakes"], ["fire", "Fires"], ["dis", "Disasters and events"],
+  ["net", "Internet outages"], ["aq", "Air quality"], ["rain", "Rain radar"], ["cam", "Public cameras"]];
 
 let S = null;   // the open screen's state
 export async function openOsint(){
   if(S) return; const css = document.getElementById("oscss");
-  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=95", import.meta.url).href; document.head.appendChild(l) }
+  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=96", import.meta.url).href; document.head.appendChild(l) }
   const el = document.createElement("div"); el.id = "osint"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "OSINT");
   el.innerHTML = `<div class="os-map"></div><div class="os-top"><div class="os-brand">${svg("radar")}<div><b>OSINT</b><small>PAY TRACKER · OPEN SOURCE INTEL</small></div>
     <button class="os-x" data-os="close" aria-label="Close OSINT">${svg("x")}</button></div>
     <div class="os-stat"><span>ZULU <i data-os-z></i></span><span>STATUS <em data-os-live></em></span><span>TRACKED <u data-os-n>0</u></span><span>SOLAR <em data-os-kp>Kp ?</em></span></div></div>
     <div class="os-rail">${RAIL.map(([k, l]) => `<button data-os-l="${k}" aria-label="${l}" aria-pressed="false">${svg(k)}<em hidden></em></button>`).join("")}
-    <hr><button data-os="feed" aria-label="Live feed">${svg("feed")}</button><button data-os="search" aria-label="Search">${svg("search")}</button><button data-os="recon" aria-label="Recon">${svg("recon")}</button></div>
+    <hr><button data-os="feed" aria-label="Live feed">${svg("feed")}</button><button data-os="search" aria-label="Search">${svg("search")}</button><button data-os="mkt" aria-label="Markets">${svg("mkt")}</button><button data-os="recon" aria-label="Recon">${svg("recon")}</button><button data-os="ai" aria-label="Assistant">${svg("ai")}</button></div>
     <div class="os-rr"><button data-os="north" aria-label="North up">${svg("north")}</button><button data-os="loc" aria-label="My location">${svg("loc")}</button>
-    <button data-os="save" aria-label="Save this area for offline">${svg("save")}</button><button data-os="alerts" aria-label="Space weather alerts" class="os-red">${svg("alert")}</button></div>
-    <div class="os-pills"><button data-os-p="globe">◎ 3D</button><button data-os-p="mercator">▢ 2D</button><button data-os-v="map">MAP</button><button data-os-v="sat">SAT</button></div>
+    <button data-os="save" aria-label="Save this area for offline">${svg("save")}</button><button data-os="draw" aria-label="Draw and measure an area">${svg("draw")}</button><button data-os="alerts" aria-label="Space weather alerts" class="os-red">${svg("alert")}</button></div>
+    <div class="os-pills"><button data-os-p="globe">◎ 3D</button><button data-os-p="mercator">▢ 2D</button><button data-os-v="map">MAP</button><button data-os-v="sat">SAT</button><button data-os-v="s2">S2</button></div>
     <div class="os-card" hidden></div><div class="os-panel" hidden></div><div class="os-toast" hidden></div>
     <div class="os-tick"><div class="os-tickin"></div></div>`;
   document.body.appendChild(el); document.documentElement.classList.add("sheet-open");
@@ -118,12 +123,15 @@ async function loadAll(force){
   if(!S) return;
   const ks = ["quakes", "disasters", "events", "fires", "kp", "flares", "alerts", "tle", "stations"];
   if(prefs.on.rain) ks.push("rain");
+  if(prefs.on.news) ks.push("news", "gdelt"); if(prefs.on.net) ks.push("outages"); if(prefs.on.conf) ks.push("front");
   await Promise.all(ks.map(async k => { const r = await getFeed(k, force); if(!S) return; S.at[k] = r.at; S.live = S.live || {}; S.live[k] = r.live;
     if(k === "tle" || k === "stations"){ S.data[k] = P.tle(r.data) } else if(P[k]) S.data[k] = P[k](r.data); else S.data[k] = r.data }));
   if(!S) return;
   S.mil = S.data.mil || [];
   if(navigator.onLine !== false && (!S.milAt || Date.now() - S.milAt > MIN)) for(const u of ["https://api.adsb.lol/v2/mil", "https://api.airplanes.live/v2/mil", "https://opendata.adsb.fi/api/v2/mil"]){
     try{ const r = await fetch(u, {signal:AbortSignal.timeout(9000)}); if(!r.ok) continue; const m = P.mil(await r.json()); if(m.length && S){ S.mil = m; S.milAt = Date.now(); break } }catch(e){} }
+  if(!S.static){ try{ const [d, g] = await Promise.all([fetch(new URL("./osintdata.json?b=96", import.meta.url)).then(r => r.json()), fetch(new URL("./gazetteer.json?b=96", import.meta.url)).then(r => r.json())]); if(!S) return; S.static = d; S.gaz = g }catch(e){ S.static = {zones:[], news:[]}; S.gaz = [] } }
+  buildPlaces(); if(prefs.on.aq) loadAQ();
   buildSats(); paintData(); paintStatus(); paintTicker();
   if(!S.acAt) loadAircraft();
 }
@@ -185,11 +193,33 @@ async function loadShips(){
 function paintShips(){ if(!S) return; setSrc("os-ship", prefs.on.ship ? (S.ships || []).map(x => pt(x, {id:String(x.id), cog:x.hdg != null && x.hdg < 360 ? x.hdg : x.cog || 0, cls:shipCls(x.type)})) : []); paintRail() }
 /* public cameras: the list ships with the app (cameras.json, from OSIRIS's public camera lists), so it works offline */
 async function loadCams(){
-  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=95", import.meta.url)); const a = await r.json(); if(!S) return;
+  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=96", import.meta.url)); const a = await r.json(); if(!S) return;
     S.cams = a.map(c => ({k:"cam", lat:c[0], lon:c[1], name:c[2], city:c[3], ctry:c[4], img:c[5], stream:c[6], st:c[7], ext:c[8], src:c[9]})) }catch(e){ S.cams = [] } }
   setSrc("os-cam", prefs.on.cam ? S.cams.map((c, i) => pt(c, {i})) : []); paintRail();
 }
 const camImg = u => u.startsWith("P") ? RELAY + "/img?url=" + encodeURIComponent(u.slice(1)) : u;
+
+/* news on the map: headlines pinned by the first place they name (country, capital or a few well-known names) */
+function placeOf(t){ if(!t || !S.gaz) return null; for(const g of S.gaz){ const n = g[0], re = n.length <= 3 ? new RegExp("\\b" + n + "\\b") : new RegExp("\\b" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i"); if(re.test(t)) return g } return null }
+function buildPlaces(){
+  const items = [...(S.data.news || []).map(n => ({title:n.title, link:n.link, t:n.t, src:n.src})),
+    ...((S.data.gdelt || {}).articles || []).map(a => ({title:a.title, link:a.url, t:Date.parse(String(a.seendate || "").replace(/(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z/, "$1-$2-$3T$4:$5:$6Z")) || 0, src:a.domain || "GDELT"}))];
+  const by = new Map(); for(const i of items){ const g = placeOf(i.title); if(!g) continue; const k = g[1] + g[0]; if(!by.has(k)) by.set(k, {k:"place", id:"p" + k, name:g[0], iso:g[1], lat:g[2], lon:g[3], items:[]}); by.get(k).items.push(i) }
+  S.places = [...by.values()].map(p => (p.items.sort((a, b) => b.t - a.t), p));
+  const out = ((S.data.outages || {}).data || []).map((e, n) => { const code = String(e.location || (e.entity || {}).code || "").split("/").pop().toUpperCase(), g = (S.gaz || []).find(x => x[1] === code);
+    return g ? {k:"outage", id:"o" + n, name:e.location_name || (e.entity || {}).name || g[0], lat:g[2] + (n % 5) * .3, lon:g[3] + (n % 3) * .3, start:(e.start || 0) * 1000, dur:e.duration, score:e.score, src:e.datasource} : null }).filter(Boolean);
+  S.outs = out;
+}
+/* air quality: current US AQI and PM2.5 for capitals and big cities (Open-Meteo, asked by the phone) */
+async function loadAQ(){
+  if(!S || !S.gaz || navigator.onLine === false) return; if(S.aq && Date.now() - S.aqAt < 30 * MIN) return paintData();
+  const cities = S.gaz.filter(g => /^(Delhi|Mumbai|Beijing|Tokyo|Seoul|Bangkok|Jakarta|Manila|Hanoi|Dhaka|Karachi|Islamabad|Kathmandu|Colombo|Tehran|Riyadh|Dubai|Doha|Cairo|Lagos|Nairobi|Johannesburg|Istanbul|Moscow|Kyiv|Berlin|Paris|London|Brussels|New York|Washington|Mexico City|Brasilia|Buenos Aires|Sydney|Ottawa|Singapore|Hong Kong|Taipei|Kabul|Baghdad|Ankara)$/.test(g[0]));
+  try{ const u = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${cities.map(c => c[2]).join(",")}&longitude=${cities.map(c => c[3]).join(",")}&current=us_aqi,pm2_5`;
+    const j = await (await fetch(u, {signal:AbortSignal.timeout(10000)})).json(), arr = Array.isArray(j) ? j : [j];
+    S.aq = arr.map((r, i) => r && r.current ? {k:"aq", id:"a" + i, name:cities[i][0], lat:cities[i][2], lon:cities[i][3], aqi:r.current.us_aqi, pm:r.current.pm2_5, t:Date.parse(r.current.time + "Z") || Date.now()} : null).filter(Boolean); S.aqAt = Date.now() }catch(e){}
+  paintData();
+}
+const aqCol = a => a <= 50 ? "#00E676" : a <= 100 ? "#FFD700" : a <= 150 ? "#FF9500" : a <= 200 ? "#FF3D3D" : "#B388FF";
 
 /* satellites: positions from saved orbits, so they keep moving offline */
 function buildSats(){
@@ -213,7 +243,7 @@ function orbitOf(s){ const out = [], d0 = Date.now(); let seg = [];
 
 /* ---------- map ---------- */
 async function startMap(){
-  const B = await import("./brief.js?b=95"), ml = await B.loadLib();
+  const B = await import("./brief.js?b=96"), ml = await B.loadLib();
   if(!window.satellite) await new Promise(res => { const s = document.createElement("script"); s.src = new URL("./vendor/satellite/satellite.min.js", import.meta.url).href; s.onload = res; s.onerror = res; document.head.appendChild(s) });
   if(!S) return; buildSats();
   let style;
@@ -224,7 +254,8 @@ async function startMap(){
     toast("Offline: coastlines only here. Save an area with signal for the full map") }
   style.projection = {type:prefs.proj};
   style.sources.os_sat = {type:"raster", tiles:["ptc://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize:256, maxzoom:17, attribution:"Imagery Esri"};
-  style.layers.splice(1, 0, {id:"os-satimg", type:"raster", source:"os_sat", layout:{visibility:prefs.look === "sat" ? "visible" : "none"}});
+  style.sources.os_s2 = {type:"raster", tiles:["ptc://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/{z}/{y}/{x}.jpg"], tileSize:256, maxzoom:15, attribution:"Sentinel-2 cloudless by EOX (CC BY-NC-SA 4.0), contains Copernicus data"};
+  style.layers.splice(1, 0, {id:"os-satimg", type:"raster", source:"os_sat", layout:{visibility:prefs.look === "sat" ? "visible" : "none"}}, {id:"os-s2img", type:"raster", source:"os_s2", layout:{visibility:prefs.look === "s2" ? "visible" : "none"}});
   const map = new ml.Map({container:S.el.querySelector(".os-map"), style, center:[80, 20], zoom:3.4, pitch:0, attributionControl:{compact:true}, maxPitch:70});
   S.map = map;
   await new Promise(r => map.once("load", r)); if(!S) return;
@@ -233,7 +264,7 @@ async function startMap(){
   paintData(); paintAircraft(); moveSats(); loadAircraft();
   map.on("moveend", () => { clearTimeout(S && S.mv); if(S) S.mv = setTimeout(() => { loadAircraft(); loadShips() }, 600) });
   loadCams(); loadShips();
-  map.on("click", e => { const f = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], {layers:["os-ac", "os-ship", "os-cam", "os-sat", "os-quake", "os-gdacs", "os-eonet", "os-fire"].filter(l => map.getLayer(l))})[0];
+  map.on("click", e => { if(S.draw){ S.draw.pts.push([e.lngLat.lng, e.lngLat.lat]); paintDraw(); return } const f = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], {layers:["os-ac", "os-ship", "os-tv", "os-cam", "os-sat", "os-place", "os-out", "os-aq", "os-quake", "os-gdacs", "os-eonet", "os-zone", "os-fire"].filter(l => map.getLayer(l))})[0];
     if(!f){ select(null); return } select(pick(f)) });
   map.on("dragstart", () => { if(S && S.follow){ S.follow = false; paintCard(); toast("Tracking stopped") } });
   window.__os = {map, S, select, getFeed};   // for the tests
@@ -247,7 +278,12 @@ function addImages(map){
 }
 function addLayers(map){
   const src = id => map.addSource(id, {type:"geojson", data:fc([])});
-  ["os-fire", "os-quake", "os-gdacs", "os-eonet", "os-cam", "os-ship", "os-orbit", "os-sat", "os-ac", "os-selp"].forEach(src);
+  ["os-front", "os-zone", "os-fire", "os-quake", "os-gdacs", "os-eonet", "os-out", "os-aq", "os-place", "os-tv", "os-cam", "os-ship", "os-draw", "os-orbit", "os-sat", "os-ac", "os-selp"].forEach(src);
+  map.addLayer({id:"os-front-f", type:"fill", source:"os-front", filter:["==", ["geometry-type"], "Polygon"], paint:{"fill-color":"#FF3D3D", "fill-opacity":.16}});
+  map.addLayer({id:"os-front-l", type:"line", source:"os-front", filter:["==", ["geometry-type"], "Polygon"], paint:{"line-color":"#FF3D3D", "line-width":1, "line-opacity":.6}});
+  map.addLayer({id:"os-zone", type:"circle", source:"os-zone", paint:{"circle-radius":["interpolate", ["linear"], ["zoom"], 2, ["match", ["get", "sev"], "war", 16, "high", 12, 9], 6, ["match", ["get", "sev"], "war", 60, "high", 44, 32]],
+    "circle-color":["match", ["get", "sev"], "war", "#FF3D3D", "high", "#FF9500", "#FFD700"], "circle-opacity":.12, "circle-stroke-width":1.2, "circle-stroke-color":["match", ["get", "sev"], "war", "#FF3D3D", "high", "#FF9500", "#FFD700"]}});
+  map.addLayer({id:"os-zone-l", type:"symbol", source:"os-zone", layout:{"text-field":["get", "label"], "text-size":9.5, "text-font":["Noto Sans Regular"], "text-letter-spacing":.12, "text-offset":[0, 1.6]}, paint:{"text-color":"#FF8A80", "text-halo-color":"#04040A", "text-halo-width":1.2}});
   map.addLayer({id:"os-fire", type:"circle", source:"os-fire", paint:{"circle-radius":["interpolate", ["linear"], ["zoom"], 2, 1.2, 8, 3.5], "circle-color":["case", [">", ["get", "frp"], 50], "#FF3D3D", "#FF7A2F"], "circle-opacity":.85}});
   map.addLayer({id:"os-quake-r", type:"circle", source:"os-quake", paint:{"circle-radius":["*", ["get", "mag"], 3.2], "circle-color":"transparent", "circle-stroke-color":"#FF9500", "circle-stroke-width":1, "circle-stroke-opacity":.6}});
   map.addLayer({id:"os-quake", type:"circle", source:"os-quake", paint:{"circle-radius":["*", ["get", "mag"], 1.5], "circle-color":"rgba(255,149,0,.35)", "circle-stroke-color":"#FF9500", "circle-stroke-width":1.2}});
@@ -257,6 +293,15 @@ function addLayers(map){
   map.addLayer({id:"os-cam", type:"circle", source:"os-cam", paint:{"circle-radius":4, "circle-color":"#04040A", "circle-stroke-color":"#00E676", "circle-stroke-width":1.6}});
   map.addLayer({id:"os-ship", type:"symbol", source:"os-ship", layout:{"icon-image":"os-ship", "icon-size":["interpolate", ["linear"], ["zoom"], 4, .45, 10, .8], "icon-rotate":["get", "cog"], "icon-rotation-alignment":"map", "icon-allow-overlap":true},
     paint:{"icon-color":["match", ["get", "cls"], "cargo", "#7CFC9A", "tanker", "#FF6B6B", "pass", "#448AFF", "fish", "#FFD700", "#9FB0C4"]}});
+  map.addLayer({id:"os-out", type:"circle", source:"os-out", paint:{"circle-radius":7, "circle-color":"rgba(255,215,0,.15)", "circle-stroke-color":"#FFD700", "circle-stroke-width":1.5}});
+  map.addLayer({id:"os-aq", type:"circle", source:"os-aq", paint:{"circle-radius":6, "circle-color":["get", "col"], "circle-opacity":.8, "circle-stroke-color":"#04040A", "circle-stroke-width":1}});
+  map.addLayer({id:"os-aq-l", type:"symbol", source:"os-aq", layout:{"text-field":["to-string", ["get", "aqi"]], "text-size":9, "text-font":["Noto Sans Regular"], "text-offset":[0, 1.3]}, paint:{"text-color":["get", "col"], "text-halo-color":"#04040A", "text-halo-width":1}});
+  map.addLayer({id:"os-place", type:"circle", source:"os-place", paint:{"circle-radius":["interpolate", ["linear"], ["get", "n"], 1, 5, 10, 12], "circle-color":"rgba(255,64,129,.25)", "circle-stroke-color":"#FF4081", "circle-stroke-width":1.4}});
+  map.addLayer({id:"os-place-l", type:"symbol", source:"os-place", layout:{"text-field":["to-string", ["get", "n"]], "text-size":9, "text-font":["Noto Sans Regular"], "text-allow-overlap":true}, paint:{"text-color":"#FFD1E0"}});
+  map.addLayer({id:"os-tv", type:"circle", source:"os-tv", paint:{"circle-radius":5, "circle-color":"#04040A", "circle-stroke-color":"#ffffff", "circle-stroke-width":1.6}});
+  map.addLayer({id:"os-draw-f", type:"fill", source:"os-draw", filter:["==", ["geometry-type"], "Polygon"], paint:{"fill-color":"#D4AF37", "fill-opacity":.12}});
+  map.addLayer({id:"os-draw-l", type:"line", source:"os-draw", filter:["!=", ["geometry-type"], "Point"], paint:{"line-color":"#D4AF37", "line-width":1.6, "line-dasharray":[2, 1]}});
+  map.addLayer({id:"os-draw-p", type:"circle", source:"os-draw", filter:["==", ["geometry-type"], "Point"], paint:{"circle-radius":4, "circle-color":"#D4AF37"}});
   map.addLayer({id:"os-orbit", type:"line", source:"os-orbit", paint:{"line-color":"#00E676", "line-width":1, "line-dasharray":[2, 3], "line-opacity":.7}});
   map.addLayer({id:"os-sat", type:"circle", source:"os-sat", paint:{"circle-radius":["case", ["==", ["get", "iss"], 1], 5, 2.6], "circle-color":"#00E676", "circle-stroke-color":"#04040A", "circle-stroke-width":.8}});
   map.addLayer({id:"os-sat-l", type:"symbol", source:"os-sat", filter:["==", ["get", "iss"], 1], layout:{"text-field":["get", "name"], "text-size":10, "text-offset":[0, 1.2], "text-font":["Noto Sans Regular"]}, paint:{"text-color":"#00E676", "text-halo-color":"#04040A", "text-halo-width":1}});
@@ -274,6 +319,11 @@ async function addRain(){
 }
 function pick(f){ const p = f.properties, L = f.layer.id;
   if(L === "os-ac") return [...S.ac, ...S.mil].find(a => a.id === p.id) || null;
+  if(L === "os-place") return (S.places || []).find(x => x.id === p.id) || null;
+  if(L === "os-out") return (S.outs || []).find(x => x.id === p.id) || null;
+  if(L === "os-aq") return (S.aq || []).find(x => x.id === p.id) || null;
+  if(L === "os-zone") return ((S.static || {}).zones || []).map(z => ({k:"zone", ...z})).find(x => x.id === p.id) || null;
+  if(L === "os-tv") return ((S.static || {}).news || []).map((z, i) => ({k:"tv", id:"tv" + i, ...z}))[p.i] || null;
   if(L === "os-ship") return (S.ships || []).find(a => String(a.id) === String(p.id)) || null;
   if(L === "os-cam") return (S.cams || [])[p.i] || null;
   if(L === "os-sat"){ const s = S.sats.find(x => x.id === p.id); return s ? {k:"sat", id:s.id, s} : null }
@@ -291,6 +341,13 @@ function paintData(){
   setSrc("os-fire", on.fire ? (S.data.fires || []).map(q => pt(q, {id:q.id, frp:q.frp})) : []);
   setSrc("os-gdacs", on.dis ? (S.data.disasters || []).map(q => pt(q, {id:q.id, level:q.level})) : []);
   setSrc("os-eonet", on.dis ? (S.data.events || []).map(q => pt(q, {id:q.id})) : []);
+  const st = S.static || {zones:[], news:[]}, fr = S.data.front, frf = fr && ((fr.map && fr.map.features) || fr.features) || [];
+  setSrc("os-zone", on.conf ? st.zones.map(z => pt(z, {id:z.id, sev:z.sev, label:z.label})) : []);
+  setSrc("os-front", on.conf ? frf.filter(f => f.geometry && /Polygon/.test(f.geometry.type)).map(f => ({type:"Feature", geometry:f.geometry.type === "MultiPolygon" ? f.geometry : f.geometry, properties:{}})) : []);
+  setSrc("os-place", on.news ? (S.places || []).map(p => pt(p, {id:p.id, n:p.items.length})) : []);
+  setSrc("os-tv", on.news ? st.news.map((n, i) => pt(n, {i})) : []);
+  setSrc("os-out", on.net ? (S.outs || []).map(o => pt(o, {id:o.id})) : []);
+  setSrc("os-aq", on.aq ? (S.aq || []).map(a => pt(a, {id:a.id, aqi:Math.round(a.aqi || 0), col:aqCol(a.aqi || 0)})) : []);
   paintRail(); paintStatus();
 }
 function paintAircraft(tick){
@@ -303,7 +360,7 @@ function paintAircraft(tick){
     if(!tick || Date.now() % 5000 < 1000) paintCard() }
   if(tick) return; paintRail(); paintStatus();
 }
-function counts(){ return {ship:(S.ships || []).length, cam:(S.cams || []).length, ac:S.acShown || 0, sat:S.sats.length, quake:(S.data.quakes || []).length, fire:(S.data.fires || []).length, dis:(S.data.disasters || []).length + (S.data.events || []).length} }
+function counts(){ return {conf:((S.static || {}).zones || []).length, news:(S.places || []).length, net:(S.outs || []).length, aq:(S.aq || []).length, ship:(S.ships || []).length, cam:(S.cams || []).length, ac:S.acShown || 0, sat:S.sats.length, quake:(S.data.quakes || []).length, fire:(S.data.fires || []).length, dis:(S.data.disasters || []).length + (S.data.events || []).length} }
 const short = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n);
 function paintRail(){
   if(!S) return; const c = counts();
@@ -325,6 +382,8 @@ function feedItems(){
   for(const g of S.data.disasters || []) it.push({t:g.t, tag:"GDACS", c:g.level === "Red" ? "#FF3D3D" : g.level === "Orange" ? "#FF9500" : "#00E676", txt:g.title, o:g});
   for(const e of S.data.events || []) it.push({t:e.t, tag:"EONET", c:"#E040FB", txt:e.title, o:e});
   for(const a of S.data.alerts || []) it.push({t:Date.parse(a.issue_datetime + "Z") || 0, tag:"SPACE", c:"#B388FF", txt:String(a.message || "").split("\n").find(l => /^(ALERT|WARNING|WATCH|SUMMARY)/.test(l)) || "Space weather notice"});
+  for(const p of S.places || []) for(const i of p.items.slice(0, 3)) it.push({t:i.t, tag:"NEWS", c:"#FF4081", txt:`${p.name}: ${i.title}`, o:p});
+  for(const o of S.outs || []) it.push({t:o.start, tag:"NET", c:"#FFD700", txt:`Internet outage, ${o.name}`, o});
   for(const a of [...S.ac, ...S.mil]) if(/^7[567]00$/.test(a.sq || "")) it.push({t:S.acAt, tag:"SQK " + a.sq, c:"#FFD700", txt:`${a.cs || a.hex} squawking ${a.sq}`, o:a});
   return it.filter(i => i.t).sort((a, b) => b.t - a.t);
 }
@@ -365,10 +424,21 @@ function paintCard(){
     acts = `<span>DASHED LINE: NEXT 95 MIN</span>` }
   else if(o.k === "ship"){ ico = "ship"; head = `AIS · MMSI ${o.id} · ${ll(o.lat, o.lon)}`; title = o.name || "MMSI " + o.id; sub = [SHIPT[shipCls(o.type)], o.call].filter(Boolean).join(" · ");
     grid = [["SOG", o.sog != null ? o.sog.toFixed(1) + "kt" : "—"], ["COG", o.cog != null ? Math.round(o.cog) + "°" : "—"], ["DEST", o.dest || "—"], ["SEEN", ago(Date.parse(o.t) || S.shipAt)]] }
+  else if(o.k === "zone"){ ico = "conf"; head = `CONFLICT · ${String(o.sev).toUpperCase()} · ${ll(o.lat, o.lon)}`; title = o.label; sub = "Editorial rating (OSIRIS list)";
+    const rel = (S.places || []).filter(p => (o.label + " " + o.desc).toUpperCase().includes(p.name.toUpperCase())).flatMap(p => p.items).slice(0, 4);
+    S.camHtml = `<p class="os-txt">${esc(o.desc)}</p>` + rel.map(i => `<a class="os-hl" href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)} <i>${esc(i.src)} · ${ago(i.t)}</i></a>`).join("") }
+  else if(o.k === "place"){ ico = "news"; head = `NEWS · ${o.items.length} HEADLINES · ${ll(o.lat, o.lon)}`; title = o.name.toUpperCase(); sub = "Pinned by the place named in the headline";
+    S.camHtml = o.items.slice(0, 8).map(i => `<a class="os-hl" href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)} <i>${esc(i.src)} · ${ago(i.t)}</i></a>`).join("") }
+  else if(o.k === "tv"){ ico = "news"; head = `LIVE TV · ${ll(o.lat, o.lon)}`; title = o.name; sub = [o.city, o.ctry].filter(Boolean).join(", "); link = o.url;
+    const ch = (o.url.match(/channel[=\/]([A-Za-z0-9_-]+)/) || [])[1];
+    S.camHtml = navigator.onLine === false ? `<p class="os-empty">Live TV needs signal</p>` : o.embed && ch ? `<iframe class="os-vid" src="https://www.youtube.com/embed/live_stream?channel=${esc(ch)}&mute=1&autoplay=1&playsinline=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>` : `<p class="os-empty">This channel only plays on YouTube. Tap SOURCE.</p>` }
+  else if(o.k === "outage"){ ico = "net"; head = `IODA · INTERNET OUTAGE`; title = o.name; sub = "Detected by " + (o.src || "IODA"); grid = [["START", o.start ? zulu(o.start).slice(0, 5) + "Z" : "—"], ["AGO", ago(o.start)], ["LENGTH", o.dur ? Math.round(o.dur / 60) + "min" : "ongoing"], ["SCORE", o.score ? Math.round(o.score).toLocaleString() : "—"]] }
+  else if(o.k === "aq"){ ico = "aq"; head = `AIR QUALITY · OPEN-METEO · ${ll(o.lat, o.lon)}`; title = o.name.toUpperCase(); sub = o.aqi <= 50 ? "Good" : o.aqi <= 100 ? "Moderate" : o.aqi <= 150 ? "Unhealthy for sensitive groups" : o.aqi <= 200 ? "Unhealthy" : "Very unhealthy";
+    grid = [["US AQI", Math.round(o.aqi)], ["PM2.5", o.pm != null ? o.pm.toFixed(0) + "µg" : "—"], ["AT", zulu(o.t).slice(0, 5) + "Z"], ["AGO", ago(o.t)]] }
   else if(o.k === "cam"){ ico = "cam"; head = `${o.src || "PUBLIC CAMERA"} · ${ll(o.lat, o.lon)}`; title = o.name; sub = [o.city, o.ctry].filter(Boolean).join(", "); link = o.ext;
     const off = navigator.onLine === false;
     S.camHtml = off ? `<p class="os-empty">Camera pictures need signal</p>` : o.stream && (o.st === "hls" || o.st === "mp4") ? `<video class="os-vid" src="${esc(o.stream)}" playsinline muted autoplay controls></video>`
-      : o.stream && o.st === "iframe" ? `<iframe class="os-vid" src="${esc(o.stream)}" allow="autoplay" loading="lazy"></iframe>` : o.img ? `<img class="os-vid" src="${esc(camImg(o.img))}&t=${Date.now()}" alt="${esc(o.name)}">` : `<p class="os-empty">This camera opens on its own site</p>` }
+      : o.stream && o.st === "iframe" ? `<iframe class="os-vid" src="${esc(o.stream)}" allow="autoplay" loading="lazy"></iframe>` : o.img ? `<img class="os-vid" src="${esc(camImg(o.img))}&t=${Date.now()}" alt="" onerror="this.outerHTML='<p class=os-empty>Picture unavailable right now. Tap SOURCE to open the camera on its site.</p>'">` : `<p class="os-empty">This camera opens on its own site</p>` }
   else if(o.k === "quake"){ ico = "quake"; head = `USGS · ${ll(o.lat, o.lon)}`; title = "M" + (o.mag || 0).toFixed(1) + " EARTHQUAKE"; sub = o.place || ""; grid = [["DEPTH", Math.round(o.dep || 0) + "km"], ["TIME", zulu(o.t).slice(0, 5) + "Z"], ["AGO", ago(o.t)], ["MAG", (o.mag || 0).toFixed(1)]]; link = o.url }
   else if(o.k === "fire"){ ico = "fire"; head = `NASA FIRMS · ${ll(o.lat, o.lon)}`; title = "ACTIVE FIRE"; sub = "Satellite hotspot"; grid = [["FRP", Math.round(o.frp) + "MW"], ["CONF", esc(o.conf || "—")], ["SEEN", o.t ? zulu(o.t).slice(0, 5) + "Z" : "—"], ["AGO", ago(o.t)]] }
   else if(o.k === "gdacs"){ ico = "dis"; head = `GDACS · ${o.level || ""} ALERT`; title = o.title; sub = o.country || ""; grid = [["TYPE", o.type || "—"], ["LEVEL", o.level || "—"], ["FROM", o.t ? new Date(o.t).toISOString().slice(5, 10) : "—"], ["AGO", ago(o.t)]]; link = o.url }
@@ -376,13 +446,13 @@ function paintCard(){
   const route = o.k === "ac" && (o.from || o.to) ? `<div class="os-route"><span>${esc(o.from || "?")}</span><div class="os-ln"></div><span>${esc(o.to || "?")}</span></div>` : "";
   c.innerHTML = `<div class="os-ch"><span>${esc(head)}</span><span>${zulu(Date.now()).slice(0, 5)}Z · ${navigator.onLine === false ? "OFFLINE" : "LIVE"}</span></div>
     <div class="os-ct"><div class="os-ic">${svg(ico)}</div><div><b>${esc(title)}</b><small>${esc(sub)}</small></div><button class="os-cx" data-os="unsel" aria-label="Close card">${svg("x")}</button></div>${route}
-    ${o.k === "cam" ? S.camHtml : ""}<div class="os-grid"${grid.length ? "" : " hidden"}>${grid.map(([a, b]) => `<div><small>${esc(a)}</small><b>${esc(b)}</b></div>`).join("")}</div>
+    ${/^(cam|zone|place|tv)$/.test(o.k) ? S.camHtml : ""}<div class="os-grid"${grid.length ? "" : " hidden"}>${grid.map(([a, b]) => `<div><small>${esc(a)}</small><b>${esc(b)}</b></div>`).join("")}</div>
     <div class="os-acts">${acts}${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">SOURCE</a>` : ""}</div>`;
-  c.hidden = false;
+  c.hidden = false; c.querySelectorAll(".os-grid:not([hidden])").forEach(g => { if(!g.textContent.trim()) g.hidden = true });
 }
 
 /* ---------- panels: feed, search, recon, alerts ---------- */
-function panel(html){ const p = S.el.querySelector(".os-panel"); if(html == null){ p.hidden = true; return } p.innerHTML = `<div class="os-ph"><b></b><button data-os="pclose" aria-label="Close">${svg("x")}</button></div>` + html; p.hidden = false }
+function panel(html){ const p = S.el.querySelector(".os-panel"); p.classList.remove("os-low"); if(html == null){ p.hidden = true; return } p.innerHTML = `<div class="os-ph"><b></b><button data-os="pclose" aria-label="Close">${svg("x")}</button></div>` + html; p.hidden = false }
 function showFeed(){
   const it = feedItems().slice(0, 80), age = Math.max(...["quakes", "disasters", "events"].map(k => S.at[k] || 0));
   panel(`<div class="os-pt">LIVE FEED · UPDATED ${ago(age).toUpperCase()}${navigator.onLine === false ? " · OFFLINE" : ""}</div>` + (it.length ? it.map((i, n) => `<button class="os-row" data-os-i="${n}"><b style="color:${i.c}">${esc(i.tag)}</b><span>${esc(i.txt)}</span><i>${ago(i.t)}</i></button>`).join("") : `<p class="os-empty">Nothing saved yet. Open OSINT once with signal.</p>`));
@@ -460,10 +530,51 @@ export async function runQueue(){
   const done = lsGet(RKEY, []); for(const x of q) done.unshift({...x, out:await recon(x.t, x.v), at:Date.now()}); lsSet(RKEY, done.slice(0, 20));
 }
 
+/* ---------- markets (figures only) ---------- */
+async function showMarkets(){
+  const r = await getFeed("markets"), rows = Array.isArray(r.data) ? r.data : [];
+  panel(`<div class="os-pt">MARKETS · ${r.at ? "UPDATED " + ago(r.at).toUpperCase() : "NOT LOADED"}${navigator.onLine === false ? " · OFFLINE" : ""}</div>` + (rows.length ? `<div class="os-mk">${rows.map(m => `<div><span>${esc(m.n)}</span><b>${Number(m.p).toLocaleString("en-IN", {maximumFractionDigits:m.p < 100 ? 2 : 0})}</b><i class="${m.ch >= 0 ? "up" : "dn"}">${m.ch == null ? "" : (m.ch >= 0 ? "▲" : "▼") + Math.abs(m.ch).toFixed(2) + "%"}</i></div>`).join("")}</div><p class="os-empty">Last price against the previous close. Figures only, not advice.</p>` : `<p class="os-empty">Markets unavailable${navigator.onLine === false ? " offline until loaded once" : ""}.</p>`));
+}
+
+/* ---------- draw and measure: tap points; line length and area; export as GeoJSON ---------- */
+const hav = (a, b) => { const R = 6371, d = x => x * Math.PI / 180, dl = d(b[1] - a[1]), dn = d(b[0] - a[0]), h = Math.sin(dl / 2) ** 2 + Math.cos(d(a[1])) * Math.cos(d(b[1])) * Math.sin(dn / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)) };
+function areaKm2(p){ if(p.length < 3) return 0; const R = 6371, d = x => x * Math.PI / 180; let s = 0; for(let i = 0; i < p.length; i++){ const a = p[i], b = p[(i + 1) % p.length]; s += d(b[0] - a[0]) * (2 + Math.sin(d(a[1])) + Math.sin(d(b[1]))) } return Math.abs(s * R * R / 2) }
+function drawGeo(){ const p = S.draw.pts, f = p.map(c => ({type:"Feature", geometry:{type:"Point", coordinates:c}, properties:{}}));
+  if(p.length >= 3) f.push({type:"Feature", geometry:{type:"Polygon", coordinates:[[...p, p[0]]]}, properties:{area_km2:+areaKm2(p).toFixed(1)}}); else if(p.length === 2) f.push({type:"Feature", geometry:{type:"LineString", coordinates:p}, properties:{}}); return f }
+function paintDraw(){ if(!S.draw){ setSrc("os-draw", []); return } setSrc("os-draw", drawGeo()); const p = S.draw.pts; let len = 0; for(let i = 1; i < p.length; i++) len += hav(p[i - 1], p[i]);
+  panel(`<div class="os-pt">DRAW AND MEASURE · TAP THE MAP TO ADD POINTS</div><div class="os-kv"><span>POINTS <b>${p.length}</b></span><span>LENGTH <b>${(len / 1.852).toFixed(1)} NM</b> (${len.toFixed(1)} km)</span></div>
+    ${p.length >= 3 ? `<div class="os-kv"><span>AREA <b>${areaKm2(p).toFixed(1)} km²</b></span><span>CLOSED <b>${((len + hav(p[p.length - 1], p[0])) / 1.852).toFixed(1)} NM</b></span></div>` : ""}
+    <div class="os-tools"><button data-os="dundo">UNDO</button><button data-os="dclear">CLEAR</button><button data-os="dexp">EXPORT GEOJSON</button><button data-os="dend">DONE</button></div>`);
+  S.el.querySelector(".os-panel").classList.add("os-low") }
+async function exportDraw(){ const txt = JSON.stringify({type:"FeatureCollection", features:drawGeo()}, null, 1), f = new File([txt], "osint-area.geojson", {type:"application/geo+json"});
+  try{ if(navigator.canShare && navigator.canShare({files:[f]})){ await navigator.share({files:[f], title:"OSINT area"}); return } }catch(e){}
+  const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000) }
+
+/* ---------- assistant: my own Claude API key, kept only on this phone; it sees what the screen has loaded ---------- */
+const AIKEY = "pt.osint.ai";
+function showAI(){
+  const k = localStorage.getItem(AIKEY);
+  panel(`<div class="os-pt">ASSISTANT · ASKS CLAUDE ABOUT WHAT IS ON SCREEN</div>` + (k ? `<div class="os-rq"><input class="os-in" placeholder="What stands out right now?" autocomplete="off"><button data-os="aigo">ASK</button></div><div class="os-out"></div><div class="os-tools"><button data-os="aikey">FORGET KEY</button></div>`
+    : `<p class="os-empty">Paste your Claude API key (from console.anthropic.com). It stays on this phone only and is sent only to Anthropic with your questions.</p><div class="os-rq"><input class="os-in" type="password" placeholder="sk-ant-..." autocomplete="off"><button data-os="aisave">SAVE</button></div>`));
+}
+function context(){
+  const c = counts(), it = feedItems().slice(0, 40).map(i => `${new Date(i.t).toISOString().slice(0, 16)}Z ${i.tag}: ${i.txt}`), z = ((S.static || {}).zones || []).map(z => `${z.label} (${z.sev})`).join("; "), kp = kpNow();
+  return `Time ${new Date().toISOString().slice(0, 16)}Z. Map centre ${S.map ? S.map.getCenter().lat.toFixed(1) + "," + S.map.getCenter().lng.toFixed(1) : "?"}. Loaded: ${c.ac} aircraft (${S.mil.length} military), ${c.sat} satellites, ${c.quake} quakes, ${c.fire} fire hotspots, ${c.dis} disasters/events, ${c.net} internet outages. Kp ${kp == null ? "?" : kp}.\nConflict zones: ${z}\nLatest items:\n${it.join("\n")}${S.sel ? "\nSelected: " + JSON.stringify(S.sel).slice(0, 600) : ""}`;
+}
+async function askAI(){
+  const i = S.el.querySelector(".os-rq input"), q = i.value.trim(), out = S.el.querySelector(".os-out"); if(!q) return;
+  if(navigator.onLine === false){ out.innerHTML = `<p class="os-empty">The assistant needs signal</p>`; return }
+  out.innerHTML = `<p class="os-empty">Thinking…</p>`;
+  try{ const r = await fetch("https://api.anthropic.com/v1/messages", {method:"POST", headers:{"content-type":"application/json", "x-api-key":localStorage.getItem(AIKEY), "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-sonnet-5-5", max_tokens:900, system:"You are an OSINT analyst inside a pilot's dashboard. Answer briefly and plainly from the data given; say when the data does not cover something. No em dashes.", messages:[{role:"user", content:context() + "\n\nQuestion: " + q}]})});
+    const j = await r.json(); if(!S) return; out.innerHTML = `<pre class="os-pre">${esc(r.ok ? (j.content || []).map(c => c.text || "").join("") : "Error: " + ((j.error || {}).message || r.status))}</pre>` }
+  catch(e){ out.innerHTML = `<pre class="os-pre">Failed: ${esc(e.message || e)}</pre>` }
+}
+
 /* ---------- save an area for offline: map tiles for the view, a few zooms deeper ---------- */
 async function saveArea(){
   if(navigator.onLine === false){ toast("Saving needs signal"); return }
-  const B = await import("./brief.js?b=95"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
+  const B = await import("./brief.js?b=96"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
   let tpl; try{ const tj = await (await B.cget(B.HOST + "/planet", true)).json(); tpl = tj.tiles[0] }catch(e){ toast("Could not reach the map server"); return }
   const t2 = (lon, lat, z) => { const n = 2 ** z, x = Math.floor((lon + 180) / 360 * n), r = lat * Math.PI / 180, y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return [Math.max(0, Math.min(n - 1, x)), Math.max(0, Math.min(n - 1, y))] };
   const list = []; for(let z = z0; z <= Math.min(14, z0 + 3) && list.length < 1500; z++){ const [x0, y0] = t2(Math.max(-180, b.getWest()), Math.min(85, b.getNorth()), z), [x1, y1] = t2(Math.min(180, b.getEast()), Math.max(-85, b.getSouth()), z);
@@ -479,22 +590,32 @@ const once = new Set(); function toastOnce(k, m){ if(once.has(k)) return; once.a
 function onClick(e){
   const b = e.target.closest("button,[data-os-i],[data-os-h]"); if(!b || !S) return;
   const L = b.dataset.osL, a = b.dataset.os;
-  if(L){ prefs.on[L] = !prefs.on[L]; savePrefs(); if(L === "ship") loadShips(); if(L === "cam") loadCams();
+  if(L){ prefs.on[L] = !prefs.on[L]; savePrefs(); if(L === "ship") loadShips(); if(L === "cam") loadCams(); if(L === "aq" && prefs.on.aq) loadAQ(); if(/^(news|net|conf)$/.test(L) && prefs.on[L]) loadAll(false);
     if(L === "rain"){ if(prefs.on.rain) addRain(); else if(S.map && S.map.getLayer("os-rain")){ S.map.removeLayer("os-rain"); S.map.removeSource("os-rain") } }
     paintData(); paintAircraft(); moveSats(); if(L === "ac" && prefs.on.ac) loadAircraft(); return }
   if(b.dataset.osP){ prefs.proj = b.dataset.osP; savePrefs(); paintPills(); if(S.map) S.map.setProjection({type:prefs.proj}); return }
-  if(b.dataset.osV){ prefs.look = b.dataset.osV; savePrefs(); paintPills(); if(S.map && S.map.getLayer("os-satimg")) S.map.setLayoutProperty("os-satimg", "visibility", prefs.look === "sat" ? "visible" : "none"); if(prefs.look === "sat" && navigator.onLine === false) toast("Satellite imagery shows only where you looked before"); return }
+  if(b.dataset.osV){ prefs.look = b.dataset.osV; savePrefs(); paintPills(); if(S.map && S.map.getLayer("os-satimg")){ S.map.setLayoutProperty("os-satimg", "visibility", prefs.look === "sat" ? "visible" : "none"); S.map.setLayoutProperty("os-s2img", "visibility", prefs.look === "s2" ? "visible" : "none") } if(prefs.look === "sat" && navigator.onLine === false) toast("Satellite imagery shows only where you looked before"); return }
   if(b.dataset.osT){ rtool = b.dataset.osT; showRecon(); return }
   if(b.dataset.osI != null){ goTo((S.feed[+b.dataset.osI] || {}).o); return }
   if(b.dataset.osH != null){ goTo((S.hits[+b.dataset.osH] || {}).o); return }
   switch(a){
     case "close": closeOsint(); break;
     case "unsel": select(null); break;
-    case "pclose": panel(null); break;
+    case "pclose": panel(null); if(S.draw){ S.draw = null; paintDraw() } break;
     case "feed": showFeed(); break;
     case "search": showSearch(); break;
     case "alerts": showAlerts(); break;
     case "recon": showRecon(); break;
+    case "mkt": showMarkets(); break;
+    case "ai": showAI(); break;
+    case "aisave": { const v = S.el.querySelector(".os-rq input").value.trim(); if(/^sk-ant-/.test(v)){ localStorage.setItem(AIKEY, v); showAI() } else toast("That does not look like a Claude API key") } break;
+    case "aikey": localStorage.removeItem(AIKEY); showAI(); break;
+    case "aigo": askAI(); break;
+    case "draw": S.draw = S.draw || {pts:[]}; select(null); paintDraw(); toast("Tap the map to add points"); break;
+    case "dundo": S.draw && S.draw.pts.pop(); paintDraw(); break;
+    case "dclear": if(S.draw) S.draw.pts = []; paintDraw(); break;
+    case "dexp": S.draw && S.draw.pts.length && exportDraw(); break;
+    case "dend": S.draw = null; paintDraw(); panel(null); break;
     case "rgo": runRecon(); break;
     case "north": S.map && S.map.easeTo({bearing:0, pitch:0, duration:600}); break;
     case "loc": navigator.geolocation && navigator.geolocation.getCurrentPosition(p => S && S.map.flyTo({center:[p.coords.longitude, p.coords.latitude], zoom:7}), () => toast("Location not available")); break;
