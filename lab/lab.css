@@ -139,7 +139,7 @@ html.look-a .wrap{gap:12px;max-width:640px}
 .mbar .mlabel{font-weight:650;font-size:16.5px}
 html.look-a .mbar .iconbtn{width:42px;height:36px;background:var(--surface2);border-radius:12px;font-size:19px;color:var(--text)}
 /* bottom tab bar */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(6,1fr);
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(7,1fr);
   background:color-mix(in srgb,var(--surface) 88%,transparent);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px);
   border-top:1px solid var(--border);padding:4px max(8px,env(safe-area-inset-left)) max(8px,env(safe-area-inset-bottom))}
 .tabbar [data-tab]{border:0;background:none;height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted);font:500 10.5px var(--f-body);cursor:pointer;-webkit-tap-highlight-color:transparent}
