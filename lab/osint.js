@@ -80,7 +80,7 @@ const RAIL = [["ac", "Aircraft"], ["sat", "Satellites"], ["quake", "Earthquakes"
 let S = null;   // the open screen's state
 export async function openOsint(){
   if(S) return; const css = document.getElementById("oscss");
-  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=94", import.meta.url).href; document.head.appendChild(l) }
+  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=95", import.meta.url).href; document.head.appendChild(l) }
   const el = document.createElement("div"); el.id = "osint"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "OSINT");
   el.innerHTML = `<div class="os-map"></div><div class="os-top"><div class="os-brand">${svg("radar")}<div><b>OSINT</b><small>PAY TRACKER · OPEN SOURCE INTEL</small></div>
     <button class="os-x" data-os="close" aria-label="Close OSINT">${svg("x")}</button></div>
@@ -101,7 +101,7 @@ export async function openOsint(){
   paintRail(); paintPills();
   await loadAll(false);
   try{ await startMap() }catch(e){ toast("Map could not start: " + (e.message || e)) }
-  S && S.timers.push(setInterval(() => loadAll(false), MIN), setInterval(loadAircraft, 20000), setInterval(moveSats, 2000), setInterval(loadShips, 90000));
+  S && S.timers.push(setInterval(() => loadAll(false), MIN), setInterval(loadAircraft, 20000), setInterval(deadReckon, 1000), setInterval(trackPoll, 5000), setInterval(moveSats, 2000), setInterval(loadShips, 90000));
   addEventListener("online", onOnline); addEventListener("offline", paintStatus);
 }
 function onOnline(){ runQueue(); if(S){ loadAll(true); loadAircraft(); loadShips() } }
@@ -130,7 +130,9 @@ async function loadAll(force){
 async function loadAircraft(){
   if(!S || !S.map || !prefs.on.ac) return;
   if(navigator.onLine === false){ paintAircraft(); return }
-  const b = S.map.getBounds(), z = S.map.getZoom(); if(z < 3.2){ S.ac = []; S.acAt = Date.now(); paintAircraft(); toastOnce("zoom", "Zoom in to see civil traffic; military aircraft show worldwide"); return }
+  const b = S.map.getBounds(), z = S.map.getZoom(); if(z < 3.2){ paintAircraft(); toastOnce("zoom", "Zoom in for fresh civil traffic; military aircraft show worldwide"); return }
+  if(S.acBusy || Date.now() - (S.acTry || 0) < 8000){ clearTimeout(S.acLater); S.acLater = setTimeout(loadAircraft, 8000); return }
+  S.acBusy = true; S.acTry = Date.now();
   const la0 = Math.max(-85, b.getSouth()), la1 = Math.min(85, b.getNorth()), lo0 = Math.max(-180, b.getWest()), lo1 = Math.min(180, b.getEast());
   const q = `lamin=${la0.toFixed(1)}&lamax=${la1.toFixed(1)}&lomin=${lo0.toFixed(1)}&lomax=${lo1.toFixed(1)}`, c = S.map.getCenter();
   const dist = Math.max(25, Math.min(250, Math.round(Math.max(la1 - la0, (lo1 - lo0) * Math.cos(c.lat * Math.PI / 180)) * 30))), la = c.lat.toFixed(2), lo = c.lng.toFixed(2);
@@ -141,12 +143,31 @@ async function loadAircraft(){
   for(const [n, u] of order){
     try{ const r = await fetch(u, {signal:AbortSignal.timeout(9000)}); if(!r.ok) continue; let j = await r.json(); if(n !== "relay") j = {src:n, data:j};
       const list = P.ac(j); if(!list.length && n !== order[order.length - 1][0]) continue; if(!S) return;
-      S.ac = list; S.acSrc = n; S.acAt = Date.now();
+      mergeAc(list, Date.now()); S.acSrc = n; S.acAt = Date.now();
       try{ (await caches.open(OC)).put(RELAY + "/flights-last", new Response(JSON.stringify({j, at:S.acAt}))) }catch(e){}
       break }catch(e){} }
-  paintAircraft();
+  S && (S.acBusy = false); paintAircraft();
 }
-async function lastAircraft(){ try{ const h = await (await caches.open(OC)).match(RELAY + "/flights-last"); if(h){ const o = await h.json(); S.ac = P.ac(o.j); S.acAt = o.at } }catch(e){} }
+async function lastAircraft(){ try{ const h = await (await caches.open(OC)).match(RELAY + "/flights-last"); if(h){ const o = await h.json(); mergeAc(P.ac(o.j), o.at); S.acAt = o.at } }catch(e){} }
+// aircraft are kept by id: a failed or partial request no longer wipes them; unseen for 90 s, they go
+function mergeAc(list, at){ S.acMap = S.acMap || new Map(); for(const a of list){ const o = S.acMap.get(a.id); S.acMap.set(a.id, Object.assign(o || {}, a, {fx:a.lon, fy:a.lat, fixAt:at})) }
+  for(const [k, a] of S.acMap) if(Date.now() - a.fixAt > 90e3 && !(S.sel && S.sel.id === k)) S.acMap.delete(k);
+  S.ac = [...S.acMap.values()] }
+// between updates each aircraft moves along its track at its ground speed (up to 60 s past the last fix)
+function deadReckon(){
+  if(!S || !S.map || !prefs.on.ac) return; const now = Date.now();
+  for(const a of [...(S.ac || []), ...(S.mil || [])]){ if(a.fx == null){ a.fx = a.lon; a.fy = a.lat; a.fixAt = a.fixAt || now }
+    const dt = Math.min(60, (now - a.fixAt) / 1000); if(!a.gs || dt <= 0) continue;
+    const d = a.gs * dt / 3600 / 60, r = (a.trk || 0) * Math.PI / 180; a.lat = a.fy + d * Math.cos(r); a.lon = a.fx + d * Math.sin(r) / Math.max(.2, Math.cos(a.fy * Math.PI / 180)) }
+  paintAircraft(true);
+}
+// the tracked aircraft gets its own fresh position every 5 s
+async function trackPoll(){
+  if(!S || !S.follow || !S.sel || S.sel.k !== "ac" || navigator.onLine === false) return; const h = S.sel.hex;
+  for(const u of [`https://api.adsb.lol/v2/hex/${h}`, `https://api.airplanes.live/v2/hex/${h}`, `https://opendata.adsb.fi/api/v2/hex/${h}`]){
+    try{ const r = await fetch(u, {signal:AbortSignal.timeout(6000)}); if(!r.ok) continue; const a = P.mil(await r.json())[0]; if(!a || !S || !S.sel || S.sel.hex !== h) continue;
+      a.mil = S.sel.mil; const now = Date.now(); Object.assign(S.sel, a, {fx:a.lon, fy:a.lat, fixAt:now}); if(S.acMap && S.acMap.has(S.sel.id)) S.acMap.set(S.sel.id, S.sel); break }catch(e){} }
+}
 
 /* ships: AIS positions for the view (zoom 4 and closer), last copy kept for offline */
 const shipCls = t => t >= 70 && t < 80 ? "cargo" : t >= 80 && t < 90 ? "tanker" : t >= 60 && t < 70 ? "pass" : t === 30 ? "fish" : "other";
@@ -164,7 +185,7 @@ async function loadShips(){
 function paintShips(){ if(!S) return; setSrc("os-ship", prefs.on.ship ? (S.ships || []).map(x => pt(x, {id:String(x.id), cog:x.hdg != null && x.hdg < 360 ? x.hdg : x.cog || 0, cls:shipCls(x.type)})) : []); paintRail() }
 /* public cameras: the list ships with the app (cameras.json, from OSIRIS's public camera lists), so it works offline */
 async function loadCams(){
-  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=94", import.meta.url)); const a = await r.json(); if(!S) return;
+  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=95", import.meta.url)); const a = await r.json(); if(!S) return;
     S.cams = a.map(c => ({k:"cam", lat:c[0], lon:c[1], name:c[2], city:c[3], ctry:c[4], img:c[5], stream:c[6], st:c[7], ext:c[8], src:c[9]})) }catch(e){ S.cams = [] } }
   setSrc("os-cam", prefs.on.cam ? S.cams.map((c, i) => pt(c, {i})) : []); paintRail();
 }
@@ -192,7 +213,7 @@ function orbitOf(s){ const out = [], d0 = Date.now(); let seg = [];
 
 /* ---------- map ---------- */
 async function startMap(){
-  const B = await import("./brief.js?b=94"), ml = await B.loadLib();
+  const B = await import("./brief.js?b=95"), ml = await B.loadLib();
   if(!window.satellite) await new Promise(res => { const s = document.createElement("script"); s.src = new URL("./vendor/satellite/satellite.min.js", import.meta.url).href; s.onload = res; s.onerror = res; document.head.appendChild(s) });
   if(!S) return; buildSats();
   let style;
@@ -214,7 +235,7 @@ async function startMap(){
   loadCams(); loadShips();
   map.on("click", e => { const f = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], {layers:["os-ac", "os-ship", "os-cam", "os-sat", "os-quake", "os-gdacs", "os-eonet", "os-fire"].filter(l => map.getLayer(l))})[0];
     if(!f){ select(null); return } select(pick(f)) });
-  map.on("dragstart", () => { if(S) S.follow = false });
+  map.on("dragstart", () => { if(S && S.follow){ S.follow = false; paintCard(); toast("Tracking stopped") } });
   window.__os = {map, S, select, getFeed};   // for the tests
 }
 function addImages(map){
@@ -272,13 +293,15 @@ function paintData(){
   setSrc("os-eonet", on.dis ? (S.data.events || []).map(q => pt(q, {id:q.id})) : []);
   paintRail(); paintStatus();
 }
-function paintAircraft(){
+function paintAircraft(tick){
   if(!S) return; const old = Date.now() - S.acAt > 2 * MIN, gone = Date.now() - S.acAt > 10 * MIN;
   const seen = new Set(S.mil.map(a => a.id)), list = [...(gone ? [] : S.ac.filter(a => !seen.has(a.id))), ...S.mil];
   S.acShown = list.length;
   setSrc("os-ac", prefs.on.ac ? list.map(a => pt(a, {id:a.id, trk:a.trk || 0, mil:a.mil, emg:/^7[567]00$/.test(a.sq || "") ? 1 : 0, old:old ? 1 : 0})) : []);
-  if(S.sel && S.sel.k === "ac"){ const n = list.find(a => a.id === S.sel.id); if(n){ S.sel = Object.assign(S.sel, n); paintCard(); if(S.follow) S.map.easeTo({center:[n.lon, n.lat], duration:900}) } }
-  paintRail(); paintStatus();
+  if(S.sel && S.sel.k === "ac"){ const n = list.find(a => a.id === S.sel.id) || S.sel; if(n !== S.sel) S.sel = Object.assign(S.sel, n);
+    setSrc("os-selp", [pt(S.sel, {})]); if(S.follow) S.map.easeTo({center:[S.sel.lon, S.sel.lat], duration:tick ? 950 : 600, easing:t => t});
+    if(!tick || Date.now() % 5000 < 1000) paintCard() }
+  if(tick) return; paintRail(); paintStatus();
 }
 function counts(){ return {ship:(S.ships || []).length, cam:(S.cams || []).length, ac:S.acShown || 0, sat:S.sats.length, quake:(S.data.quakes || []).length, fire:(S.data.fires || []).length, dis:(S.data.disasters || []).length + (S.data.events || []).length} }
 const short = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n);
@@ -440,7 +463,7 @@ export async function runQueue(){
 /* ---------- save an area for offline: map tiles for the view, a few zooms deeper ---------- */
 async function saveArea(){
   if(navigator.onLine === false){ toast("Saving needs signal"); return }
-  const B = await import("./brief.js?b=94"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
+  const B = await import("./brief.js?b=95"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
   let tpl; try{ const tj = await (await B.cget(B.HOST + "/planet", true)).json(); tpl = tj.tiles[0] }catch(e){ toast("Could not reach the map server"); return }
   const t2 = (lon, lat, z) => { const n = 2 ** z, x = Math.floor((lon + 180) / 360 * n), r = lat * Math.PI / 180, y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return [Math.max(0, Math.min(n - 1, x)), Math.max(0, Math.min(n - 1, y))] };
   const list = []; for(let z = z0; z <= Math.min(14, z0 + 3) && list.length < 1500; z++){ const [x0, y0] = t2(Math.max(-180, b.getWest()), Math.min(85, b.getNorth()), z), [x1, y1] = t2(Math.min(180, b.getEast()), Math.max(-85, b.getSouth()), z);
@@ -476,6 +499,6 @@ function onClick(e){
     case "north": S.map && S.map.easeTo({bearing:0, pitch:0, duration:600}); break;
     case "loc": navigator.geolocation && navigator.geolocation.getCurrentPosition(p => S && S.map.flyTo({center:[p.coords.longitude, p.coords.latitude], zoom:7}), () => toast("Location not available")); break;
     case "save": saveArea(); break;
-    case "follow": S.follow = !S.follow; paintCard(); if(S.follow && S.sel) S.map.easeTo({center:[S.sel.lon, S.sel.lat], zoom:Math.max(7, S.map.getZoom())}); break;
+    case "follow": S.follow = !S.follow; paintCard(); if(S.follow && S.sel){ S.map.easeTo({center:[S.sel.lon, S.sel.lat], zoom:Math.max(7, S.map.getZoom())}); trackPoll() } break;
   }
 }
