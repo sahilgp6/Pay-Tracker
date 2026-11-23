@@ -9,14 +9,15 @@ const FEEDS = {
   quakes:{u:"/quakes", ttl:5 * MIN}, disasters:{u:"/disasters", ttl:30 * MIN}, events:{u:"/events", ttl:30 * MIN},
   fires:{u:"/fires", ttl:H, text:1}, kp:{u:"/space?which=kp", ttl:10 * MIN}, flares:{u:"/space?which=flares", ttl:15 * MIN},
   alerts:{u:"/space?which=alerts", ttl:15 * MIN}, tle:{u:"/tle?group=visual", ttl:12 * H, text:1}, stations:{u:"/tle?group=stations", ttl:12 * H, text:1},
-  mil:{u:"/military", ttl:MIN}, rain:{u:"/rain", ttl:10 * MIN}
+  mil:{u:"/military", ttl:MIN}, rain:{u:"/rain", ttl:10 * MIN},
+  sdn:{u:"/sanctions", ttl:7 * 24 * H, text:1}, feodo:{u:"/threats", ttl:6 * H}, kev:{u:"/kev", ttl:24 * H}
 };
 const SMALL = ["quakes", "disasters", "events", "kp", "flares", "alerts", "tle", "stations", "fires"];
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[c]));
 const RM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const zulu = t => new Date(t).toISOString().slice(11, 19) + "Z";
 const ago = t => { if(!t) return "never"; const m = Math.round((Date.now() - t) / MIN); return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? Math.round(m / 60) + "h" : Math.round(m / 1440) + "d" };
-const prefs = (() => { try{ return Object.assign({on:{ac:1, sat:1, quake:1, fire:1, dis:1, rain:0}, look:"map", proj:"globe"}, JSON.parse(localStorage.getItem(PKEY) || "{}")) }catch(e){ return {on:{ac:1, sat:1, quake:1, fire:1, dis:1, rain:0}, look:"map", proj:"globe"} } })();
+const prefs = (() => { try{ return Object.assign({on:{ac:1, sat:1, quake:1, fire:1, dis:1, rain:0, ship:0, cam:0}, look:"map", proj:"globe"}, JSON.parse(localStorage.getItem(PKEY) || "{}")) }catch(e){ return {on:{ac:1, sat:1, quake:1, fire:1, dis:1, rain:0}, look:"map", proj:"globe"} } })();
 const savePrefs = () => { try{ localStorage.setItem(PKEY, JSON.stringify(prefs)) }catch(e){} };
 
 /* ---------- feeds: saved copy first when fresh, network when stale, saved copy again when offline ---------- */
@@ -40,7 +41,7 @@ async function getFeed(k, force){
 let busy = false;
 export async function refreshSmall(){
   if(busy || navigator.onLine === false) return; busy = true;
-  try{ for(const k of SMALL) await getFeed(k) }catch(e){} busy = false;
+  try{ for(const k of SMALL) await getFeed(k); await runQueue() }catch(e){} busy = false;
 }
 
 /* ---------- parsing ---------- */
@@ -74,17 +75,17 @@ const ICO = {
   save:'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>', alert:'<path d="M12 3l9 16H3z"/><path d="M12 10v4"/>', x:'<path d="M6 6l12 12M18 6L6 18"/>', radar:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l6-6"/>'
 };
 const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
-const RAIL = [["ac", "Aircraft"], ["sat", "Satellites"], ["quake", "Earthquakes"], ["fire", "Fires"], ["dis", "Disasters and events"], ["rain", "Rain radar"], ["ship", "Ships (next build)"], ["cam", "Cameras (next build)"]];
+const RAIL = [["ac", "Aircraft"], ["sat", "Satellites"], ["quake", "Earthquakes"], ["fire", "Fires"], ["dis", "Disasters and events"], ["rain", "Rain radar"], ["ship", "Ships"], ["cam", "Public cameras"]];
 
 let S = null;   // the open screen's state
 export async function openOsint(){
   if(S) return; const css = document.getElementById("oscss");
-  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=91", import.meta.url).href; document.head.appendChild(l) }
+  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=92", import.meta.url).href; document.head.appendChild(l) }
   const el = document.createElement("div"); el.id = "osint"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "OSINT");
   el.innerHTML = `<div class="os-map"></div><div class="os-top"><div class="os-brand">${svg("radar")}<div><b>OSINT</b><small>PAY TRACKER · OPEN SOURCE INTEL</small></div>
     <button class="os-x" data-os="close" aria-label="Close OSINT">${svg("x")}</button></div>
     <div class="os-stat"><span>ZULU <i data-os-z></i></span><span>STATUS <em data-os-live></em></span><span>TRACKED <u data-os-n>0</u></span><span>SOLAR <em data-os-kp>Kp ?</em></span></div></div>
-    <div class="os-rail">${RAIL.map(([k, l]) => `<button data-os-l="${k}" aria-label="${l}" aria-pressed="false"${k === "ship" || k === "cam" ? " disabled" : ""}>${svg(k)}<em hidden></em></button>`).join("")}
+    <div class="os-rail">${RAIL.map(([k, l]) => `<button data-os-l="${k}" aria-label="${l}" aria-pressed="false">${svg(k)}<em hidden></em></button>`).join("")}
     <hr><button data-os="feed" aria-label="Live feed">${svg("feed")}</button><button data-os="search" aria-label="Search">${svg("search")}</button><button data-os="recon" aria-label="Recon">${svg("recon")}</button></div>
     <div class="os-rr"><button data-os="north" aria-label="North up">${svg("north")}</button><button data-os="loc" aria-label="My location">${svg("loc")}</button>
     <button data-os="save" aria-label="Save this area for offline">${svg("save")}</button><button data-os="alerts" aria-label="Space weather alerts" class="os-red">${svg("alert")}</button></div>
@@ -100,10 +101,10 @@ export async function openOsint(){
   paintRail(); paintPills();
   await loadAll(false);
   try{ await startMap() }catch(e){ toast("Map could not start: " + (e.message || e)) }
-  S && S.timers.push(setInterval(() => loadAll(false), MIN), setInterval(loadAircraft, 20000), setInterval(moveSats, 2000));
+  S && S.timers.push(setInterval(() => loadAll(false), MIN), setInterval(loadAircraft, 20000), setInterval(moveSats, 2000), setInterval(loadShips, 90000));
   addEventListener("online", onOnline); addEventListener("offline", paintStatus);
 }
-function onOnline(){ if(S){ loadAll(true); loadAircraft() } }
+function onOnline(){ runQueue(); if(S){ loadAll(true); loadAircraft(); loadShips() } }
 function onKey(e){ if(e.key === "Escape" && S) closeOsint() }
 export function closeOsint(){
   if(!S) return; const s = S; S = null;
@@ -135,6 +136,28 @@ async function loadAircraft(){
 }
 async function lastAircraft(){ try{ const h = await (await caches.open(OC)).match(RELAY + "/flights-last"); if(h){ const o = await h.json(); S.ac = P.ac(o.j); S.acAt = o.at } }catch(e){} }
 
+/* ships: AIS positions for the view (zoom 4 and closer), last copy kept for offline */
+const shipCls = t => t >= 70 && t < 80 ? "cargo" : t >= 80 && t < 90 ? "tanker" : t >= 60 && t < 70 ? "pass" : t === 30 ? "fish" : "other";
+const SHIPT = {cargo:"CARGO", tanker:"TANKER", pass:"PASSENGER", fish:"FISHING", other:"VESSEL"};
+async function loadShips(){
+  if(!S || !S.map || !prefs.on.ship) { if(S) paintShips(); return }
+  if(navigator.onLine !== false && S.map.getZoom() >= 4){ const b = S.map.getBounds();
+    const q = `lamin=${b.getSouth().toFixed(1)}&lamax=${b.getNorth().toFixed(1)}&lomin=${b.getWest().toFixed(1)}&lomax=${b.getEast().toFixed(1)}`;
+    try{ const r = await fetch(`${RELAY}/ships?${q}`); if(r.ok){ const j = await r.json(); if(!S) return; S.ships = j.map(x => ({k:"ship", ...x})); S.shipAt = Date.now();
+      try{ (await caches.open(OC)).put(RELAY + "/ships-last", new Response(JSON.stringify({j:S.ships, at:S.shipAt}))) }catch(e){} } }catch(e){} }
+  else if(navigator.onLine !== false) toastOnce("ships", "Zoom in to see ships");
+  if(!S.ships){ try{ const h = await (await caches.open(OC)).match(RELAY + "/ships-last"); if(h){ const o = await h.json(); S.ships = o.j; S.shipAt = o.at } }catch(e){} }
+  paintShips();
+}
+function paintShips(){ if(!S) return; setSrc("os-ship", prefs.on.ship ? (S.ships || []).map(x => pt(x, {id:String(x.id), cog:x.hdg != null && x.hdg < 360 ? x.hdg : x.cog || 0, cls:shipCls(x.type)})) : []); paintRail() }
+/* public cameras: the list ships with the app (cameras.json, from OSIRIS's public camera lists), so it works offline */
+async function loadCams(){
+  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=92", import.meta.url)); const a = await r.json(); if(!S) return;
+    S.cams = a.map(c => ({k:"cam", lat:c[0], lon:c[1], name:c[2], city:c[3], ctry:c[4], img:c[5], stream:c[6], st:c[7], ext:c[8], src:c[9]})) }catch(e){ S.cams = [] } }
+  setSrc("os-cam", prefs.on.cam ? S.cams.map((c, i) => pt(c, {i})) : []); paintRail();
+}
+const camImg = u => u.startsWith("P") ? RELAY + "/img?url=" + encodeURIComponent(u.slice(1)) : u;
+
 /* satellites: positions from saved orbits, so they keep moving offline */
 function buildSats(){
   const sl = window.satellite; if(!sl) return;
@@ -157,7 +180,7 @@ function orbitOf(s){ const out = [], d0 = Date.now(); let seg = [];
 
 /* ---------- map ---------- */
 async function startMap(){
-  const B = await import("./brief.js?b=91"), ml = await B.loadLib();
+  const B = await import("./brief.js?b=92"), ml = await B.loadLib();
   if(!window.satellite) await new Promise(res => { const s = document.createElement("script"); s.src = new URL("./vendor/satellite/satellite.min.js", import.meta.url).href; s.onload = res; s.onerror = res; document.head.appendChild(s) });
   if(!S) return; buildSats();
   let style;
@@ -175,8 +198,9 @@ async function startMap(){
   addImages(map); addLayers(map);
   if(!S.acAt) await lastAircraft();
   paintData(); paintAircraft(); moveSats(); loadAircraft();
-  map.on("moveend", () => { clearTimeout(S && S.mv); if(S) S.mv = setTimeout(loadAircraft, 600) });
-  map.on("click", e => { const f = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], {layers:["os-ac", "os-sat", "os-quake", "os-gdacs", "os-eonet", "os-fire"].filter(l => map.getLayer(l))})[0];
+  map.on("moveend", () => { clearTimeout(S && S.mv); if(S) S.mv = setTimeout(() => { loadAircraft(); loadShips() }, 600) });
+  loadCams(); loadShips();
+  map.on("click", e => { const f = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], {layers:["os-ac", "os-ship", "os-cam", "os-sat", "os-quake", "os-gdacs", "os-eonet", "os-fire"].filter(l => map.getLayer(l))})[0];
     if(!f){ select(null); return } select(pick(f)) });
   map.on("dragstart", () => { if(S) S.follow = false });
   window.__os = {map, S, select, getFeed};   // for the tests
@@ -185,16 +209,21 @@ function addImages(map){
   const c = document.createElement("canvas"), n = 48; c.width = c.height = n; const g = c.getContext("2d"); g.translate(n / 2, n / 2); g.scale(n / 24, n / 24); g.translate(-12, -12);
   g.fillStyle = "#fff"; g.fill(new Path2D("M10.5 3.5l1.5-1 1.5 1V9l7 4v2l-7-2v5l2 1.5V21l-3.5-1-3.5 1v-1.5l2-1.5v-5l-7 2v-2l7-4z"));
   map.addImage("os-plane", g.getImageData(0, 0, n, n), {sdf:true, pixelRatio:2});
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, n, n); g.beginPath(); g.moveTo(24, 6); g.lineTo(33, 40); g.lineTo(24, 34); g.lineTo(15, 40); g.closePath(); g.fill();
+  map.addImage("os-ship", g.getImageData(0, 0, n, n), {sdf:true, pixelRatio:2});
 }
 function addLayers(map){
   const src = id => map.addSource(id, {type:"geojson", data:fc([])});
-  ["os-fire", "os-quake", "os-gdacs", "os-eonet", "os-orbit", "os-sat", "os-ac", "os-selp"].forEach(src);
+  ["os-fire", "os-quake", "os-gdacs", "os-eonet", "os-cam", "os-ship", "os-orbit", "os-sat", "os-ac", "os-selp"].forEach(src);
   map.addLayer({id:"os-fire", type:"circle", source:"os-fire", paint:{"circle-radius":["interpolate", ["linear"], ["zoom"], 2, 1.2, 8, 3.5], "circle-color":["case", [">", ["get", "frp"], 50], "#FF3D3D", "#FF7A2F"], "circle-opacity":.85}});
   map.addLayer({id:"os-quake-r", type:"circle", source:"os-quake", paint:{"circle-radius":["*", ["get", "mag"], 3.2], "circle-color":"transparent", "circle-stroke-color":"#FF9500", "circle-stroke-width":1, "circle-stroke-opacity":.6}});
   map.addLayer({id:"os-quake", type:"circle", source:"os-quake", paint:{"circle-radius":["*", ["get", "mag"], 1.5], "circle-color":"rgba(255,149,0,.35)", "circle-stroke-color":"#FF9500", "circle-stroke-width":1.2}});
   map.addLayer({id:"os-gdacs", type:"circle", source:"os-gdacs", paint:{"circle-radius":6, "circle-color":"transparent", "circle-stroke-width":2,
     "circle-stroke-color":["match", ["get", "level"], "Red", "#FF3D3D", "Orange", "#FF9500", "#00E676"]}});
   map.addLayer({id:"os-eonet", type:"circle", source:"os-eonet", paint:{"circle-radius":4.5, "circle-color":"#E040FB", "circle-stroke-color":"#04040A", "circle-stroke-width":1}});
+  map.addLayer({id:"os-cam", type:"circle", source:"os-cam", paint:{"circle-radius":4, "circle-color":"#04040A", "circle-stroke-color":"#00E676", "circle-stroke-width":1.6}});
+  map.addLayer({id:"os-ship", type:"symbol", source:"os-ship", layout:{"icon-image":"os-ship", "icon-size":["interpolate", ["linear"], ["zoom"], 4, .45, 10, .8], "icon-rotate":["get", "cog"], "icon-rotation-alignment":"map", "icon-allow-overlap":true},
+    paint:{"icon-color":["match", ["get", "cls"], "cargo", "#7CFC9A", "tanker", "#FF6B6B", "pass", "#448AFF", "fish", "#FFD700", "#9FB0C4"]}});
   map.addLayer({id:"os-orbit", type:"line", source:"os-orbit", paint:{"line-color":"#00E676", "line-width":1, "line-dasharray":[2, 3], "line-opacity":.7}});
   map.addLayer({id:"os-sat", type:"circle", source:"os-sat", paint:{"circle-radius":["case", ["==", ["get", "iss"], 1], 5, 2.6], "circle-color":"#00E676", "circle-stroke-color":"#04040A", "circle-stroke-width":.8}});
   map.addLayer({id:"os-sat-l", type:"symbol", source:"os-sat", filter:["==", ["get", "iss"], 1], layout:{"text-field":["get", "name"], "text-size":10, "text-offset":[0, 1.2], "text-font":["Noto Sans Regular"]}, paint:{"text-color":"#00E676", "text-halo-color":"#04040A", "text-halo-width":1}});
@@ -212,6 +241,8 @@ async function addRain(){
 }
 function pick(f){ const p = f.properties, L = f.layer.id;
   if(L === "os-ac") return [...S.ac, ...S.mil].find(a => a.id === p.id) || null;
+  if(L === "os-ship") return (S.ships || []).find(a => String(a.id) === String(p.id)) || null;
+  if(L === "os-cam") return (S.cams || [])[p.i] || null;
   if(L === "os-sat"){ const s = S.sats.find(x => x.id === p.id); return s ? {k:"sat", id:s.id, s} : null }
   if(L === "os-quake") return (S.data.quakes || []).find(q => q.id === p.id);
   if(L === "os-gdacs") return (S.data.disasters || []).find(q => q.id === p.id);
@@ -237,7 +268,7 @@ function paintAircraft(){
   if(S.sel && S.sel.k === "ac"){ const n = list.find(a => a.id === S.sel.id); if(n){ S.sel = Object.assign(S.sel, n); paintCard(); if(S.follow) S.map.easeTo({center:[n.lon, n.lat], duration:900}) } }
   paintRail(); paintStatus();
 }
-function counts(){ return {ac:S.acShown || 0, sat:S.sats.length, quake:(S.data.quakes || []).length, fire:(S.data.fires || []).length, dis:(S.data.disasters || []).length + (S.data.events || []).length} }
+function counts(){ return {ship:(S.ships || []).length, cam:(S.cams || []).length, ac:S.acShown || 0, sat:S.sats.length, quake:(S.data.quakes || []).length, fire:(S.data.fires || []).length, dis:(S.data.disasters || []).length + (S.data.events || []).length} }
 const short = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n);
 function paintRail(){
   if(!S) return; const c = counts();
@@ -297,6 +328,12 @@ function paintCard(){
   else if(o.k === "sat"){ const p = o.s.p || {}; ico = "sat"; head = `NORAD ${o.s.id} · ${p.lat != null ? ll(p.lat, p.lon) : ""}`; title = o.s.name; sub = "SATELLITE · ORBIT FROM SAVED DATA";
     grid = [["ALT", p.alt ? Math.round(p.alt) + "km" : "—"], ["VEL", p.v ? p.v.toFixed(1) + "km/s" : "—"], ["LAT", p.lat != null ? p.lat.toFixed(1) : "—"], ["LON", p.lon != null ? p.lon.toFixed(1) : "—"]];
     acts = `<span>DASHED LINE: NEXT 95 MIN</span>` }
+  else if(o.k === "ship"){ ico = "ship"; head = `AIS · MMSI ${o.id} · ${ll(o.lat, o.lon)}`; title = o.name || "MMSI " + o.id; sub = [SHIPT[shipCls(o.type)], o.call].filter(Boolean).join(" · ");
+    grid = [["SOG", o.sog != null ? o.sog.toFixed(1) + "kt" : "—"], ["COG", o.cog != null ? Math.round(o.cog) + "°" : "—"], ["DEST", o.dest || "—"], ["SEEN", ago(Date.parse(o.t) || S.shipAt)]] }
+  else if(o.k === "cam"){ ico = "cam"; head = `${o.src || "PUBLIC CAMERA"} · ${ll(o.lat, o.lon)}`; title = o.name; sub = [o.city, o.ctry].filter(Boolean).join(", "); link = o.ext;
+    const off = navigator.onLine === false;
+    S.camHtml = off ? `<p class="os-empty">Camera pictures need signal</p>` : o.stream && (o.st === "hls" || o.st === "mp4") ? `<video class="os-vid" src="${esc(o.stream)}" playsinline muted autoplay controls></video>`
+      : o.stream && o.st === "iframe" ? `<iframe class="os-vid" src="${esc(o.stream)}" allow="autoplay" loading="lazy"></iframe>` : o.img ? `<img class="os-vid" src="${esc(camImg(o.img))}&t=${Date.now()}" alt="${esc(o.name)}">` : `<p class="os-empty">This camera opens on its own site</p>` }
   else if(o.k === "quake"){ ico = "quake"; head = `USGS · ${ll(o.lat, o.lon)}`; title = "M" + (o.mag || 0).toFixed(1) + " EARTHQUAKE"; sub = o.place || ""; grid = [["DEPTH", Math.round(o.dep || 0) + "km"], ["TIME", zulu(o.t).slice(0, 5) + "Z"], ["AGO", ago(o.t)], ["MAG", (o.mag || 0).toFixed(1)]]; link = o.url }
   else if(o.k === "fire"){ ico = "fire"; head = `NASA FIRMS · ${ll(o.lat, o.lon)}`; title = "ACTIVE FIRE"; sub = "Satellite hotspot"; grid = [["FRP", Math.round(o.frp) + "MW"], ["CONF", esc(o.conf || "—")], ["SEEN", o.t ? zulu(o.t).slice(0, 5) + "Z" : "—"], ["AGO", ago(o.t)]] }
   else if(o.k === "gdacs"){ ico = "dis"; head = `GDACS · ${o.level || ""} ALERT`; title = o.title; sub = o.country || ""; grid = [["TYPE", o.type || "—"], ["LEVEL", o.level || "—"], ["FROM", o.t ? new Date(o.t).toISOString().slice(5, 10) : "—"], ["AGO", ago(o.t)]]; link = o.url }
@@ -304,7 +341,7 @@ function paintCard(){
   const route = o.k === "ac" && (o.from || o.to) ? `<div class="os-route"><span>${esc(o.from || "?")}</span><div class="os-ln"></div><span>${esc(o.to || "?")}</span></div>` : "";
   c.innerHTML = `<div class="os-ch"><span>${esc(head)}</span><span>${zulu(Date.now()).slice(0, 5)}Z · ${navigator.onLine === false ? "OFFLINE" : "LIVE"}</span></div>
     <div class="os-ct"><div class="os-ic">${svg(ico)}</div><div><b>${esc(title)}</b><small>${esc(sub)}</small></div><button class="os-cx" data-os="unsel" aria-label="Close card">${svg("x")}</button></div>${route}
-    <div class="os-grid">${grid.map(([a, b]) => `<div><small>${esc(a)}</small><b>${esc(b)}</b></div>`).join("")}</div>
+    ${o.k === "cam" ? S.camHtml : ""}<div class="os-grid"${grid.length ? "" : " hidden"}>${grid.map(([a, b]) => `<div><small>${esc(a)}</small><b>${esc(b)}</b></div>`).join("")}</div>
     <div class="os-acts">${acts}${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">SOURCE</a>` : ""}</div>`;
   c.hidden = false;
 }
@@ -334,10 +371,64 @@ function showAlerts(){
 }
 function goTo(o){ if(!o) return; panel(null); const p = o.k === "sat" ? o.s.p : o; if(p && p.lon != null) S.map.flyTo({center:[p.lon, p.lat], zoom:Math.max(S.map.getZoom(), 5), duration:RM() ? 0 : 1400}); select(o) }
 
+/* ---------- recon: passive lookups through my relay; offline they wait and run when signal returns ---------- */
+const TOOLS = [["dns", "DNS", "example.com"], ["whois", "WHOIS", "example.com or 8.8.8.8"], ["ssl", "SSL", "example.com"], ["ip", "IP", "8.8.8.8"], ["cve", "CVE", "CVE-2024-3400 or keyword"],
+  ["threat", "THREATS", "IP to check"], ["sdn", "SANCTIONS", "person, company, vessel"], ["wallet", "WALLET", "BTC or ETH address"]];
+const QKEY = "pt.osint.queue", RKEY = "pt.osint.done";
+const lsGet = (k, d) => { try{ return JSON.parse(localStorage.getItem(k) || "null") || d }catch(e){ return d } };
+const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)) }catch(e){} };
+let rtool = "dns";
+function showRecon(){
+  const done = lsGet(RKEY, []), qd = lsGet(QKEY, []);
+  panel(`<div class="os-pt">RECON TOOLKIT · PASSIVE LOOKUPS</div><div class="os-tools">${TOOLS.map(([k, l]) => `<button data-os-t="${k}"${k === rtool ? ' class="on"' : ""}>${l}</button>`).join("")}</div>
+    <div class="os-rq"><input class="os-in" placeholder="${esc(TOOLS.find(t => t[0] === rtool)[2])}" autocomplete="off" autocapitalize="off" spellcheck="false"><button data-os="rgo">RUN</button></div><div class="os-out"></div>` +
+    (qd.length ? `<div class="os-pt">WAITING FOR SIGNAL</div>${qd.map(x => `<div class="os-row"><b>${esc(x.t.toUpperCase())}</b><span>${esc(x.v)}</span></div>`).join("")}` : "") +
+    (done.length ? `<div class="os-pt">RAN WHEN SIGNAL CAME BACK</div>${done.slice(0, 6).map(x => `<div class="os-msg"><i>${esc(x.t.toUpperCase())} ${esc(x.v)}</i><pre>${esc(x.out)}</pre></div>`).join("")}` : ""));
+  S.el.querySelector(".os-rq input").addEventListener("keydown", e => { if(e.key === "Enter") runRecon() });
+}
+async function runRecon(){
+  const i = S.el.querySelector(".os-rq input"), v = i.value.trim(), out = S.el.querySelector(".os-out"); if(!v) return;
+  const local = rtool === "sdn" || rtool === "threat";   // these search lists kept on the phone, so they work offline once downloaded
+  if(navigator.onLine === false && !local){ const q = lsGet(QKEY, []); q.push({t:rtool, v}); lsSet(QKEY, q); out.innerHTML = `<p class="os-empty">Offline: saved. It runs by itself when signal returns.</p>`; return }
+  out.innerHTML = `<p class="os-empty">Looking up…</p>`;
+  const txt = await recon(rtool, v); if(S) out.innerHTML = `<pre class="os-pre">${esc(txt)}</pre>`;
+}
+async function rj(u){ const r = await fetch(RELAY + u); if(!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "HTTP " + r.status); return r.json() }
+async function recon(t, v){
+  try{
+    if(t === "dns"){ const lines = []; for(const ty of ["A", "AAAA", "MX", "NS", "TXT", "CNAME"]){ const j = await rj(`/dns?name=${encodeURIComponent(v)}&type=${ty}`); for(const a of j.Answer || []) lines.push(`${ty.padEnd(6)}${a.data}`) } return lines.join("\n") || "No records" }
+    if(t === "whois"){ const j = await rj(`/rdap?q=${encodeURIComponent(v)}`), ev = (j.events || []).map(e => `${e.eventAction}: ${String(e.eventDate).slice(0, 10)}`), ent = (j.entities || []).map(e => `${(e.roles || []).join("/")}: ${((e.vcardArray || [])[1] || []).find(x => x[0] === "fn")?.[3] || e.handle || ""}`);
+      return [j.ldhName || j.name || j.handle, j.startAddress ? `${j.startAddress} - ${j.endAddress}` : "", j.country ? "Country: " + j.country : "", ...(j.status || []).map(s => "Status: " + s), ...ev, ...ent, ...(j.nameservers || []).map(n => "NS: " + n.ldhName)].filter(Boolean).join("\n") }
+    if(t === "ssl"){ const j = await rj(`/certs?d=${encodeURIComponent(v)}`), seen = new Set();
+      return j.slice(0, 40).filter(c => !seen.has(c.serial_number) && seen.add(c.serial_number)).map(c => `${String(c.not_before).slice(0, 10)} to ${String(c.not_after).slice(0, 10)}  ${c.common_name}\n  issuer: ${String(c.issuer_name).replace(/.*O=([^,]+).*/, "$1")}`).join("\n") || "No certificates found" }
+    if(t === "ip"){ const j = await rj(`/ip?ip=${encodeURIComponent(v)}`), g = j.geo || {}, p = j.ports || {};
+      return [`${g.ip || v}  ${[g.city, g.region, g.country].filter(Boolean).join(", ")}`, g.connection ? `ASN ${g.connection.asn} ${g.connection.org || g.connection.isp || ""}` : "", p.ports ? "Ports seen open: " + p.ports.join(", ") : "No open ports on record",
+        p.hostnames && p.hostnames.length ? "Hostnames: " + p.hostnames.join(", ") : "", p.vulns && p.vulns.length ? "Known vulns: " + p.vulns.slice(0, 12).join(", ") : "", p.tags && p.tags.length ? "Tags: " + p.tags.join(", ") : ""].filter(Boolean).join("\n") }
+    if(t === "cve"){ const id = /^cve-/i.test(v); const j = await rj(id ? `/cve?id=${encodeURIComponent(v)}` : `/cve?q=${encodeURIComponent(v)}`);
+      const kev = (await getFeed("kev")).data, kv = new Set(((kev || {}).vulnerabilities || []).map(x => x.cveID));
+      return (j.vulnerabilities || []).slice(0, 15).map(({cve:c}) => { const m = (c.metrics || {}), s = (m.cvssMetricV31 || m.cvssMetricV30 || m.cvssMetricV2 || [])[0];
+        return `${c.id}${kv.has(c.id) ? "  [EXPLOITED: CISA KEV]" : ""}${s ? "  CVSS " + s.cvssData.baseScore : ""}\n  ${((c.descriptions || [])[0] || {}).value || ""}`.slice(0, 400) }).join("\n\n") || "Nothing found" }
+    if(t === "threat"){ const r = await getFeed("feodo"); if(!r.data) return "Threat list not downloaded yet (needs signal once)"; const hit = r.data.filter(x => x.ip_address === v);
+      return hit.length ? hit.map(x => `LISTED: ${x.ip_address}:${x.port} ${x.malware} (${x.status}), first seen ${x.first_seen}, ${x.country || ""}`).join("\n") : `${v} is not on the Feodo botnet list (${r.data.length} entries, updated ${ago(r.at)} ago)` }
+    if(t === "sdn"){ const r = await getFeed("sdn"); if(!r.data) return "Sanctions list not downloaded yet (needs signal once, about a few MB)"; const q = v.toLowerCase(), L = r.data.split("\n"), out = [];
+      for(let i = 1; i < L.length && out.length < 25; i++) if(L[i].toLowerCase().includes(q)){ const c = csvRow(L[i]); out.push(`${c[2]}  (${c[1]})${c[5] ? "  " + c[5] : ""}\n  ${String(c[8] || "").slice(0, 160)}`) }
+      return (out.length ? out.join("\n") : "No match on the US OFAC SDN list") + `\nList from OpenSanctions, updated ${ago(r.at)} ago` }
+    if(t === "wallet"){ const j = await rj(`/wallet?a=${encodeURIComponent(v)}`);
+      if(j.chain_stats){ const c = j.chain_stats, m = j.mempool_stats || {}; return `BTC ${j.address}\nBalance: ${((c.funded_txo_sum - c.spent_txo_sum) / 1e8).toFixed(8)} BTC\nTransactions: ${c.tx_count}${m.tx_count ? " (+" + m.tx_count + " pending)" : ""}\nReceived: ${(c.funded_txo_sum / 1e8).toFixed(8)} BTC` }
+      return `ETH ${j.hash}\nBalance: ${(Number(j.coin_balance || 0) / 1e18).toFixed(6)} ETH\n${j.is_contract ? "Contract" : "Wallet"}${j.name ? "  " + j.name : ""}${j.ens_domain_name ? "\nENS: " + j.ens_domain_name : ""}` }
+  }catch(e){ return "Lookup failed: " + (e.message || e) }
+  return "";
+}
+function csvRow(l){ const out = []; let cur = "", q = false; for(let i = 0; i < l.length; i++){ const ch = l[i]; if(q){ if(ch === '"'){ if(l[i + 1] === '"'){ cur += '"'; i++ } else q = false } else cur += ch } else if(ch === '"') q = true; else if(ch === ","){ out.push(cur); cur = "" } else cur += ch } out.push(cur); return out }
+export async function runQueue(){
+  const q = lsGet(QKEY, []); if(!q.length || navigator.onLine === false) return; lsSet(QKEY, []);
+  const done = lsGet(RKEY, []); for(const x of q) done.unshift({...x, out:await recon(x.t, x.v), at:Date.now()}); lsSet(RKEY, done.slice(0, 20));
+}
+
 /* ---------- save an area for offline: map tiles for the view, a few zooms deeper ---------- */
 async function saveArea(){
   if(navigator.onLine === false){ toast("Saving needs signal"); return }
-  const B = await import("./brief.js?b=91"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
+  const B = await import("./brief.js?b=92"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
   let tpl; try{ const tj = await (await B.cget(B.HOST + "/planet", true)).json(); tpl = tj.tiles[0] }catch(e){ toast("Could not reach the map server"); return }
   const t2 = (lon, lat, z) => { const n = 2 ** z, x = Math.floor((lon + 180) / 360 * n), r = lat * Math.PI / 180, y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return [Math.max(0, Math.min(n - 1, x)), Math.max(0, Math.min(n - 1, y))] };
   const list = []; for(let z = z0; z <= Math.min(14, z0 + 3) && list.length < 1500; z++){ const [x0, y0] = t2(Math.max(-180, b.getWest()), Math.min(85, b.getNorth()), z), [x1, y1] = t2(Math.min(180, b.getEast()), Math.max(-85, b.getSouth()), z);
@@ -353,11 +444,12 @@ const once = new Set(); function toastOnce(k, m){ if(once.has(k)) return; once.a
 function onClick(e){
   const b = e.target.closest("button,[data-os-i],[data-os-h]"); if(!b || !S) return;
   const L = b.dataset.osL, a = b.dataset.os;
-  if(L){ prefs.on[L] = !prefs.on[L]; savePrefs();
+  if(L){ prefs.on[L] = !prefs.on[L]; savePrefs(); if(L === "ship") loadShips(); if(L === "cam") loadCams();
     if(L === "rain"){ if(prefs.on.rain) addRain(); else if(S.map && S.map.getLayer("os-rain")){ S.map.removeLayer("os-rain"); S.map.removeSource("os-rain") } }
     paintData(); paintAircraft(); moveSats(); if(L === "ac" && prefs.on.ac) loadAircraft(); return }
   if(b.dataset.osP){ prefs.proj = b.dataset.osP; savePrefs(); paintPills(); if(S.map) S.map.setProjection({type:prefs.proj}); return }
   if(b.dataset.osV){ prefs.look = b.dataset.osV; savePrefs(); paintPills(); if(S.map && S.map.getLayer("os-satimg")) S.map.setLayoutProperty("os-satimg", "visibility", prefs.look === "sat" ? "visible" : "none"); if(prefs.look === "sat" && navigator.onLine === false) toast("Satellite imagery shows only where you looked before"); return }
+  if(b.dataset.osT){ rtool = b.dataset.osT; showRecon(); return }
   if(b.dataset.osI != null){ goTo((S.feed[+b.dataset.osI] || {}).o); return }
   if(b.dataset.osH != null){ goTo((S.hits[+b.dataset.osH] || {}).o); return }
   switch(a){
@@ -367,7 +459,8 @@ function onClick(e){
     case "feed": showFeed(); break;
     case "search": showSearch(); break;
     case "alerts": showAlerts(); break;
-    case "recon": panel(`<div class="os-pt">RECON TOOLKIT</div><p class="os-empty">DNS, WHOIS, SSL, IP, CVE, threat feeds, sanctions and wallet lookups arrive in a later build.</p>`); break;
+    case "recon": showRecon(); break;
+    case "rgo": runRecon(); break;
     case "north": S.map && S.map.easeTo({bearing:0, pitch:0, duration:600}); break;
     case "loc": navigator.geolocation && navigator.geolocation.getCurrentPosition(p => S && S.map.flyTo({center:[p.coords.longitude, p.coords.latitude], zoom:7}), () => toast("Location not available")); break;
     case "save": saveArea(); break;
