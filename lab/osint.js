@@ -80,7 +80,7 @@ const RAIL = [["ac", "Aircraft"], ["sat", "Satellites"], ["quake", "Earthquakes"
 let S = null;   // the open screen's state
 export async function openOsint(){
   if(S) return; const css = document.getElementById("oscss");
-  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=92", import.meta.url).href; document.head.appendChild(l) }
+  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=93", import.meta.url).href; document.head.appendChild(l) }
   const el = document.createElement("div"); el.id = "osint"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "OSINT");
   el.innerHTML = `<div class="os-map"></div><div class="os-top"><div class="os-brand">${svg("radar")}<div><b>OSINT</b><small>PAY TRACKER · OPEN SOURCE INTEL</small></div>
     <button class="os-x" data-os="close" aria-label="Close OSINT">${svg("x")}</button></div>
@@ -152,7 +152,7 @@ async function loadShips(){
 function paintShips(){ if(!S) return; setSrc("os-ship", prefs.on.ship ? (S.ships || []).map(x => pt(x, {id:String(x.id), cog:x.hdg != null && x.hdg < 360 ? x.hdg : x.cog || 0, cls:shipCls(x.type)})) : []); paintRail() }
 /* public cameras: the list ships with the app (cameras.json, from OSIRIS's public camera lists), so it works offline */
 async function loadCams(){
-  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=92", import.meta.url)); const a = await r.json(); if(!S) return;
+  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=93", import.meta.url)); const a = await r.json(); if(!S) return;
     S.cams = a.map(c => ({k:"cam", lat:c[0], lon:c[1], name:c[2], city:c[3], ctry:c[4], img:c[5], stream:c[6], st:c[7], ext:c[8], src:c[9]})) }catch(e){ S.cams = [] } }
   setSrc("os-cam", prefs.on.cam ? S.cams.map((c, i) => pt(c, {i})) : []); paintRail();
 }
@@ -180,7 +180,7 @@ function orbitOf(s){ const out = [], d0 = Date.now(); let seg = [];
 
 /* ---------- map ---------- */
 async function startMap(){
-  const B = await import("./brief.js?b=92"), ml = await B.loadLib();
+  const B = await import("./brief.js?b=93"), ml = await B.loadLib();
   if(!window.satellite) await new Promise(res => { const s = document.createElement("script"); s.src = new URL("./vendor/satellite/satellite.min.js", import.meta.url).href; s.onload = res; s.onerror = res; document.head.appendChild(s) });
   if(!S) return; buildSats();
   let style;
@@ -428,7 +428,7 @@ export async function runQueue(){
 /* ---------- save an area for offline: map tiles for the view, a few zooms deeper ---------- */
 async function saveArea(){
   if(navigator.onLine === false){ toast("Saving needs signal"); return }
-  const B = await import("./brief.js?b=92"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
+  const B = await import("./brief.js?b=93"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
   let tpl; try{ const tj = await (await B.cget(B.HOST + "/planet", true)).json(); tpl = tj.tiles[0] }catch(e){ toast("Could not reach the map server"); return }
   const t2 = (lon, lat, z) => { const n = 2 ** z, x = Math.floor((lon + 180) / 360 * n), r = lat * Math.PI / 180, y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return [Math.max(0, Math.min(n - 1, x)), Math.max(0, Math.min(n - 1, y))] };
   const list = []; for(let z = z0; z <= Math.min(14, z0 + 3) && list.length < 1500; z++){ const [x0, y0] = t2(Math.max(-180, b.getWest()), Math.min(85, b.getNorth()), z), [x1, y1] = t2(Math.min(180, b.getEast()), Math.max(-85, b.getSouth()), z);
