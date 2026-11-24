@@ -169,6 +169,7 @@
     planesOn(svg, 1.2);
   }
   function planesOn(svg, delay){
+    if(svg.dataset.planes) return; svg.dataset.planes="1";   // build 97: once per map (the entrance and the idle pass both called this, so every route had two planes)
     const rts=[...svg.querySelectorAll(".rt")];
     const vb=svg.viewBox.baseVal, sz=vb.width*.022;
     rts.slice(0,16).forEach((r,i)=>{
