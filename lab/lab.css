@@ -966,3 +966,5 @@ html.isl-hw #islb{top:11px}
 @media (prefers-reduced-motion:reduce){ #isl .icp,#isl .ixp,#isl.compact .icp,#isl.mini .icp,#isl.exp .ixp{filter:none;transform:none} #isl.exp .ixp > *{animation:none} #islb{transition:opacity .2s;transform:none} }
 /* build 90: the island steps aside while a sheet or the data card is open, so it never covers their close buttons */
 html.sheet-open #isl,html.sheet-open #islb{opacity:0!important;pointer-events:none!important}
+/* build 100: Edit flight on the data card (type, times, deadhead) */
+#dcard .dc-edit{flex:none;height:38px;padding:0 12px;border-radius:12px;border:1px solid var(--pline);background:transparent;font:600 13px/1 var(--sans,inherit);color:inherit;white-space:nowrap}
