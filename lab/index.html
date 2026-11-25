@@ -280,15 +280,15 @@ footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-be
 <script>/* intro on a fresh open: cover the page until it starts, so the app does not flash first; give up after 3 s if it cannot load */
 try{ if(localStorage.getItem("crewpaylog.lab.intro")!=="off" && !/[?&]nointro/.test(location.search)){ document.documentElement.classList.add("pti-wait"); setTimeout(()=>document.documentElement.classList.remove("pti-wait"),3000) } }catch(e){}</script>
 <style>html.pti-wait::after{content:"";position:fixed;inset:0;z-index:2147482000;background:#f5f2ea}@media (prefers-color-scheme:dark){html.pti-wait::after{background:#10141b}}</style>
-<link rel="stylesheet" href="lab.css?b=100">
-<script src="intro.js?b=100" defer></script>
+<link rel="stylesheet" href="lab.css?b=101">
+<script src="intro.js?b=101" defer></script>
 <script src="vendor/gsap/gsap.min.js" defer></script>
 <script src="vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="vendor/gsap/DrawSVGPlugin.min.js" defer></script>
 <script src="vendor/lenis/lenis.min.js" defer></script>
-<script src="mapdata.js?b=100"></script>
-<script src="motion.js?b=100" defer></script>
-<script src="lab.js?b=100"></script>
+<script src="mapdata.js?b=101"></script>
+<script src="motion.js?b=101" defer></script>
+<script src="lab.js?b=101"></script>
 </head>
 <body>
 <div class="wrap">
@@ -952,7 +952,7 @@ function viewChange(fn, dir){
 // get the 3D globe ready in the background once the app is idle, so tapping the map opens it at once
 let globeWarm=false;
 function warmGlobe(){ if(globeWarm || !document.querySelector(".mapbox")) return; globeWarm=true;
-  const go=()=>import("./world3d.js?b=100").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
+  const go=()=>import("./world3d.js?b=101").then(m=>m.prewarm&&m.prewarm(matchMedia("(prefers-color-scheme: dark)").matches)).catch(()=>{ globeWarm=false });
   (window.requestIdleCallback||((f)=>setTimeout(f,1200)))(go,{timeout:4000}) }
 
 /* ---------- Weather where you land, on the take-home card ----------
@@ -1024,16 +1024,22 @@ const SKY=(()=>{
   const puffs=[...Array(7)].map((_,k)=>({x:Math.random()*1.3-.15, y:.12+Math.random()*.55, s:.55+Math.random()*.7, v:.6+Math.random()*.8}));
   const bands=[...Array(4)].map((_,k)=>({y:.25+k*.2, x:Math.random(), v:.25+Math.random()*.3}));
   function size(){ if(!cv) return; const r=cv.getBoundingClientRect(), d=Math.min(2,devicePixelRatio||1); W=r.width; H=r.height; cv.width=Math.round(W*d); cv.height=Math.round(H*d); cx.setTransform(d,0,0,d,0,0) }
-  function moon(x,y,r,m){
-    cx.save(); const g=cx.createRadialGradient(x,y,r*.6,x,y,r*3.2); g.addColorStop(0,"rgba(243,234,210,.28)"); g.addColorStop(1,"rgba(243,234,210,0)");
-    cx.fillStyle=g; cx.beginPath(); cx.arc(x,y,r*3.2,0,7); cx.fill();
-    cx.fillStyle="rgba(255,255,255,.10)"; cx.beginPath(); cx.arc(x,y,r,0,7); cx.fill();
-    const rx=r*Math.abs(Math.cos(2*Math.PI*m.p)), wax=m.p<.5, cres=m.illum<.5, P=Math.PI;
-    cx.fillStyle="#f3ead2"; cx.beginPath();
-    if(m.illum>.99) cx.arc(x,y,r,0,7);
-    else if(m.illum>.01){ if(wax){ cx.arc(x,y,r,-P/2,P/2,false); cres?cx.ellipse(x,y,rx,r,0,P/2,-P/2,true):cx.ellipse(x,y,rx,r,0,P/2,3*P/2,false) }
-      else { cx.arc(x,y,r,-P/2,P/2,true); cres?cx.ellipse(x,y,rx,r,0,P/2,3*P/2,false):cx.ellipse(x,y,rx,r,0,P/2,-P/2,true) } }
-    cx.fill(); cx.restore() }
+  function moon(x,y,r,m){   // build 101: textured disc, limb darkening, the real phase as a terminator, faint earthshine on the dark side
+    cx.save(); const P=Math.PI;
+    const g=cx.createRadialGradient(x,y,r*.9,x,y,r*4); g.addColorStop(0,`rgba(235,228,205,${.10+.16*m.illum})`); g.addColorStop(1,"rgba(235,228,205,0)");
+    cx.fillStyle=g; cx.beginPath(); cx.arc(x,y,r*4,0,7); cx.fill();
+    cx.fillStyle="rgba(170,180,200,.09)"; cx.beginPath(); cx.arc(x,y,r,0,7); cx.fill();   // earthshine
+    const lit=()=>{ const rx=r*Math.abs(Math.cos(2*P*m.p)), wax=m.p<.5, cres=m.illum<.5; cx.beginPath();
+      if(m.illum>.99){ cx.arc(x,y,r,0,7); return }
+      if(wax){ cx.arc(x,y,r,-P/2,P/2,false); cres?cx.ellipse(x,y,rx,r,0,P/2,-P/2,true):cx.ellipse(x,y,rx,r,0,P/2,3*P/2,false) }
+      else { cx.arc(x,y,r,-P/2,P/2,true); cres?cx.ellipse(x,y,rx,r,0,P/2,3*P/2,false):cx.ellipse(x,y,rx,r,0,P/2,-P/2,true) } };
+    if(m.illum>.01){ lit(); cx.clip();
+      const b=cx.createRadialGradient(x-r*.25,y-r*.25,r*.1,x,y,r); b.addColorStop(0,"#f7f1e1"); b.addColorStop(.75,"#e6dcc3"); b.addColorStop(1,"#bfb49a");
+      cx.fillStyle=b; cx.fillRect(x-r,y-r,2*r,2*r);
+      for(const [dx,dy,rr,a] of [[-.32,-.28,.30,.20],[.05,-.38,.22,.16],[-.10,.05,.26,.18],[.30,.10,.20,.14],[-.40,.30,.16,.12],[.15,.42,.14,.10],[.42,-.15,.12,.10]]){
+        const X=x+dx*r, Y=y+dy*r, R=rr*r, q=cx.createRadialGradient(X,Y,R*.2,X,Y,R); q.addColorStop(0,`rgba(120,118,112,${a})`); q.addColorStop(1,"rgba(120,118,112,0)"); cx.fillStyle=q; cx.beginPath(); cx.arc(X,Y,R,0,7); cx.fill() }
+      const c=cx.createRadialGradient(x+r*.18,y+r*.55,0,x+r*.18,y+r*.55,r*.12); c.addColorStop(0,"rgba(255,255,250,.55)"); c.addColorStop(1,"rgba(255,255,250,0)"); cx.fillStyle=c; cx.beginPath(); cx.arc(x+r*.18,y+r*.55,r*.12,0,7); cx.fill() }   // a bright crater (Tycho)
+    cx.restore() }
   function cloud(x,y,s,a,dark){ const rgb=dark?"150,160,182":"236,241,249";
     for(const [dx,dy,r] of [[0,0,30],[26,-10,26],[50,2,28],[-24,6,22],[18,12,28],[-4,-14,20]]){ const X=x+dx*s, Y=y+dy*s, Rr=r*s, g=cx.createRadialGradient(X,Y,Rr*.15,X,Y,Rr);
       g.addColorStop(0,`rgba(${rgb},${a})`); g.addColorStop(.6,`rgba(${rgb},${a*.55})`); g.addColorStop(1,`rgba(${rgb},0)`); cx.fillStyle=g; cx.beginPath(); cx.arc(X,Y,Rr,0,7); cx.fill() } }
@@ -1049,7 +1055,7 @@ const SKY=(()=>{
       const d=cx.createRadialGradient(sx,sy,0,sx,sy,42); d.addColorStop(0,"rgba(255,240,190,.95)"); d.addColorStop(.5,"rgba(255,220,140,.5)"); d.addColorStop(1,"rgba(255,220,140,0)"); cx.fillStyle=d; cx.beginPath(); cx.arc(sx,sy,42,0,7); cx.fill() }
     if(night){ const g=cx.createLinearGradient(0,0,0,H); g.addColorStop(0,"rgba(6,10,30,.45)"); g.addColorStop(1,"rgba(6,10,30,0)"); cx.fillStyle=g; cx.fillRect(0,0,W,H);
       if(k==="sun"||k==="part"||k==="fog") for(const s of stars){ cx.fillStyle=`rgba(255,255,255,${.25+.55*(.5+.5*Math.sin(t*.0016+s.p))})`; cx.beginPath(); cx.arc(s.x*W,s.y*H,s.r,0,7); cx.fill() }
-      if(k!=="storm"&&k!=="rain"&&k!=="snow") moon(W*.64,H*.22,12,w.moon) }
+      if(k!=="storm"&&k!=="rain"&&k!=="snow") moon(W*.80,H*.54,11,w.moon) }
     if(!night && k==="cloud"){ cx.fillStyle="rgba(170,180,200,.18)"; cx.fillRect(0,0,W,H) }
     // clouds
     const n=k==="part"?3:k==="cloud"||k==="rain"||k==="snow"?6:k==="storm"?7:0, dark=k==="rain"||k==="storm"||(k==="cloud"&&night);
@@ -1092,15 +1098,15 @@ const SKY=(()=>{
    the reported direction, the cloud layers settle at their heights, and the TAF's change groups wipe across its
    validity, with a gold mark at your landing time. Informational only: not a substitute for the official briefing. */
 // build 91: keep the OSINT feeds fresh for offline use (quiet; only when online, a few seconds after start)
-setTimeout(()=>{ if(navigator.onLine!==false) import("./osint.js?b=100").then(m=>m.refreshSmall()).catch(()=>{}) }, 6000);
+setTimeout(()=>{ if(navigator.onLine!==false) import("./osint.js?b=101").then(m=>m.refreshSmall()).catch(()=>{}) }, 6000);
 // build 93: the Telegram briefs show weather for my next airports; only their ICAO codes go to my relay (no times, flights or roster)
-async function osintStations(){ try{ if(navigator.onLine===false) return; if(!window.PTICAO) await loadScript("tzdata.js?b=100");
+async function osintStations(){ try{ if(navigator.onLine===false) return; if(!window.PTICAO) await loadScript("tzdata.js?b=101");
   const ids=[...new Set(wxStations().map(l=>icaoOf(l.stn)).filter(Boolean))].slice(0,8), key=ids.join(",");
   if(key===localStorage.getItem(LS_KEY+".osst") && Date.now()-(+localStorage.getItem(LS_KEY+".osstT")||0)<6*HR) return;
   const r=await fetch("https://pt-osint.sahilgp6.workers.dev/stations",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({icao:ids})});
   if(r.ok){ localStorage.setItem(LS_KEY+".osst",key); localStorage.setItem(LS_KEY+".osstT",String(Date.now())) } }catch(e){} }
 setTimeout(osintStations, 9000); addEventListener("online",()=>setTimeout(osintStations,3000));
-addEventListener("online",()=>import("./osint.js?b=100").then(m=>m.refreshSmall()).catch(()=>{}));
+addEventListener("online",()=>import("./osint.js?b=101").then(m=>m.refreshSmall()).catch(()=>{}));
 const WXRELAY_DEFAULT="https://pt-wx.sahilgp6.workers.dev";   // your Cloudflare relay (answers only sahilgp6.github.io)
 const wxRelay=()=>{ try{ return localStorage.getItem(LS_KEY+".wxrelay")||WXRELAY_DEFAULT }catch(e){ return WXRELAY_DEFAULT } };
 let MT={at:0, data:{}, busy:false, err:""};
@@ -1111,7 +1117,7 @@ function wxStations(){
   return [...seen.values()];
 }
 async function metarFetch(force){
-  if(!window.PTICAO) await loadScript("tzdata.js?b=100");
+  if(!window.PTICAO) await loadScript("tzdata.js?b=101");
   const relay=wxRelay(), legs=wxStations(), ids=legs.map(l=>icaoOf(l.stn)).filter(Boolean);
   if(!relay){ MT.err="relay"; return }
   if(!ids.length || MT.busy || !navigator.onLine) return;
@@ -1207,7 +1213,7 @@ function wxSheetPaint(animate){
   if(body.dataset.h===html) return; body.dataset.h=html; body.innerHTML=html; if(animate!==false) wxSheetMotion(body);
 }
 async function openWx(){
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=100") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=101") }catch(e){} }   // airport codes first, so no card says "no ICAO code"
   $("#sheetBody").dataset.h=""; openSheet({kind:"wx"}); metarFetch(false);
 }
 
@@ -1384,7 +1390,7 @@ function rosterPdfEvents(grid, mode){
   return {evs:kept, skipped:skipped.filter(inMonth)};
 }
 window.__sky={peek:()=>SKY.peek(), legs:()=>wxLegs()};
-window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=100"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
+window.__rpdf={parse:async (buf,mode)=>{ await loadScript("tzdata.js?b=101"); const g=parseRosterGrid(await pdfGrid(buf)); return {mode:mode||pdfMode(g), ...rosterPdfEvents(g, mode||pdfMode(g)||"utc")} }, grid:async buf=>parseRosterGrid(await pdfGrid(buf))};
 function rpdfRun(){ const {evs, skipped}=rosterPdfEvents(rpdf.grid, rpdf.mode||"utc"); rpdf.evs=evs; rpdf.skipped=skipped }
 async function readRosterPdf(file){
   rpdfBusy="Reading "+file.name+"…"; rpdf=null; render();
@@ -1392,7 +1398,7 @@ async function readRosterPdf(file){
     const grid=parseRosterGrid(await pdfGrid(await file.arrayBuffer()));
     rpdfBusy="";
     if(grid.year==null || !grid.days.length){ showBanner("That PDF does not look like a crew app monthly roster. Nothing was saved."); render(); return }
-    if(!window.PTTZ) await loadScript("tzdata.js?b=100");
+    if(!window.PTTZ) await loadScript("tzdata.js?b=101");
     rpdf={name:file.name, label:ymLabel(grid.year+"-"+String(grid.month+1).padStart(2,"0")), grid, mode:pdfMode(grid)};
     rpdfRun();
   }catch(e){ rpdfBusy=""; showBanner(e&&e.message==="load"?"The PDF reader could not be fetched. Connect to the internet once and try again.":"Could not read that PDF. Nothing was saved.") }
@@ -2617,7 +2623,7 @@ function mapCtx(view, month){ return {apx:APX||new Map(), base:(profile.base||"B
   pdfLib:async()=>{ if(!window.pdfjsLib) await loadScript("../pdfjs/pdf.min.js"); const lib=window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc="../pdfjs/pdf.worker.min.js"; return lib }} }
 function openBrief(){
   if(briefOpen) return; briefOpen=true; apMap();
-  import("./brief.js?b=100").then(m=>m.openBriefMap(mapCtx("brief", monthMapData())))
+  import("./brief.js?b=101").then(m=>m.openBriefMap(mapCtx("brief", monthMapData())))
     .catch(e=>{ briefOpen=false; showBanner("The map could not open: "+(e&&e.message||e)) });
 }
 function openWorld(){
@@ -2626,7 +2632,7 @@ function openWorld(){
   if(briefOpen) return; briefOpen=true;
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
   const ld=globeLoader({label:ymLabel(cur), ym:cur, routes:seen.size, apts:stns.size, mins:kk.totMin||0, flown});
-  import("./brief.js?b=100").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openBriefMap(mapCtx("month", monthMapData()))))
+  import("./brief.js?b=101").then(m=>ld.quiet.then(()=>ld.cancelled?null:m.openBriefMap(mapCtx("month", monthMapData()))))
     .then(g=>{ if(!g) briefOpen=false; ld.done() })
     .catch(()=>{ briefOpen=false; ld.done(); openGlobeOld() });
 }
@@ -2642,7 +2648,7 @@ function openGlobeOld(){   // the build 64 globe, used only if the map cannot st
     stations:[...stns.keys()].map(k=>({code:k, ...APX.get(k), home:k===base, abroad:!IN_AIRPORTS.has(k)})),
     bubble:bubbleHTML, onClose:()=>{ globe=null } };
   const kk=calc(cur), flown=new Set(d.sectors.filter(x=>x.date).map(x=>+x.date.slice(8,10)));
-  import("./world3d.js?b=100").then(m=>m.openGlobe(data)).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap) }).catch(()=>openWorld2D());
+  import("./world3d.js?b=101").then(m=>m.openGlobe(data)).then(g=>{ if(!g) return; globe=g; window.__globe=g; armHaptics(g.wrap) }).catch(()=>openWorld2D());
 }
 /* Loading screen for the globe: an eight-second motion piece, played in full on every tap.
    1 a glass bar tilts in and "Plotting November" types out (Corinthia); the gold button is pressed
@@ -2916,7 +2922,7 @@ function qualsAlert(){ try{ const q=qualsData(), w=q.warn, ahead=trainingAhead()
 
 let qIcaoLoad=false;
 function viewQuals(){
-  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=100").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
+  if(!window.PTICAO && !qIcaoLoad){ qIcaoLoad=true; loadScript("tzdata.js?b=101").then(()=>{ if(tab==="quals") render() }).catch(()=>{}) }
   const q=qualsData(), w=q.warn, r=recency(), ar=aeroRows(), ahead=trainingAhead(), its=q.items.map(i=>itemState(i,ahead,w));
   // due soon: everything amber or red, soonest first
   const due=[];
@@ -3708,7 +3714,7 @@ function cardPaint(keepScroll){ const el=document.getElementById("dcard"); if(!e
   el.innerHTML=cardHTML(); if(keepScroll){ const s2=el.querySelector(".dc-scroll"); if(s2) s2.scrollTop=y } cardSpy() }
 async function openCard(id, from){
   const s=findSector(id); if(!s) return;
-  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=100") }catch(e){} }
+  if(!window.PTICAO){ try{ await loadScript("tzdata.js?b=101") }catch(e){} }
   dcard={s, key:cardKey(s), from};
   let el=document.getElementById("dcard"); if(!el){ el=document.createElement("div"); el.id="dcard"; el.setAttribute("role","dialog"); el.setAttribute("aria-label","Pilot's data card"); document.body.appendChild(el) }
   el.innerHTML=cardHTML(); el.hidden=false; document.documentElement.classList.add("sheet-open"); cardSpySet(PHASES[0][0]);
@@ -4038,7 +4044,7 @@ document.addEventListener("click", e=>{
     dutyDay=t.dataset.dday; if(t.dataset.go){ tab="duty"; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){} } render(); if(t.dataset.go) toTop();
     if(cellR && window.PTMotion&&PTMotion.ready()){ const c=document.querySelector("#view .daynav ~ section.card"); if(c) PTMotion.fromCell(cellR,c) }
     return }
-  if(t.dataset.tab==="osint"){ import("./osint.js?b=100").then(m=>m.openOsint()).catch(()=>{}); return }   // build 91: full-screen OSINT, the tab you were on stays
+  if(t.dataset.tab==="osint"){ import("./osint.js?b=101").then(m=>m.openOsint()).catch(()=>{}); return }   // build 91: full-screen OSINT, the tab you were on stays
   if(t.dataset.tab){ bannerMsg=""; tab=t.dataset.tab; try{localStorage.setItem(LS_KEY+".tab",tab)}catch(_){};
     viewChange(()=>render(),"tab"); return }
   if(t.dataset.go){ tab=t.dataset.go; render(); return }
