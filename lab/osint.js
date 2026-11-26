@@ -85,7 +85,7 @@ const RAIL = [["ac", "Aircraft"], ["sat", "Satellites"], ["conf", "Conflict zone
 let S = null;   // the open screen's state
 export async function openOsint(){
   if(S) return; const css = document.getElementById("oscss");
-  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=101", import.meta.url).href; document.head.appendChild(l) }
+  if(!css){ const l = document.createElement("link"); l.id = "oscss"; l.rel = "stylesheet"; l.href = new URL("./osint.css?b=102", import.meta.url).href; document.head.appendChild(l) }
   const el = document.createElement("div"); el.id = "osint"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "OSINT");
   el.innerHTML = `<div class="os-map"></div><div class="os-top"><div class="os-brand">${svg("radar")}<div><b>OSINT</b><small>PAY TRACKER · OPEN SOURCE INTEL</small></div>
     <button class="os-x" data-os="close" aria-label="Close OSINT">${svg("x")}</button></div>
@@ -130,7 +130,7 @@ async function loadAll(force){
   S.mil = S.data.mil || [];
   if(navigator.onLine !== false && (!S.milAt || Date.now() - S.milAt > MIN)) for(const u of ["https://api.adsb.lol/v2/mil", "https://api.airplanes.live/v2/mil", "https://opendata.adsb.fi/api/v2/mil"]){
     try{ const r = await fetch(u, {signal:AbortSignal.timeout(9000)}); if(!r.ok) continue; const m = P.mil(await r.json()); if(m.length && S){ S.mil = m; S.milAt = Date.now(); break } }catch(e){} }
-  if(!S.static){ try{ const [d, g] = await Promise.all([fetch(new URL("./osintdata.json?b=101", import.meta.url)).then(r => r.json()), fetch(new URL("./gazetteer.json?b=101", import.meta.url)).then(r => r.json())]); if(!S) return; S.static = d; S.gaz = g }catch(e){ S.static = {zones:[], news:[]}; S.gaz = [] } }
+  if(!S.static){ try{ const [d, g] = await Promise.all([fetch(new URL("./osintdata.json?b=102", import.meta.url)).then(r => r.json()), fetch(new URL("./gazetteer.json?b=102", import.meta.url)).then(r => r.json())]); if(!S) return; S.static = d; S.gaz = g }catch(e){ S.static = {zones:[], news:[]}; S.gaz = [] } }
   buildPlaces(); if(prefs.on.aq) loadAQ();
   buildSats(); paintData(); paintStatus(); paintTicker();
   if(!S.acAt) loadAircraft();
@@ -193,7 +193,7 @@ async function loadShips(){
 function paintShips(){ if(!S) return; setSrc("os-ship", prefs.on.ship ? (S.ships || []).map(x => pt(x, {id:String(x.id), cog:x.hdg != null && x.hdg < 360 ? x.hdg : x.cog || 0, cls:shipCls(x.type)})) : []); paintRail() }
 /* public cameras: the list ships with the app (cameras.json, from OSIRIS's public camera lists), so it works offline */
 async function loadCams(){
-  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=101", import.meta.url)); const a = await r.json(); if(!S) return;
+  if(!S.cams){ try{ const r = await fetch(new URL("./cameras.json?b=102", import.meta.url)); const a = await r.json(); if(!S) return;
     S.cams = a.map(c => ({k:"cam", lat:c[0], lon:c[1], name:c[2], city:c[3], ctry:c[4], img:c[5], stream:c[6], st:c[7], ext:c[8], src:c[9]})) }catch(e){ S.cams = [] } }
   setSrc("os-cam", prefs.on.cam ? S.cams.map((c, i) => pt(c, {i})) : []); paintRail();
 }
@@ -243,7 +243,7 @@ function orbitOf(s){ const out = [], d0 = Date.now(); let seg = [];
 
 /* ---------- map ---------- */
 async function startMap(){
-  const B = await import("./brief.js?b=101"), ml = await B.loadLib();
+  const B = await import("./brief.js?b=102"), ml = await B.loadLib();
   if(!window.satellite) await new Promise(res => { const s = document.createElement("script"); s.src = new URL("./vendor/satellite/satellite.min.js", import.meta.url).href; s.onload = res; s.onerror = res; document.head.appendChild(s) });
   if(!S) return; buildSats();
   let style;
@@ -574,7 +574,7 @@ async function askAI(){
 /* ---------- save an area for offline: map tiles for the view, a few zooms deeper ---------- */
 async function saveArea(){
   if(navigator.onLine === false){ toast("Saving needs signal"); return }
-  const B = await import("./brief.js?b=101"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
+  const B = await import("./brief.js?b=102"), m = S.map, b = m.getBounds(), z0 = Math.max(2, Math.floor(m.getZoom()));
   let tpl; try{ const tj = await (await B.cget(B.HOST + "/planet", true)).json(); tpl = tj.tiles[0] }catch(e){ toast("Could not reach the map server"); return }
   const t2 = (lon, lat, z) => { const n = 2 ** z, x = Math.floor((lon + 180) / 360 * n), r = lat * Math.PI / 180, y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return [Math.max(0, Math.min(n - 1, x)), Math.max(0, Math.min(n - 1, y))] };
   const list = []; for(let z = z0; z <= Math.min(14, z0 + 3) && list.length < 1500; z++){ const [x0, y0] = t2(Math.max(-180, b.getWest()), Math.min(85, b.getNorth()), z), [x1, y1] = t2(Math.min(180, b.getEast()), Math.max(-85, b.getSouth()), z);
