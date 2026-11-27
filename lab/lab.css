@@ -968,3 +968,5 @@ html.isl-hw #islb{top:11px}
 html.sheet-open #isl,html.sheet-open #islb{opacity:0!important;pointer-events:none!important}
 /* build 100: Edit flight on the data card (type, times, deadhead) */
 #dcard .dc-edit{flex:none;height:38px;padding:0 12px;border-radius:12px;border:1px solid var(--pline);background:transparent;font:600 13px/1 var(--sans,inherit);color:inherit;white-space:nowrap}
+/* build 104: tap to switch a field's unit (OLD m/ft) */
+#dcard .dc-ub{flex:none;border:1px solid var(--pline);background:transparent;border-radius:7px;padding:2px 6px;font:inherit;font-size:11px;font-style:normal;color:inherit;opacity:.8;margin-left:4px}
